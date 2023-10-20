@@ -3,6 +3,7 @@ import numpy.typing as npt
 import scipy.sparse
 import scipy.sparse.linalg
 import scipy.spatial
+import scipy.linalg
 import abc
 
 
@@ -191,9 +192,9 @@ class LimitedSupportRBF(BaseBasisFunction):
             'euclidean'
             )
         
-        has_support = scipy.sparse.csc_matrix(r <= self.support)
+        # has_support = scipy.sparse.csc_matrix(r <= self.support)
         
-        return has_support.multiply(np.exp(-0.5*r**2)).tocsc()
+        return np.exp(-0.5*r**2)#has_support.multiply(np.exp(-0.5*r**2)).tocsc()
 
 
 
@@ -222,7 +223,7 @@ class ApproximateGP():
         if w0.size != cov0.shape[0]:
             raise ValueError('Size of mean vector does not match covariance matrix')
         self._mean = np.array(w0)
-        self._cov = scipy.sparse.csc_matrix(cov0)
+        self._cov = cov0
         
         if error_cov <= 0:
             raise ValueError("Error variance must be positive")
@@ -235,7 +236,7 @@ class ApproximateGP():
         H = self.H(x)
         P = H @ self._cov @ H.T + scipy.sparse.diags(np.ones(x.shape[0])*self.error_cov)
         
-        return H @ self._mean, P.todense()
+        return H @ self._mean, P
     
     
     
@@ -248,9 +249,10 @@ class ApproximateGP():
         y_var = scipy.sparse.diags(v)
         f_var = scipy.sparse.diags(np.ones(x.shape[0])*self.error_cov)
         S = H @ self._cov @ H.T + y_var + f_var
-        G = scipy.sparse.linalg.spsolve(
-            S.tocsc(), 
-            (H @ self._cov).tocsc()
+        G = scipy.linalg.solve(
+            S, 
+            (H @ self._cov),
+            assume_a='sym'
             )
         
         self._mean = self._mean + (G.T @ e).flatten()
