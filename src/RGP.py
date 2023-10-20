@@ -216,8 +216,13 @@ class ApproximateGP():
         self.H = basis_function
         
         if len(w0) != basis_function.n_basis:
-            raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(basis_function.n_basis, len(w0)))
-        self.weight_distribution = SparseMultivariateNormal(w0, cov0)
+            raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(basis_function.n_basis, len(w0))) 
+        if cov0.shape[0] != cov0.shape[1] or len(cov0.shape) != 2:
+            raise ValueError('Covariance matrix must be quadratic')
+        if w0.size != cov0.shape[0]:
+            raise ValueError('Size of mean vector does not match covariance matrix')
+        self._mean = np.array(w0)
+        self._cov = scipy.sparse.csc_matrix(cov0)
         
         if error_cov <= 0:
             raise ValueError("Error variance must be positive")
@@ -228,9 +233,9 @@ class ApproximateGP():
     def predict(self, x):
         
         H = self.H(x)
-        P = (H @ self.weight_distribution.cov @ H.T).todense() + np.eye(x.shape[0])*self.error_cov
+        P = H @ self._cov @ H.T + scipy.sparse.diags(np.ones(x.shape[0])*self.error_cov)
         
-        return H @ self.weight_distribution.mean, P
+        return H @ self._mean, P.todense()
     
     
     
@@ -238,17 +243,15 @@ class ApproximateGP():
         
         H = self.H(x)
         
-        e = y.flatten() - H @ self.weight_distribution.mean
+        e = y.flatten() - H @ self._mean
         
         y_var = scipy.sparse.diags(v)
         f_var = scipy.sparse.diags(np.ones(x.shape[0])*self.error_cov)
-        S = H @ self.weight_distribution.cov @ H.T + y_var + f_var
+        S = H @ self._cov @ H.T + y_var + f_var
         G = scipy.sparse.linalg.spsolve(
             S.tocsc(), 
-            (H @ self.weight_distribution.cov).tocsc()
+            (H @ self._cov).tocsc()
             )
         
-        self.weight_distribution._mean = self.weight_distribution._mean + (G.T @ e).flatten()
-        self.weight_distribution._chol_cov = sparse_cholesky(
-            self.weight_distribution.cov - G.T @ S @ G
-        )
+        self._mean = self._mean + (G.T @ e).flatten()
+        self._cov = self._cov - G.T @ S @ G

@@ -40,11 +40,11 @@ def f_model(s, v, F, F_sd, m, dt):
     
     
     dx = np.concatenate(
-        [v, -F_sd/m + F/m + 9.81], dim=-1
+        [v, -F_sd/m + F/m + 9.81], axis=-1
     )
     
     x = np.concatenate(
-        [s, v], dim=-1
+        [s, v], axis=-1
     )
     
     return x + dt*dx
@@ -98,9 +98,9 @@ class SingleMassOscillator():
         k2 = dx(self.x+dt/2.0*k1, F, m, c1, c2, d1, d2)
         k3 = dx(self.x+dt/2.0*k2, F, m, c1, c2, d1, d2)
         k4 = dx(self.x+dt*k3, F, m, c1, c2, d1, d2)
-        self.x = self.x + dt/6.0*(k1+2*k2+2*k3+k4) + np.random.randn(self.x.shape) @ np.linalg.cholesky(self.Q).T
+        self.x = self.x + dt/6.0*(k1+2*k2+2*k3+k4) + np.random.randn(*self.x.shape) @ np.linalg.cholesky(self.Q).T
     
     
     
     def measurent(self):
-        return self.x[0] + np.random.randn(1)*self.R
+        return self.x[0] + np.random.randn(1)*np.linalg.cholesky(self.R).T
