@@ -2,10 +2,11 @@ import numpy as np
 import numpy.typing as npt
 import scipy.sparse
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 
 
-from src.RGP import ApproximateGP, LimitedSupportRBF
+from src.RGP import ApproximateGP, GaussianRBF
 
 
 
@@ -15,10 +16,9 @@ def test_function(x):
 
 
 inducing_points = np.arange(-10.0, 10.1, 0.5)
-H = LimitedSupportRBF(
+H = GaussianRBF(
     centers=inducing_points.reshape((inducing_points.size,1)),
-    lengthscale=np.array([0.5]),
-    support_radius=3
+    lengthscale=np.array([0.5])
 )
 
 model = ApproximateGP(
@@ -30,9 +30,10 @@ model = ApproximateGP(
 
 
 rng = np.random.default_rng()
-X_train = rng.uniform(-10,10,(1000,1))
-Y_train = test_function(X_train) + rng.normal(0, 1, X_train.shape)
-model.update(X_train, Y_train, np.ones((X_train.size,)))
+for i in tqdm(range(1000)):
+    X_train = rng.uniform(-10,10,(20,1))
+    Y_train = test_function(X_train) + rng.normal(0, 1, X_train.shape)
+    model.update(X_train, Y_train, np.ones((X_train.size,)))
 
 
 

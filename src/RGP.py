@@ -20,6 +20,33 @@ def sparse_cholesky(A): # The input matrix A must be a sparse symmetric positive
 
 
 
+def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
+    """
+    This function calculates the squared eicledian distance ||x||_2^2 between 
+    all pairs of vectors in x1 and x2.
+
+    Args:
+        x1 (npt.ArrayLike): An [..., n_a, m] array of coordinates.
+        x2 (npt.ArrayLike): an [..., n_b, m] array of coordinates.
+
+    Returns:
+        npt.NDArray: An [..., n_a, n_b] array containing the squared euclidean distance 
+        between each pair of vectors.
+    """
+    
+    a = np.asarray(x1)
+    b = np.asarray(x2)
+    
+    distance = np.sum(
+            (a[..., np.newaxis,:] - b[...,np.newaxis,:,:])**2,
+            axis=-1
+            )
+    
+    return distance
+    
+
+
+
 ################################################################################
 # Distribution
 
@@ -142,13 +169,12 @@ class BaseBasisFunction(abc.ABC):
         
 
 
-class LimitedSupportRBF(BaseBasisFunction):
+class GaussianRBF(BaseBasisFunction):
     
     def __init__(
         self, 
         centers: npt.ArrayLike, 
-        lengthscale: npt.ArrayLike,
-        support_radius: float = 2
+        lengthscale: npt.ArrayLike
         ) -> None:
         
         super().__init__()
@@ -163,10 +189,6 @@ class LimitedSupportRBF(BaseBasisFunction):
         if len(lengthscale) != 1 and len(lengthscale) != self.n_input:
             raise ValueError("Lengthscale must be compatible with input dimensions or be a scalar")
         self.lengthscale = np.array(lengthscale).flatten()
-        
-        if support_radius <= 0:
-            raise ValueError("Radius must be positive")
-        self.support = support_radius
     
     
     
@@ -186,15 +208,12 @@ class LimitedSupportRBF(BaseBasisFunction):
         
         x_in = np.asarray(x)
         
-        r = scipy.spatial.distance.cdist(
+        r = sq_dist(
             x_in/self.lengthscale, 
-            self.centers/self.lengthscale, 
-            'euclidean'
+            self.centers/self.lengthscale
             )
         
-        # has_support = scipy.sparse.csc_matrix(r <= self.support)
-        
-        return np.exp(-0.5*r**2)#has_support.multiply(np.exp(-0.5*r**2)).tocsc()
+        return np.exp(-0.5*r)
 
 
 
@@ -233,8 +252,11 @@ class ApproximateGP():
     
     def predict(self, x):
         
+        # basis functions
         H = self.H(x)
-        P = H @ self._cov @ H.T + scipy.sparse.diags(np.ones(x.shape[0])*self.error_cov)
+        
+        # covariance matrix / einsum for broadcasting cov @ H.T
+        P = H @ np.einsum('nm,...km->...nk', self._cov, H) + np.diag(np.ones(x.shape[-2])*self.error_cov)
         
         return H @ self._mean, P
     
@@ -242,18 +264,27 @@ class ApproximateGP():
     
     def update(self, x: npt.NDArray, y: npt.NDArray, v: npt.NDArray):
         
+        if len(x.shape[:-2]) != 0:
+            x = x.reshape((-1,self.H.n_input))
+        
+        # basis function
         H = self.H(x)
         
+        # residuum
         e = y.flatten() - H @ self._mean
         
-        y_var = scipy.sparse.diags(v)
-        f_var = scipy.sparse.diags(np.ones(x.shape[0])*self.error_cov)
-        S = H @ self._cov @ H.T + y_var + f_var
-        G = scipy.linalg.solve(
+        # model and measurment uncertainty
+        y_var = np.diag(v)
+        f_var = np.diag(np.ones(x.shape[-2])*self.error_cov)
+        
+        # covariance matrix / einsum for broadcasting cov @ H.T
+        S = H @ np.einsum('nm,km->nk', self._cov, H) + y_var + f_var
+        
+        # gain matrix
+        G = np.linalg.solve(
             S, 
-            (H @ self._cov),
-            assume_a='sym'
+            (H @ self._cov)
             )
         
-        self._mean = self._mean + (G.T @ e).flatten()
-        self._cov = self._cov - G.T @ S @ G
+        self._mean = self._mean + (np.swapaxes(G, -2, -1) @ e).flatten()
+        self._cov = self._cov - np.swapaxes(G, -2, -1) @ S @ G
