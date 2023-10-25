@@ -51,7 +51,7 @@ H = GaussianRBF(
 spring_damper_model = ApproximateGP(
     basis_function=H,
     w0=np.zeros(ip.shape[0]),
-    cov0=np.eye(ip.shape[0])*10**2,
+    cov0=H(ip).T@H(ip),
     error_cov=0.001
 )
 
@@ -197,7 +197,7 @@ pF_sd = np.squeeze(pF_sd)
 e = np.abs(grid_F - F_sd)
 
 # aplha from confidence
-a = np.abs(1-np.sqrt(pF_sd)/10)
+a = np.abs(1-np.sqrt(pF_sd)/np.max(np.sqrt(pF_sd)))
 
 ax1[0,0].plot(ip[:,0], ip[:,1], marker='.', color='k', linestyle='none')
 c = ax1[0,0].pcolormesh(grid_x, grid_y, e, label="Ground Truth", vmin=0, vmax=50, alpha=a)
