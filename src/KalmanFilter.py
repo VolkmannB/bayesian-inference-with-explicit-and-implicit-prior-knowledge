@@ -196,3 +196,199 @@ class UnscentedKalmanFilter(BaseFilter):
     @property
     def P(self):
         return self._P
+
+
+
+class ExtendedKalmanFilter(BaseFilter):
+    
+    def __init__(
+        self, 
+        x0: npt.ArrayLike,
+        P0: npt.ArrayLike,
+        f_x: tp.Callable, 
+        F: tp.Callable, 
+        f_y: tp.Callable,
+        H: tp.Callable, 
+        Q: npt.ArrayLike, 
+        R: npt.ArrayLike
+        ) -> None:
+        
+        super().__init__(Q, R)
+        
+        # set state and measurment model
+        if not callable(f_x) or not callable(F):
+            raise ValueError('State space model must be callable')
+        self.f_x = f_x
+        self.F = F
+        if not callable(f_y) or not callable(H):
+            raise ValueError('Measurment model must be callable')
+        self.f_y = f_y
+        self.H = H
+        
+        # set state prior
+        x_ = np.array(x0)
+        P_ = np.array(P0)
+        if x_.shape[0] != self._n_x:
+            raise ValueError('Prior mean for state does not match noise covariance matrix')
+        if P_.shape[0] != self._n_x or P_.shape[1] != self._n_x:
+            raise ValueError('Shape of prior covariance for state does not match noise covariance matrix')
+        self._x = x_
+        self._P = P_
+        
+        # these will always be a copy of x,P after predict() is called
+        self.x_prior = self._x.copy()
+        self.P_prior = self._P.copy()
+
+        # these will always be a copy of x,P after update() is called
+        self.x_post = self._x.copy()
+        self.P_post = self._P.copy()
+    
+    @property
+    def x(self):
+        return self._x
+    
+    @property
+    def P(self):
+        return self._P
+    
+    
+    
+    def predict(self, **fx_args):
+        
+        # save prior
+        self.x_prior = np.copy(self._x)
+        self.P_prior = np.copy(self._P)
+        
+        # prediction
+        self._x = self.f_x(self._x, **fx_args)
+        F = self.F(self._x, **fx_args)
+        self._P = F @ self._P @ F.T + self.Q
+    
+    
+    
+    def update(self, y, **fy_args):
+        
+        y_ = y - self.f_y(self.x_, **fy_args)
+        H = self.H(self.x_, **fy_args)
+        S = H @ self._P @ H.T + self.R
+        
+        # Kalman gain
+        K_T = np.linalg.solve(S, H @ self._P)
+        
+        # update
+        self._x = self._x + K_T.T @ y_
+        self._P = self._P - K_T.T @ H @ self._P
+        
+        # save posterior
+        self.x_post = np.copy(self._x)
+        self.P_post = np.copy(self._P)
+        
+
+
+class EnsambleKalmanFilter(BaseFilter):
+    
+    def __init__(
+        self, 
+        N: int, 
+        x0: npt.ArrayLike,
+        P0: npt.ArrayLike,
+        f_x: tp.Callable, 
+        f_y: tp.Callable,
+        Q: npt.ArrayLike, 
+        R: npt.ArrayLike
+        ) -> None:
+        
+        super().__init__(Q, R)
+        
+        # set state and measurment model
+        if not callable(f_x):
+            raise ValueError('State space model must be callable')
+        self.f_x = f_x
+        if not callable(f_y):
+            raise ValueError('Measurment model must be callable')
+        self.f_y = f_y
+        
+        # generate ensamble from prior
+        if not isinstance(N, int):
+            raise ValueError('Ensamble size must be an integer')
+        x_ = np.array(x0)
+        P_ = np.array(P0)
+        if x_.shape[0] != self._n_x:
+            raise ValueError('Prior mean for state does not match noise covariance matrix')
+        if P_.shape[0] != self._n_x or P_.shape[1] != self._n_x:
+            raise ValueError('Shape of prior covariance for state does not match noise covariance matrix')
+        self._sigma_x = x_ + np.random.randn(N,x_.size) @ np.linalg.cholesky(P_).T
+        
+        # these will always be a copy of x,P after predict() is called
+        self._sigma_x_prior = self._sigma_x.copy()
+
+        # these will always be a copy of x,P after update() is called
+        self._sigma_x_post = self._sigma_x.copy()
+    
+    
+    
+    @property
+    def x_prior(self):
+        return self._sigma_x_prior.mean(axis=0)
+    
+    
+    
+    @property
+    def P_prior(self):
+        return np.cov(self._sigma_x_prior.T)
+    
+    
+    
+    @property
+    def x_post(self):
+        return self._sigma_x_post.mean(axis=0)
+    
+    
+    
+    @property
+    def P_post(self):
+        return np.cov(self._sigma_x_post.T)
+    
+    
+    
+    @property
+    def x(self):
+        return self._sigma_x.mean(axis=0)
+    
+    
+    
+    @property
+    def P(self):
+        return np.cov(self._sigma_x.T)
+    
+    
+    
+    def predict(self, **fx_args):
+        
+        # save prior
+        self._sigma_x_prior = self._sigma_x
+        
+        # forward simulation
+        w = np.random.randn(*self._sigma_x.shape) @ np.linalg.cholesky(self.Q).T
+        self._sigma_x = self.f_x(self._sigma_x, **fx_args) + w
+        
+        
+    
+    def update(self, y, **fy_args):
+        
+        # simulate measurments
+        v = np.random.randn(self._sigma_x.shape[0], self.R.shape[0]) @ np.linalg.cholesky(self.R).T
+        sigma_y = self.f_y(self._sigma_x, **fy_args) + v
+        
+        # calculate joint
+        P = np.cov(np.concatenate((self._sigma_x, sigma_y), axis=1).T)
+        
+        # Kalman gain P_yy/P_xy - due to solve() K^T is actually calculated
+        n_x = self._sigma_x.shape[1]
+        K_T = np.linalg.solve(P[n_x:, n_x:], P[:n_x,n_x:].T)
+        
+        # update
+        self._sigma_x = self._sigma_x + (y - sigma_y) @ K_T
+        
+        # save posterior
+        self._sigma_x_post = self._sigma_x
