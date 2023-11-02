@@ -49,7 +49,7 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
     grid_F = F_spring(grid_x, model_para['c1'], model_para['c2']) + F_damper(grid_y, model_para['d1'], model_para['d2'])
     
     with moviewriter.saving(fig, filne_name, dpi):
-        for t in tqdm(range(0, 100, int(inc)), desc="Generating Plots"):
+        for t in tqdm(range(0, len(time), int(inc)), desc="Generating Plots"):
             
             # get figure0 and clear
             fig = plt.figure(num=0)
@@ -73,9 +73,9 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
             e = grid_F - GPF_sd
 
             # alpha from confidence
-            a = 1-np.sqrt(GPpF_sd)/1
+            a = 1-np.sqrt(GPpF_sd)/np.sqrt(np.max(CW[0,...]))
             a[a<0]=0
-            a=1
+            # a=1
             
             # plot error
             ax1 = plt.subplot(2,2,1)
@@ -137,7 +137,7 @@ def generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, w, Cw, time, model_pa
     e = grid_F - GPF_sd
 
     # aplha from confidence
-    a = 1-np.sqrt(GPpF_sd)/1
+    a = 1-np.sqrt(GPpF_sd)/np.sqrt(np.max(Cw))
     a[a<0]=0
     
     # state trajectory
