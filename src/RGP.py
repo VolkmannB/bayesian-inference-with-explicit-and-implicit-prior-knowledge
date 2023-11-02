@@ -219,9 +219,26 @@ class GaussianRBF(BaseBasisFunction):
 
 ################################################################################
 # GP Models    
+
+
+
+class BaseGP(abc.ABC):
+    
+    def __init__(self) -> None:
+        super().__init__()
+    
+    @abc.abstractmethod
+    def predict(self, x: npt.ArrayLike):
+        pass
+    
+    @abc.abstractmethod
+    def update(self, x: npt.ArrayLike, y: npt.ArrayLike, var: npt.ArrayLike):
+        pass
+        
+
         
         
-class ApproximateGP():
+class ApproximateGP(BaseGP):
     
     def __init__(
         self,
@@ -230,6 +247,8 @@ class ApproximateGP():
         cov0: npt.ArrayLike,
         error_cov: float = 1e-3
         ) -> None:
+        
+        super().__init__()
         
         if not isinstance(basis_function, BaseBasisFunction):
             raise ValueError("basis_function must be a BaseBasisFunction object")
@@ -247,6 +266,18 @@ class ApproximateGP():
         if error_cov <= 0:
             raise ValueError("Error variance must be positive")
         self.error_cov = error_cov
+    
+    
+    
+    @property
+    def mean(self):
+        return self._mean
+    
+    
+    
+    @property
+    def cov(self):
+        return self._cov
     
     
     
@@ -288,3 +319,115 @@ class ApproximateGP():
         
         self._mean = self._mean + (np.swapaxes(G, -2, -1) @ e).flatten()
         self._cov = self._cov - np.swapaxes(G, -2, -1) @ S @ G
+
+
+
+class EnsambleGP(BaseGP):
+    
+    def __init__(
+        self,
+        basis_function: BaseBasisFunction,
+        w0: npt.ArrayLike,
+        cov0: npt.ArrayLike,
+        N: int,
+        error_cov: float = 1e-3
+        ) -> None:
+        
+        super().__init__()
+        
+        if not isinstance(basis_function, BaseBasisFunction):
+            raise ValueError("basis_function must be a BaseBasisFunction object")
+        self.H = basis_function
+        
+        if len(w0) != basis_function.n_basis:
+            raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(basis_function.n_basis, len(w0))) 
+        if cov0.shape[0] != cov0.shape[1] or len(cov0.shape) != 2:
+            raise ValueError('Covariance matrix must be quadratic')
+        if w0.size != cov0.shape[0]:
+            raise ValueError('Size of mean vector does not match covariance matrix')
+        
+        # generate ensamble
+        if not isinstance(N, int) or N <= 0:
+            raise ValueError('Ensamble size must be a positive integer')
+        self.W = w0 + np.random.randn(N,len(w0)) @ np.linalg.cholesky(cov0).T
+        
+        if error_cov <= 0:
+            raise ValueError("Error variance must be positive")
+        self.error_cov = error_cov
+        
+    
+    
+    @property
+    def mean(self):
+        return self.W.mean(axis=0)
+    
+    
+    
+    @property
+    def cov(self):
+        return np.cov(self.W.T)
+    
+    
+    
+    def predict(self, x: npt.ArrayLike):
+        
+        x_ = np.asarray(x)
+        
+        # basis functions
+        H = self.H(x_)
+        
+        return H @ self.W.T + np.sqrt(self.error_cov) * np.random.randn(x_.shape[0], self.W.shape[0])
+    
+    
+    
+    def ensample_predict(self, x: npt.ArrayLike):
+        
+        x_ = np.asarray(x)
+        
+        # basis functions
+        H = self.H(x_)
+        
+        return np.sum(H*self.W, axis=1)
+    
+    
+    
+    def update(self, x: npt.ArrayLike, y: npt.ArrayLike, var: npt.ArrayLike):
+        
+        # basis functions
+        H = self.H(np.asarray(x))
+        
+        # ensamble of function values
+        X = H @ self.W.T
+        
+        # model and measurment uncertainty
+        y_var = np.diag(var)
+        f_var = np.diag(np.ones(x.shape[-2])*self.error_cov)
+        
+        # Kalman gain P_xy/P_yy
+        P_ww = np.cov(self.W.T)
+        P_yy = H @ np.einsum('nm,km->nk', P_ww, H) + y_var + f_var
+        K_T = np.linalg.solve(
+            P_yy,
+            H @ P_ww
+        )
+        
+        # Update
+        self.W = self.W + (y - X).T @ K_T
+    
+    
+    
+    def ensample_update(self, x: npt.ArrayLike, y: npt.ArrayLike, var: float):
+        
+        # basis functions
+        H = self.H(np.asarray(x))
+        
+        # ensamble function value at respective point
+        X = np.sum(H * self.W, axis=1)
+        
+        # Kalman gain P_xy/P_yy
+        P_ww = np.cov(self.W.T)
+        P_yy = np.einsum('kn,nk->k',H ,np.einsum('nm,km->nk', P_ww, H)) + var + self.error_cov
+        K_T = (H @ P_ww).T / P_yy
+        
+        # Update
+        self.W = self.W + (K_T * (y.flatten()-X).T).T
