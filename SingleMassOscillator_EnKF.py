@@ -7,7 +7,7 @@ import scipy.linalg
 
 
 from src.SingleMassOscillator import SingleMassOscillator, f_model, F_spring, F_damper
-from src.RGP import ApproximateGP, GaussianRBF
+from src.RGP import ApproximateGP, GaussianRBF, EnsambleGP
 from src.sampling import condition_gaussian
 from src.KalmanFilter import EnsambleKalmanFilter
 from src.Plotting import generate_Animation, generate_Plot
@@ -20,7 +20,7 @@ from src.Plotting import generate_Animation, generate_Plot
 rng = np.random.default_rng()
 
 # sim para
-N = 200
+N = 50
 t_end = 60.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
