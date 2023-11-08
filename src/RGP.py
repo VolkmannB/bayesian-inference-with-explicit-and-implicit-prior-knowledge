@@ -254,12 +254,14 @@ class ApproximateGP(BaseGP):
             raise ValueError("basis_function must be a BaseBasisFunction object")
         self.H = basis_function
         
-        if len(w0) != basis_function.n_basis:
-            raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(basis_function.n_basis, len(w0))) 
-        if cov0.shape[0] != cov0.shape[1] or len(cov0.shape) != 2:
+        if w0.shape[-1] != basis_function.n_basis:
+            raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(basis_function.n_basis, w0.shape[-1])) 
+        if cov0.shape[-2] != cov0.shape[-1]:
             raise ValueError('Covariance matrix must be quadratic')
-        if w0.size != cov0.shape[0]:
+        if w0.shape[-1] != cov0.shape[-2]:
             raise ValueError('Size of mean vector does not match covariance matrix')
+        if w0.shape[0] != cov0.shape[0]:
+            raise ValueError('Sizes of prior mean and covariance are incompatible')
         self._mean = np.array(w0)
         self._cov = cov0
         
@@ -287,7 +289,7 @@ class ApproximateGP(BaseGP):
         H = self.H(x)
         
         # covariance matrix / einsum for broadcasting cov @ H.T
-        P = H @ np.einsum('nm,...km->...nk', self._cov, H) + np.diag(np.ones(x.shape[-2])*self.error_cov)
+        P = H @ np.einsum('...nm,...km->...nk', self._cov, H) + np.diag(np.ones(x.shape[-2])*self.error_cov)
         
         return H @ self._mean, P
     
@@ -309,7 +311,7 @@ class ApproximateGP(BaseGP):
         f_var = np.diag(np.ones(x.shape[-2])*self.error_cov)
         
         # covariance matrix / einsum for broadcasting cov @ H.T
-        S = H @ np.einsum('nm,km->nk', self._cov, H) + y_var + f_var
+        S = H @ np.einsum('...nm,...km->...nk', self._cov, H) + y_var + f_var
         
         # gain matrix
         G = np.linalg.solve(
