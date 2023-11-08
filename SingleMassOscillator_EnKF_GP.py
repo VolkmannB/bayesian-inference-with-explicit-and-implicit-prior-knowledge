@@ -21,7 +21,7 @@ rng = np.random.default_rng()
 
 # sim para
 N = 300
-t_end = 60.0
+t_end = 100.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
 steps = len(time)
@@ -111,9 +111,11 @@ W = np.zeros((steps,ip.shape[0]))
 CW = np.zeros((steps,ip.shape[0],ip.shape[0]))
 
 # input
-F = np.zeros((steps,))
-F[int(t_end/(3*dt)):] = -9.81*m
-F[int(2*t_end/(3*dt)):] = -9.81*m*2
+F = np.zeros((steps,)) 
+F[int(t_end/(5*dt)):] = -9.81*m
+F[int(2*t_end/(5*dt)):] = -9.81*m*2
+F[int(3*t_end/(5*dt)):] = -9.81*m
+F[int(4*t_end/(5*dt)):] = 0
 
 
 
@@ -163,7 +165,7 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
 ################################################################################
 # Plots
 
-generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
+# generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
 generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, spring_damper_model.mean, spring_damper_model.cov, time, model_para, 200., 30.)
 
 plt.show()
