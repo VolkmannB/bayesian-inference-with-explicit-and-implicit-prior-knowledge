@@ -42,8 +42,8 @@ rng = np.random.default_rng()
 for i in tqdm(range(1000)):
     X_train = rng.uniform(-10,10,(20,1))
     Y_train = test_function(X_train) + rng.normal(0, 1, X_train.shape)
-    model1.update(X_train, Y_train, np.ones((X_train.size,)))
-    model2.update(X_train, Y_train, np.ones((X_train.size,)))
+    model1.update(X_train, Y_train, np.diag(np.ones((X_train.size,))))
+    model2.update(X_train, Y_train, np.diag(np.ones((X_train.size,))))
 
 
 
