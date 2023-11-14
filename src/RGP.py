@@ -254,6 +254,9 @@ class ApproximateGP(BaseGP):
             raise ValueError("basis_function must be a BaseBasisFunction object")
         self.H = basis_function
         
+        w0 = np.array(w0)
+        cov0 = np.array(cov0)
+        
         if w0.shape[-1] != basis_function.n_basis:
             raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(basis_function.n_basis, w0.shape[-1])) 
         if cov0.shape[-2] != cov0.shape[-1]:
@@ -262,7 +265,7 @@ class ApproximateGP(BaseGP):
             raise ValueError('Size of mean vector does not match covariance matrix')
         if w0.shape[0] != cov0.shape[0]:
             raise ValueError('Sizes of prior mean and covariance are incompatible')
-        self._mean = np.array(w0)
+        self._mean = w0
         self._cov = cov0
         
         if error_cov <= 0:
@@ -289,13 +292,17 @@ class ApproximateGP(BaseGP):
         H = self.H(x)
         
         # covariance matrix / einsum for broadcasting cov @ H.T
-        P = H @ np.einsum('...nm,...km->...nk', self._cov, H) + np.diag(np.ones(x.shape[-2])*self.error_cov)
+        P = H @ np.einsum('...nm,...km->...nk', self._cov, H)
+        
+        # add model uncertainty
+        idx = np.arange(x.shape[-2])
+        P[..., idx, idx] += self.error_cov
         
         return H @ self._mean, P
     
     
     
-    def update(self, x: npt.NDArray, y: npt.NDArray, v: npt.NDArray):
+    def update(self, x: npt.NDArray, y: npt.NDArray, Q: npt.NDArray):
         
         if len(x.shape[:-2]) != 0:
             x = x.reshape((-1,self.H.n_input))
@@ -306,12 +313,12 @@ class ApproximateGP(BaseGP):
         # residuum
         e = y.flatten() - H @ self._mean
         
-        # model and measurment uncertainty
-        y_var = np.diag(v)
-        f_var = np.diag(np.ones(x.shape[-2])*self.error_cov)
-        
         # covariance matrix / einsum for broadcasting cov @ H.T
-        S = H @ np.einsum('...nm,...km->...nk', self._cov, H) + y_var + f_var
+        S = H @ np.einsum('...nm,...km->...nk', self._cov, H) + Q
+        
+        # add model uncertainty
+        idx = np.arange(Q.shape[-1])
+        S[..., idx, idx] += self.error_cov
         
         # gain matrix
         G = np.linalg.solve(

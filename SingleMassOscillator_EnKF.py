@@ -66,7 +66,7 @@ x_ = x0
 P0 = np.diag([1e-4, 1e-4, 1e-4])
 P_ = P0
 x_part = np.zeros((N,3))
-spring_damper_model.update(np.array([[0.0, 0.0]]), np.array([[0.0]]), np.array([1e-4]))
+spring_damper_model.update(np.array([[0.0, 0.0]]), np.array([[0.0]]), np.array([[1e-4]]))
 
 
 
@@ -129,7 +129,7 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
     
     # save estimate in GP
     ind = np.array(np.floor(np.random.rand(10)*N), dtype=np.int64)
-    spring_damper_model.update(EnKF._sigma_x[ind,:2], EnKF._sigma_x[ind,2], np.ones(len(ind))*EnKF.P[2,2].flatten())
+    spring_damper_model.update(EnKF._sigma_x[ind,:2], EnKF._sigma_x[ind,2], np.eye(len(ind)).reshape((len(ind),len(ind)))*EnKF.P[2,2].flatten())
     
     
     # logging
