@@ -243,31 +243,27 @@ class ApproximateGP(BaseGP):
     def __init__(
         self,
         basis_function: BaseBasisFunction,
-        w0: npt.ArrayLike,
-        cov0: npt.ArrayLike,
+        batch_shape: npt.ArrayLike = (),
         error_cov: float = 1e-3
         ) -> None:
         
         super().__init__()
         
+        # check for type
         if not isinstance(basis_function, BaseBasisFunction):
-            raise ValueError("basis_function must be a BaseBasisFunction object")
+            raise ValueError("basis_function must be a BasisFunction object")
         self.H = basis_function
         
-        w0 = np.array(w0)
-        cov0 = np.array(cov0)
+        # initialize mean and covariance with default values
+        n_H = basis_function.n_basis
+        self._mean = np.zeros((*batch_shape, n_H)) # batch of mean vectors
+        self._cov = np.zeros((*batch_shape, n_H, n_H)) # batch ov covariance matrices
+        idx = np.arange(n_H)
+        self._cov[..., idx, idx] = 1 # set main diagonals to zero
         
-        if w0.shape[-1] != basis_function.n_basis:
-            raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(basis_function.n_basis, w0.shape[-1])) 
-        if cov0.shape[-2] != cov0.shape[-1]:
-            raise ValueError('Covariance matrix must be quadratic')
-        if w0.shape[-1] != cov0.shape[-2]:
-            raise ValueError('Size of mean vector does not match covariance matrix')
-        if w0.shape[0] != cov0.shape[0]:
-            raise ValueError('Sizes of prior mean and covariance are incompatible')
-        self._mean = w0
-        self._cov = cov0
+        self.batch_shape = batch_shape
         
+        # set base model uncertainty
         if error_cov <= 0:
             raise ValueError("Error variance must be positive")
         self.error_cov = error_cov
@@ -286,10 +282,28 @@ class ApproximateGP(BaseGP):
     
     
     
-    def predict(self, x):
+    def predict(self, x: npt.ArrayLike) -> tuple[npt.NDArray, npt.NDArray]:
+        """
+        Performs a prediction for the function at the given points x.
+
+        Args:
+            x (npt.ArrayLike): An [...,m,n] array of input points.
+
+        Returns:
+            Tuple[npt.NDArray, npt.NDArray]: An [...,m] for the mean value of 
+            the function and an [...,m,m] matrix for the covariance.
+        """
+        
+        # check shapes
+        x_in = np.asarray(x)
+        if not np.all(x_in.shape[:-2] == self.batch_shape):
+            batch_shape = np.broadcast_shapes(x_in.shape[:-2], self.batch_shape)
+            X = np.broadcast_to(x_in, (*batch_shape, *x_in.shape[-2:]))
+        else:
+            X = np.asarray(x)
         
         # basis functions
-        H = self.H(x)
+        H = self.H(X)
         
         # covariance matrix / einsum for broadcasting cov @ H.T
         P = H @ np.einsum('...nm,...km->...nk', self._cov, H)
@@ -298,20 +312,35 @@ class ApproximateGP(BaseGP):
         idx = np.arange(x.shape[-2])
         P[..., idx, idx] += self.error_cov
         
-        return H @ self._mean, P
+        return np.einsum('...nj,...j->...n', H, self._mean), P
     
     
     
-    def update(self, x: npt.NDArray, y: npt.NDArray, Q: npt.NDArray):
+    def update(self, x: npt.NDArray, y: npt.NDArray, Q: npt.NDArray, is_diagonal: bool = False):
+        """
+        Performs the parameter update for the Gaussian process given input 
+        points x, observations y and observation covariance Q.
+
+        Args:
+            x (npt.NDArray): An [...,m,n] array of input points.
+            y (npt.NDArray): An [...,m] array of observations.
+            Q (npt.NDArray): An [...,m,m] matrix of representing the covariance 
+            of the observations.
+        """
         
-        if len(x.shape[:-2]) != 0:
-            x = x.reshape((-1,self.H.n_input))
+        # check shapes
+        x_in = np.asarray(x)
+        if not np.all(x_in.shape[:-2] == self.batch_shape):
+            batch_shape = np.broadcast_shapes(x_in.shape[:-2], self.batch_shape)
+            X = np.broadcast_to(x_in, (*batch_shape, *x_in.shape[-2:]))
+        else:
+            X = np.asarray(x)
         
         # basis function
-        H = self.H(x)
+        H = self.H(X)
         
-        # residuum
-        e = y.flatten() - H @ self._mean
+        # residuum / einsum for batch broadcasting / n input points; j basis functions
+        e = y - np.einsum('...nj,...j->...n', H, self._mean)
         
         # covariance matrix / einsum for broadcasting cov @ H.T
         S = H @ np.einsum('...nm,...km->...nk', self._cov, H) + Q
@@ -321,12 +350,16 @@ class ApproximateGP(BaseGP):
         S[..., idx, idx] += self.error_cov
         
         # gain matrix
-        G = np.linalg.solve(
-            S, 
-            (H @ self._cov)
-            )
+        if Q.shape[-2] == 1:
+            G = (1/S) @ (H @ self._cov)
+        else:
+            G = np.linalg.solve(
+                S, 
+                (H @ self._cov)
+                )
         
-        self._mean = self._mean + (np.swapaxes(G, -2, -1) @ e).flatten()
+        # k measurments; j basis functions
+        self._mean = self._mean + np.einsum('...kj,...k->...j', G, e)
         self._cov = self._cov - np.swapaxes(G, -2, -1) @ S @ G
 
 
