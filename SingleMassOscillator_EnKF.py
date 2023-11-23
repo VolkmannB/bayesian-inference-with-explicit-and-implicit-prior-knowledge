@@ -54,10 +54,9 @@ H = GaussianRBF(
 )
 spring_damper_model = ApproximateGP(
     basis_function=H,
-    w0=np.zeros(ip.shape[0]),
-    cov0=H(ip).T@H(ip)*10,
     error_cov=0.001
 )
+spring_damper_model._cov *= 100
 
 
 # initial state
