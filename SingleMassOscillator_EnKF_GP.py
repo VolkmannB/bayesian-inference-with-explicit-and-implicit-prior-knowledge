@@ -1,8 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-import itertools
-import scipy.linalg
 
 
 
@@ -167,5 +165,7 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
 
 # generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
 generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, spring_damper_model.mean, spring_damper_model.cov, time, model_para, 200., 30.)
+
+print('RMSE for spring-damper force is {0}'.format(np.sqrt( ((F_sd-F_pred)**2).mean() )))
 
 plt.show()
