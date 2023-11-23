@@ -59,10 +59,10 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
             # get GP part of the model
             spring_damper_model = ApproximateGP(
                 basis_function=H,
-                w0=W[t,:],
-                cov0=CW[t,...],
                 error_cov=0.001
                 )
+            spring_damper_model._mean = W[t,:]
+            spring_damper_model._cov = CW[t,...]
 
             # calculate force from GP mapping
             GPF_sd, GPpF_sd = spring_damper_model.predict(points[...,np.newaxis,:])
@@ -104,10 +104,10 @@ def generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, w, Cw, time, model_pa
     # get GP part of the model
     spring_damper_model = ApproximateGP(
         basis_function=H,
-        w0=w,
-        cov0=Cw,
         error_cov=0.001
         )
+    spring_damper_model._mean = w
+    spring_damper_model._cov = Cw
     
     # create figure
     width = cm2in(width)
