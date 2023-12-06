@@ -58,6 +58,61 @@ def GaussHermiteCubature(
 
 
 
+def systematic_SISR(w: npt.ArrayLike):
+    
+    # number of samples
+    N = len(w)
+    
+    # initialize array of indices
+    # indices = np.zeros((N,), dtype=np.int64)
+    
+    # select deterministic samples
+    U = (np.random.rand() + np.array(range(0, N))) / N
+    W = np.cumsum(w, 0)
+    
+    i, j = 0, 0
+    # while i < N:
+    #     if U[i] < W[j]:
+    #         indices[i] = j
+    #         i += 1
+    #     else:
+    #         j += 1
+    #     if j >= N:
+    #         if i > N: indices[i:] = j-1
+    #         break
+    indices = np.searchsorted(W, U)
+    
+    return indices
+
+
+
+def squared_error(x, y, cov):
+    """
+    RBF kernel, supporting masked values in the observation
+    Parameters:
+    -----------
+    x : array (N,D) array of values
+    y : array (N,D) array of values
+
+    Returns:
+    -------
+
+    distance : scalar
+        Total similarity, using equation:
+
+            d(x,y) = e^((-1 * (x - y) ** 2) / (2 * sigma ** 2))
+
+        summed over all samples. Supports masked arrays.
+    """
+    dx = x - y
+    
+    t = np.linalg.solve(cov, dx.T).T
+    r = np.einsum('nd,nd->n',dx, t)
+    
+    return np.exp(-0.5 * r)
+
+
+
 class BaseFilter(abc.ABC):
     
     def __init__(
@@ -397,22 +452,47 @@ class EnsambleKalmanFilter(BaseFilter):
     
     def update(self, y, **fy_args):
         
+        # ensamble mean
+        x_ = self._sigma_x.mean(axis=0)
+        
         # simulate measurments
-        v = np.random.randn(self._sigma_x.shape[0], self.R.shape[0]) @ np.linalg.cholesky(self.R).T
-        sigma_y = self.f_y(self._sigma_x, **fy_args) + v
+        # v = np.random.randn(self._sigma_x.shape[0], self.R.shape[0]) @ np.linalg.cholesky(self.R).T
+        sigma_y = self.f_y(self._sigma_x, **fy_args) #+ v
+        y_ = self.f_y(x_[None,:], **fy_args)
+        
+        # centered measurement ensamble
+        Y_ = sigma_y-y_
         
         # calculate joint
-        P = np.cov(np.concatenate((self._sigma_x, sigma_y), axis=1).T)
+        P_xy = 1/(self._sigma_x.shape[0]-1) * np.einsum('ji,jk->ik', self._sigma_x-x_, Y_)
+        P_yy = 1/(self._sigma_x.shape[0]-1) * np.einsum('ji,jk->ik', Y_, Y_) + self.R
+        # P = np.cov(np.concatenate((self._sigma_x, sigma_y), axis=1).T)
         
-        # Kalman gain P_yy/P_xy - due to solve() K^T is actually calculated
-        n_x = self._sigma_x.shape[1]
-        K_T = np.linalg.solve(P[n_x:, n_x:], P[:n_x,n_x:].T)
+        # Kalman gain P_xy/P_yy - due to solve() K^T is actually calculated
+        # n_x = self._sigma_x.shape[1]
+        # K_T = np.linalg.solve(P[n_x:, n_x:], P[:n_x,n_x:].T)
+        K_T = np.linalg.solve(P_yy, P_xy.T)
         
         # update
         self._sigma_x = self._sigma_x + (y - sigma_y) @ K_T
         
         # save posterior
         self._sigma_x_post = self._sigma_x
+    
+    
+    
+    def resample(self):
+        
+        P = self.P
+        
+        w = squared_error(self._sigma_x, self.x, P)
+        w /= np.sum(w)
+        
+        ind = systematic_SISR(w)
+        
+        self._sigma_x = self._sigma_x[ind,:]
+        
+        return ind
 
 
 

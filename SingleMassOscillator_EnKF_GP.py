@@ -133,14 +133,14 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
     
     ####### Filtering
     
-    # generate spring damper force
-    # EnKF._sigma_x[:,2] = spring_damper_model.ensample_predict(EnKF._sigma_x[:,:2])
-    
+    # time update
     EnKF.predict(F=F[i])
+    spring_damper_model.W += np.random.randn(*spring_damper_model.W.shape) @ np.eye(spring_damper_model.W.shape[-1])*1e-6 
     
     # generate spring damper force
     EnKF._sigma_x[:,2] = spring_damper_model.ensample_predict(EnKF._sigma_x[:,:2])
     
+    # measurment update
     EnKF.update(y)
     
     # save estimate in GP
