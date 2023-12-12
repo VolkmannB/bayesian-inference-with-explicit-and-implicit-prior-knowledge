@@ -29,14 +29,14 @@ H = GaussianRBF(
 
 model1 = ApproximateGP(
     basis_function=H,
-    error_cov=0.5**2
+    jitter_val=0.5**2
 )
 model1._cov *= 100
 
 model3 = ApproximateGP(
     basis_function=H,
     batch_shape=(3,),
-    error_cov=0.5**2
+    jitter_val=0.5**2
 )
 model3._cov *= 100
 
