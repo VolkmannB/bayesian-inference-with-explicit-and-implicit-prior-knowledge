@@ -52,7 +52,7 @@ spring_damper_model = ApproximateGP(
     basis_function=H,
     w0=np.zeros(ip.shape[0]),
     cov0=H(ip).T@H(ip),
-    error_cov=0.001
+    jitter_val=0.001
 )
 
 

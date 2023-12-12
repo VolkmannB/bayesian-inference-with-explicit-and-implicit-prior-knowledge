@@ -54,7 +54,7 @@ H = GaussianRBF(
 )
 spring_damper_model = ApproximateGP(
     basis_function=H,
-    error_cov=0.001
+    jitter_val=0.001
 )
 spring_damper_model._cov *= 100
 
