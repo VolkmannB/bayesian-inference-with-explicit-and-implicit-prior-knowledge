@@ -483,16 +483,10 @@ class EnsambleKalmanFilter(BaseFilter):
     
     def resample(self):
         
-        P = self.P
+        P_x = self.P_post + np.eye(self._n_x) * 1e-6
+        mu_x = self.x_post
         
-        w = squared_error(self._sigma_x, self.x, P)
-        w /= np.sum(w)
-        
-        ind = systematic_SISR(w)
-        
-        self._sigma_x = self._sigma_x[ind,:]
-        
-        return ind
+        self._sigma_x = mu_x + np.random.randn(*self._sigma_x.shape) @ np.linalg.cholesky(P_x).T
 
 
 
