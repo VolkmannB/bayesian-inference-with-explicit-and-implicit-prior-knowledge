@@ -22,7 +22,7 @@ def sparse_cholesky(A): # The input matrix A must be a sparse symmetric positive
 
 def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
     """
-    This function calculates the squared eicledian distance ||x||_2^2 between 
+    This function calculates the squared euclidean distance ||x||_2^2 between 
     all pairs of vectors in x1 and x2.
 
     Args:
@@ -244,7 +244,7 @@ class ApproximateGP(BaseGP):
         self,
         basis_function: BaseBasisFunction,
         batch_shape: npt.ArrayLike = (),
-        error_cov: float = 1e-3
+        jitter_val: float = 1e-6
         ) -> None:
         
         super().__init__()
@@ -264,9 +264,9 @@ class ApproximateGP(BaseGP):
         self.batch_shape = batch_shape
         
         # set base model uncertainty
-        if error_cov <= 0:
+        if jitter_val <= 0:
             raise ValueError("Error variance must be positive")
-        self.error_cov = error_cov
+        self.error_cov = jitter_val
     
     
     
@@ -309,8 +309,8 @@ class ApproximateGP(BaseGP):
         P = H @ np.einsum('...nm,...km->...nk', self._cov, H)
         
         # add model uncertainty
-        idx = np.arange(x.shape[-2])
-        P[..., idx, idx] += self.error_cov
+        # idx = np.arange(x.shape[-2])
+        # P[..., idx, idx] += self.error_cov
         
         return np.einsum('...nj,...j->...n', H, self._mean), P
     
