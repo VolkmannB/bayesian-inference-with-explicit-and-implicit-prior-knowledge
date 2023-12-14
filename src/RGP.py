@@ -244,7 +244,7 @@ class ApproximateGP(BaseGP):
         self,
         basis_function: BaseBasisFunction,
         batch_shape: npt.ArrayLike = (),
-        jitter_val: float = 1e-6
+        jitter_val: float = 1e-8
         ) -> None:
         
         super().__init__()
@@ -266,7 +266,7 @@ class ApproximateGP(BaseGP):
         # set base model uncertainty
         if jitter_val <= 0:
             raise ValueError("Error variance must be positive")
-        self.error_cov = jitter_val
+        self.jitter_val = jitter_val
     
     
     
@@ -308,6 +308,10 @@ class ApproximateGP(BaseGP):
         # covariance matrix / einsum for broadcasting cov @ H.T
         P = H @ np.einsum('...nm,...km->...nk', self._cov, H)
         
+        # add jitter
+        idx = np.arange(P.shape[-1])
+        P[..., idx, idx] += self.jitter_val
+        
         # add model uncertainty
         # idx = np.arange(x.shape[-2])
         # P[..., idx, idx] += self.error_cov
@@ -336,6 +340,9 @@ class ApproximateGP(BaseGP):
         else:
             X = np.asarray(x)
         
+        if Q.shape[-1] != Q.shape[-2]:
+            raise ValueError('Covariance matrix Q is not square')
+        
         # basis function
         H = self.H(X)
         
@@ -345,9 +352,9 @@ class ApproximateGP(BaseGP):
         # covariance matrix / einsum for broadcasting cov @ H.T
         S = H @ np.einsum('...nm,...km->...nk', self._cov, H) + Q
         
-        # add model uncertainty
+        # add jitter
         idx = np.arange(Q.shape[-1])
-        S[..., idx, idx] += self.error_cov
+        S[..., idx, idx] += self.jitter_val
         
         # gain matrix
         if Q.shape[-2] == 1:
@@ -361,6 +368,14 @@ class ApproximateGP(BaseGP):
         # k measurments; j basis functions
         self._mean = self._mean + np.einsum('...kj,...k->...j', G, e)
         self._cov = self._cov - np.swapaxes(G, -2, -1) @ S @ G
+    
+    
+    
+    def sample(self, x: npt.ArrayLike):
+        
+        mean, P = self.predict(x)
+        
+        return mean + np.linalg.cholesky(P) @ np.random.randn(mean.shape[-1])
 
 
 
