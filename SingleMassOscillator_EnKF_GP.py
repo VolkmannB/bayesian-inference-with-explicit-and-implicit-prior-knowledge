@@ -152,8 +152,9 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
     
     
     # logging
-    F_pred[i] = EnKF.x[2]
-    PF_pred[i] = EnKF.P[2,2]
+    f = spring_damper_model.ensample_predict(EnKF._sigma_x[:,:2])
+    F_pred[i] = np.mean(f)
+    PF_pred[i] = np.var(f)
     Sigma_X[i,...] = EnKF._sigma_x[:,:2]
     W[i,...] = spring_damper_model.W.mean(axis=0)
     CW[i,...] = np.cov(spring_damper_model.W.T)
