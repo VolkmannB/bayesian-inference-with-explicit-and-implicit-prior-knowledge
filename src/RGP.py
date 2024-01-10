@@ -412,6 +412,9 @@ class EnsambleGP(BaseGP):
             raise ValueError("Error variance must be positive")
         self.error_cov = error_cov
         
+        # tapering matrix
+        self.T = np.ones((basis_function.n_basis, basis_function.n_basis))
+        
     
     
     @property
@@ -422,7 +425,7 @@ class EnsambleGP(BaseGP):
     
     @property
     def cov(self):
-        return np.cov(self.W.T)
+        return np.cov(self.W.T) * self.T
     
     
     
@@ -461,7 +464,7 @@ class EnsambleGP(BaseGP):
         f_var = np.diag(np.ones(x.shape[-2])*self.error_cov)
         
         # Kalman gain P_xy/P_yy
-        P_ww = np.cov(self.W.T)
+        P_ww = self.cov
         P_yy = H @ np.einsum('nm,km->nk', P_ww, H) + y_var + f_var
         K_T = np.linalg.solve(
             P_yy,
@@ -482,7 +485,7 @@ class EnsambleGP(BaseGP):
         X = np.sum(H * self.W, axis=1)
         
         # Kalman gain P_xy/P_yy
-        P_ww = np.cov(self.W.T)
+        P_ww = self.cov
         P_yy = np.einsum('kn,nk->k',H ,np.einsum('nm,km->nk', P_ww, H)) + var + self.error_cov
         K_T = (H @ P_ww).T / P_yy
         
