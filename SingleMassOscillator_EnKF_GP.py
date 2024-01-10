@@ -5,10 +5,78 @@ from tqdm import tqdm
 
 
 from src.SingleMassOscillator import SingleMassOscillator, f_model, F_spring, F_damper
-from src.RGP import ApproximateGP, GaussianRBF, EnsambleGP
-from src.sampling import condition_gaussian
+from src.RGP import GaussianRBF, EnsambleGP, sq_dist
 from src.KalmanFilter import EnsambleKalmanFilter
 from src.Plotting import generate_Animation, generate_Plot
+
+
+
+################################################################################
+# Functions
+
+def Mahalanobis_distance(x, mu, P):
+    
+    S = np.linalg.cholesky(P+np.eye(P.shape[0])*1e-6)
+    x_ = x-mu
+    
+    z = np.linalg.solve(S, x_.T)
+    return np.sqrt(np.sum(z**2, axis=0))
+
+
+
+def calculate_LOF(X, k):
+    
+    # calculate euclidean distance
+    dist = np.sqrt(sq_dist(X, X))
+    
+    # sort distance
+    sorted_idx = np.argsort(dist, axis=1)
+    
+    # distance for the k-th nearest neighbor
+    k_dist = dist[:,sorted_idx[:,k]]
+    
+    # size of k-neighborhood // account for multiple equal distances
+    num_k_neighbors = np.sum(dist <= k_dist[...,None], axis=1)-1
+    
+    # reachability distance for all points
+    reach_dist = np.maximum(k_dist[None,...], dist)
+    
+    # local reachabilities
+    lr = [reach_dist[i,sorted_idx[i,1:num_k_neighbors[i]]] for i in range(X.shape[0])]
+    
+    # local reachability density
+    lrd = [np.mean(lr[i]) for i in range(X.shape[0])]
+    
+    # LOF
+    LOF = [np.mean(lrd[sorted_idx[i,1:num_k_neighbors[i]]])/lrd[i] for i in range(X.shape[0])]
+    
+    return np.array(LOF)
+
+
+
+def get_outlier(X, k, r=1.5):
+    
+    # calculate euclidean distance
+    dist = np.sqrt(sq_dist(X, X))
+    
+    # sort distance
+    sorted_dist = np.sort(dist, axis=1)
+    
+    # distance for the k-th nearest neighbor
+    k_dist = sorted_dist[:,k]
+    
+    # size of k-neighborhood // account for multiple equal distances
+    num_k_neighbors = np.sum(dist <= k_dist[...,None], axis=1)-1
+    
+    # median local distance
+    if np.all(num_k_neighbors[0] == num_k_neighbors[1:]):
+        mld = np.median(sorted_dist[:,1:num_k_neighbors[0]], axis=1)
+    else:
+        mld = np.array([np.median(sorted_dist[i,1:num_k_neighbors[i]]) for i in range(X.shape[0])])
+    
+    quant3, quant1 = np.percentile(mld, [75 ,25])
+    iqr = quant3-quant1
+    return np.logical_or(mld > quant3+ r * iqr, mld < quant1- r * iqr)
 
 
 
@@ -18,7 +86,7 @@ from src.Plotting import generate_Animation, generate_Plot
 rng = np.random.default_rng()
 
 # sim para
-N = 300
+N = 150
 t_end = 100.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
@@ -57,6 +125,7 @@ spring_damper_model = EnsambleGP(
     N=N,
     error_cov=0.001
 )
+spring_damper_model.T = H(ip).T@H(ip)
 
 
 # initial state
@@ -135,7 +204,7 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
     
     # time update
     EnKF.predict(F=F[i])
-    spring_damper_model.W += np.random.randn(*spring_damper_model.W.shape) @ np.eye(spring_damper_model.W.shape[-1])*1e-6 
+    spring_damper_model.W += np.random.randn(*spring_damper_model.W.shape) @ np.eye(spring_damper_model.W.shape[-1])*1e-8 
     
     # generate spring damper force
     EnKF._sigma_x[:,2] = spring_damper_model.ensample_predict(EnKF._sigma_x[:,:2])
@@ -150,6 +219,20 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
         np.var(EnKF._sigma_x[:,2])
         )
     
+    # resampling
+    is_outlier = get_outlier(EnKF._sigma_x[:,:2], k=5, r=10)
+    if np.any(is_outlier):
+        temp_mean = np.mean(EnKF._sigma_x[~is_outlier,:2], axis=0)
+        temp_cov = np.cov(EnKF._sigma_x[~is_outlier,:2].T)
+        temp_cov += np.eye(temp_cov.shape[0])*1e-6
+        temp_L = np.linalg.cholesky(temp_cov)
+        EnKF._sigma_x[is_outlier,:2] = temp_mean + np.random.randn(np.sum(is_outlier),2) @ temp_L.T
+        
+    #     temp_mean = np.mean(spring_damper_model.W[~is_outlier,:], axis=0)
+    #     temp_cov = np.cov(spring_damper_model.W[~is_outlier,:].T)*spring_damper_model.T
+    #     temp_cov += np.eye(temp_cov.shape[0])*1e-6
+    #     temp_L = np.linalg.cholesky(temp_cov)
+    #     spring_damper_model.W[is_outlier,:] = temp_mean + np.random.randn(np.sum(is_outlier),temp_cov.shape[1]) @ temp_L.T
     
     # logging
     f = spring_damper_model.ensample_predict(EnKF._sigma_x[:,:2])
@@ -164,9 +247,16 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
 ################################################################################
 # Plots
 
-# generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
+generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
 generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W[-1,...], CW[-1,...], time, model_para, 200., 30.)
 
 print('RMSE for spring-damper force is {0}'.format(np.sqrt( ((F_sd-F_pred)**2).mean() )))
+
+# fig, ax = plt.subplots(1,2)
+# pos1 = ax[0].imshow(spring_damper_model.cov)
+# fig.colorbar(pos1, ax=ax[0])
+
+# pos2 = ax[1].imshow(H(ip).T@H(ip))
+# fig.colorbar(pos2, ax=ax[1])
 
 plt.show()
