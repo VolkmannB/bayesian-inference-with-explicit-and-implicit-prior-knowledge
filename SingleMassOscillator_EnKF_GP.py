@@ -247,8 +247,8 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
 ################################################################################
 # Plots
 
-generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
-generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W[-1,...], CW[-1,...], time, model_para, 200., 30.)
+fig = generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
+# generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W[-1,...], CW[-1,...], time, model_para, 200., 30.)
 
 print('RMSE for spring-damper force is {0}'.format(np.sqrt( ((F_sd-F_pred)**2).mean() )))
 
@@ -259,4 +259,4 @@ print('RMSE for spring-damper force is {0}'.format(np.sqrt( ((F_sd-F_pred)**2).m
 # pos2 = ax[1].imshow(H(ip).T@H(ip))
 # fig.colorbar(pos2, ax=ax[1])
 
-plt.show()
+fig.show()

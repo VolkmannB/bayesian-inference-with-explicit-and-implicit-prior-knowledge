@@ -3,6 +3,9 @@ import matplotlib.pyplot as plt
 import matplotlib.animation
 from tqdm import tqdm
 
+import plotly.express as px
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
 from src.RGP import ApproximateGP, GaussianRBF
@@ -14,30 +17,19 @@ def cm2in(cm):
 
 
 
-def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, dpi, width, fps, filne_name='test.mp4'):
+def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, dpi, width, fps, filne_name='test.html'):
     
     # create figure
     width = cm2in(width)
-    fig = plt.figure(
-        layout='tight', 
-        dpi=dpi, 
-        figsize=(width, 9/16*width), 
-        num=0
-        )
-    fig.clear()
-    
-    # fps to step increments if time axis
-    inc = np.ceil((1/fps)/(time[1]-time[0]))
-    
-    # set up movie writer
-    moviewriter = matplotlib.animation.FFMpegWriter(fps=int(1/(time[1]-time[0])/inc))
+    fig = make_subplots(2, 2)
     
     # helper variables
     H_ip = H(H.centers)
        
     # create point grid
-    x_plt = np.arange(-5., 5., 0.1)
-    dx_plt = np.arange(-5., 5., 0.1)
+    delta = 0.25
+    x_plt = np.arange(-5., 5., delta)
+    dx_plt = np.arange(-5., 5., delta)
     grid_x, grid_y = np.meshgrid(x_plt, dx_plt, indexing='xy')
     points = np.dstack([grid_x, grid_y])
     
@@ -48,201 +40,278 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
     # calculate ground truth for spring damper force
     grid_F = F_spring(grid_x, model_para['c1'], model_para['c2']) + F_damper(grid_y, model_para['d1'], model_para['d2'])
     
-    with moviewriter.saving(fig, filne_name, dpi):
-        for t in tqdm(range(0, len(time), int(inc)), desc="Generating Plots"):
-            
-            # get figure0 and clear
-            fig = plt.figure(num=0)
-            fig.clear()
-            
-            
-            # get GP part of the model
-            spring_damper_model = ApproximateGP(
-                basis_function=H
-                )
-            spring_damper_model._mean = W[t,:]
-            spring_damper_model._cov = CW[t,...]
-
-            # calculate force from GP mapping
-            GPF_sd, GPpF_sd = spring_damper_model.predict(points[...,np.newaxis,:])
-            GPF_sd = np.squeeze(GPF_sd)
-            GPpF_sd = np.squeeze(GPpF_sd)
-            
-            # error
-            e = grid_F - GPF_sd
-
-            # alpha from confidence
-            a = 1-np.sqrt(GPpF_sd)/np.sqrt(np.max(CW[0,...]))
-            a[a<0]=0
-            # a=1
-            
-            # plot error
-            ax1 = plt.subplot(2,2,1)
-            draw_GPerror(ax1, grid_x, grid_y, e, a)
-            draw_Ensamble(ax1, Sigma_X[t,:,0], Sigma_X[t,:,1])
-
-            # force
-            ax2 = plt.subplot(2,2,2)
-            draw_F(ax2, F_sd[:t], F_pred[:t], PF_pred[:t], time[:t], time[-1])
-
-            # x
-            ax3 = plt.subplot(2,2,3)
-            draw_x(ax3, X[:t,0], X_pred[:t,0], P_pred[:t,0], time[:t], time[-1])
-
-            # dx
-            ax4 = plt.subplot(2,2,4)
-            draw_dx(ax4, X[:t,1], X_pred[:t,1], P_pred[:t,1], time[:t], time[-1])
-            
-            # write frame
-            moviewriter.grab_frame()
-            
-            
-            
-def generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, w, Cw, time, model_para, dpi, width):
+    # resample time
+    samples = 10
+    time = time[0:-1:samples]
     
-    # get GP part of the model
-    spring_damper_model = ApproximateGP(
-        basis_function=H
+    # calculate predictions for spring damper force
+    F_GP = np.einsum('...n,mn->...m', H(points), W[0:-1:samples,...])
+    
+    # error between mean of prediction and ground truth
+    e = np.abs(grid_F[...,None] - F_GP)
+    
+    
+    ######################## These plots get updated by frames
+    
+    # plot error
+    fig.add_trace(
+        go.Scatter(
+            x=grid_x.flatten(),
+            y=grid_y.flatten(),
+            mode='markers',
+            marker={
+                'color': e[...,0].flatten(), 
+                'colorscale': 'Viridis', 
+                'cmin':0, 
+                'cmid':2.5, 
+                'cmax':10,
+                'size':8,
+                'colorbar': {
+                    'thickness':20, 
+                    'title': {
+                        'text':'Prediction Error' , 
+                        'font': {'size': 24}
+                    }
+                }
+            }
+        ),
+        row=1,
+        col=1
+    )
+    
+    # plot ensamble
+    fig.add_trace(
+        go.Scatter(
+            y=Sigma_X[0,:,1],
+            x=Sigma_X[0,:,0],
+            mode='markers',
+            marker={'color': 'red', 'size':5}
+        ),
+        row=1,
+        col=1
+    )
+    
+    # plot time markers
+    fig.add_trace(
+        go.Scatter(
+            x=[time[0], time[0]], 
+            y=[-3, 3],
+            mode='lines',
+            line=dict(color='red', width=2)
+        ),
+        row=2,
+        col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[time[0], time[0]], 
+            y=[-7, 7],
+            mode='lines',
+            line=dict(color='red', width=2)
+        ),
+        row=2,
+        col=2
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[time[0], time[0]], 
+            y=[-50, 60],
+            mode='lines',
+            line=dict(color='red', width=2)
+        ),
+        row=1,
+        col=2
+    )
+    
+    ########################
+    
+    # plot position
+    fig.add_trace(
+        go.Scatter(
+            x=time, 
+            y=X[0:-1:samples,0],
+            mode='lines',
+            line=dict(color='blue', width=4)
+        ),
+        row=2,
+        col=1
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=time, 
+            y=X_pred[0:-1:samples,0],
+            mode='lines',
+            line=dict(color='orange', width=4, dash='dot')
+        ),
+        row=2,
+        col=1
+    )
+    
+    # plot velocity
+    fig.add_trace(
+        go.Scatter(
+            x=time, 
+            y=X[0:-1:samples,1],
+            mode='lines',
+            line=dict(color='blue', width=4)
+        ),
+        row=2,
+        col=2
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=time, 
+            y=X_pred[0:-1:samples,1],
+            mode='lines',
+            line=dict(color='orange', width=4, dash='dot')
+        ),
+        row=2,
+        col=2
+    )
+    
+    # plot force
+    fig.add_trace(
+        go.Scatter(
+            x=time, 
+            y=F_sd[0:-1:samples],
+            mode='lines',
+            line=dict(color='blue', width=4)
+        ),
+        row=1,
+        col=2
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=time, 
+            y=F_pred[0:-1:samples],
+            mode='lines',
+            line=dict(color='orange', width=4, dash='dot')
+        ),
+        row=1,
+        col=2
+    )
+    
+    # generate Frames
+    Sigma_X = Sigma_X[0:-1:samples,...]
+    frames = [dict(
+        name = str(k),
+        data = [
+            go.Scatter(
+                marker={'color': e[...,k].flatten()}),
+            go.Scatter(
+                x=Sigma_X[k,:,0],
+                y=Sigma_X[k,:,1],
+                mode='markers'),
+            go.Scatter(
+                x=[time[k], time[k]], 
+                y=[-3, 3],
+                mode='lines',
+                line=dict(color='red', width=2)),
+            go.Scatter(
+                x=[time[k], time[k]], 
+                y=[-7, 7],
+                mode='lines',
+                line=dict(color='red', width=2)),
+            go.Scatter(
+                x=[time[k], time[k]], 
+                y=[-50, 60],
+                mode='lines',
+                line=dict(color='red', width=2))
+            ],
+        traces=list(range(5))
+        ) for k in tqdm(np.arange(1,len(time)), desc='Generating Frames')]
+    
+    # # add frames
+    fig.update(frames=frames)
+    
+    # set axis limits
+    fig.update_xaxes(range=[-5, 5], row=1, col=1)
+    fig.update_yaxes(range=[-5, 5], row=1, col=1)
+    
+    fig.update_xaxes(range=[0, time[-1]], row=2, col=1)
+    fig.update_xaxes(range=[0, time[-1]], row=2, col=2)
+    fig.update_xaxes(range=[0, time[-1]], row=1, col=2)
+    
+    fig.update_yaxes(range=[-3, 3], row=2, col=1)
+    fig.update_yaxes(range=[-7, 7], row=2, col=2)
+    fig.update_yaxes(range=[-50, 60], row=1, col=2)
+    
+    # axis descriptions
+    fig.update_xaxes(title_text='Time in (s)', title_font_size=24, row=2, col=1)
+    fig.update_xaxes(title_text='Time in (s)', title_font_size=24, row=2, col=2)
+    fig.update_xaxes(title_text='Time in (s)', title_font_size=24, row=1, col=2)
+    fig.update_xaxes(title_text='Position in (m)', title_font_size=24, row=1, col=1)
+    fig.update_yaxes(title_text='Velocity in (m/s)', title_font_size=24, row=1, col=1)
+    fig.update_yaxes(title_text='Position in (m)', title_font_size=24, row=2, col=1)
+    fig.update_yaxes(title_text='Velocity in (m/s)', title_font_size=24, row=2, col=2)
+    fig.update_yaxes(title_text='Force in (N)', title_font_size=24, row=1, col=2)
+    
+    # axis font soze
+    fig.update_xaxes(tickfont_size=24)
+    fig.update_yaxes(tickfont_size=24)
+    
+    # update layout
+    updatemenus = [
+        {
+            "buttons": [
+                {
+                    "args": [None, {"frame": {"duration": (time[1]-time[0])*1000, "redraw": False},
+                                    "fromcurrent": True, "transition": {"duration": (time[1]-time[0])*1000,
+                                                                        "easing": "linear"}}],
+                    "label": "Play",
+                    "method": "animate"
+                },
+                {
+                    "args": [[None], {"frame": {"duration": 0, "redraw": False},
+                                    "mode": "immediate",
+                                    "transition": {"duration": 0}}],
+                    "label": "Pause",
+                    "method": "animate"
+                }
+            ],
+            "direction": "left",
+            "pad": {"r": 10, "t": 87},
+            "showactive": False,
+            "type": "buttons",
+            "x": 0.1,
+            "xanchor": "right",
+            "y": 0,
+            "yanchor": "top"
+        }
+    ]
+    
+    sliders = [
+        {
+            'yanchor': 'top',
+            'xanchor': 'left', 
+            'currentvalue': {'font': {'size': 24}, 'prefix': 'Time: ', 'visible': True, 'xanchor': 'right'},
+            'transition': {'duration': 300.0, 'easing': 'linear'},
+            'pad': {'b': 10, 't': 50}, 
+            'len': 0.9, 'x': 0.1, 'y': 0, 
+            'steps': [
+                {
+                    'args': [
+                        [k], 
+                        {'frame': {'duration': 10, 'easing': 'linear', 'redraw': False},
+                        'mode': 'immidiate',
+                        'transition': {'duration': 0}}
+                        ], 
+                        'label': round(time[k],1), 
+                        'method': 'animate'
+                } for k in range(len(time))]
+        }
+    ]
+    
+    fig.update_layout(
+        updatemenus=updatemenus,
+        sliders=sliders
         )
-    spring_damper_model._mean = w
-    spring_damper_model._cov = Cw
+    fig.update_layout(showlegend=False)
+    fig.update_layout(plot_bgcolor='aliceblue')
+    fig.update_xaxes(showgrid=True, gridcolor='black', linecolor='black', zerolinecolor='black')
+    fig.update_yaxes(showgrid=True, gridcolor='black', linecolor='black', zerolinecolor='black')
     
-    # create figure
-    width = cm2in(width)
-    fig = plt.figure(
-        layout='tight', 
-        dpi=dpi, 
-        figsize=(width, 9/16*width), 
-        num=1
-        )
-    fig.clear()
+    # save file
+    fig.write_html(filne_name)
 
-    # create point grid
-    x_plt = np.arange(-5., 5., 0.1)
-    dx_plt = np.arange(-5., 5., 0.1)
-    grid_x, grid_y = np.meshgrid(x_plt, dx_plt, indexing='xy')
-
-    # calculate ground truth for spring damper force
-    grid_F = F_spring(grid_x, model_para['c1'], model_para['c2']) + F_damper(grid_y, model_para['d1'], model_para['d2'])
-    
-    # calculate force from GP mapping
-    points = np.dstack([grid_x, grid_y])
-    GPF_sd, GPpF_sd = spring_damper_model.predict(points[...,np.newaxis,:])
-    GPF_sd = np.squeeze(GPF_sd)
-    GPpF_sd = np.squeeze(GPpF_sd)
-
-    # GP error
-    e = grid_F - GPF_sd
-
-    # aplha from confidence
-    a = 1-np.sqrt(GPpF_sd)/np.sqrt(np.max(Cw))
-    a[a<0]=0
-    
-    # state trajectory
-    X_pred = np.mean(Sigma_X, axis=1)
-    P_pred = np.var(Sigma_X, axis=1)
-
-    # spring damper field
-    ax1 = plt.subplot(2,2,1)
-    draw_GPerror(ax1, grid_x, grid_y, e, a)
-
-    # force
-    ax2 = plt.subplot(2,2,2)
-    draw_F(ax2, F_sd, F_pred, PF_pred, time, time[-1])
-
-    # x
-    ax3 = plt.subplot(2,2,3)
-    draw_x(ax3, X[:,0], X_pred[:,0], P_pred[:,0], time, time[-1])
-
-    # dx
-    ax4 = plt.subplot(2,2,4)
-    draw_dx(ax4, X[:,1], X_pred[:,1], P_pred[:,1], time, time[-1])
-
-
-
-def draw_GPerror(
-    ax: plt.Axes,
-    grid_x: np.ndarray,
-    grid_y: np.ndarray,
-    error: np.ndarray,
-    alpha: np.ndarray
-    ):
-    
-    c = ax.pcolormesh(grid_x, grid_y, error, label="Ground Truth", vmin=-10, vmax=10, alpha=alpha)
-    plt.colorbar(c, ax=ax)
-    ax.set_xlabel("x")
-    ax.set_ylabel("dx")
-    ax.set_xlim(-5., 5.)
-    ax.set_ylim(-5., 5.)
-
-
-
-def draw_x(
-    ax: plt.Axes,
-    X: np.ndarray,
-    X_pred: np.ndarray,
-    P_pred: np.ndarray,
-    t: np.ndarray,
-    t_end: float
-    ):
-    
-    lower = X_pred - np.sqrt(P_pred)
-    upper = X_pred + np.sqrt(P_pred)
-    ax.fill_between(t, lower, upper, color='orange', alpha=0.2)
-    ax.plot(t, X, label="x", color='royalblue')
-    ax.plot(t, X_pred, label="x_pred", color='orange', linestyle='--')
-    ax.legend()
-    ax.set_xlim(0, t_end)
-    ax.set_ylim(-3, 3)
-    ax.set_xlabel("time in (s)")
-    ax.set_ylabel("x in (m)")
-
-
-
-def draw_dx(
-    ax: plt.Axes,
-    X: np.ndarray,
-    X_pred: np.ndarray,
-    P_pred: np.ndarray,
-    t: np.ndarray,
-    t_end: float
-    ):
-    
-    lower = X_pred - np.sqrt(P_pred)
-    upper = X_pred + np.sqrt(P_pred)
-    ax.fill_between(t, lower, upper, color='orange', alpha=0.2)
-    ax.plot(t, X, label="dx", color='royalblue')
-    ax.plot(t, X_pred, label="dx_pred", color='orange', linestyle='--')
-    ax.legend()
-    ax.set_xlim(0, t_end)
-    ax.set_ylim(-7, 7)
-    ax.set_xlabel("time in (s)")
-    ax.set_ylabel("dx in (m/s)")
-
-
-
-def draw_F(
-    ax: plt.Axes,
-    F: np.ndarray,
-    F_pred: np.ndarray,
-    P_pred: np.ndarray,
-    t: np.ndarray,
-    t_end: float
-    ):
-    
-    lower = F_pred - np.sqrt(P_pred)
-    upper = F_pred + np.sqrt(P_pred)
-    ax.fill_between(t, lower, upper, color='orange', alpha=0.2)
-    ax.plot(t, F, label="F", color='royalblue')
-    ax.plot(t, F_pred, label="F_pred", color='orange', linestyle='--')
-    ax.legend()
-    ax.set_xlim(0, t_end)
-    ax.set_ylim(-50, 60)
-    ax.set_xlabel("time in (s)")
-    ax.set_ylabel("F in (N)")
-
-
-
-def draw_Ensamble(ax: plt.Axes, x, dx):
-    
-    ax.scatter(x, dx, marker='.', color='r')
+    return fig
