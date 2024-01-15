@@ -7,7 +7,7 @@ from tqdm import tqdm
 from src.SingleMassOscillator import SingleMassOscillator, f_model, F_spring, F_damper
 from src.RGP import GaussianRBF, EnsambleGP, sq_dist
 from src.KalmanFilter import EnsambleKalmanFilter
-from src.Plotting import generate_Animation, generate_Plot
+from src.Plotting import generate_Animation
 
 
 
@@ -248,7 +248,6 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
 # Plots
 
 fig = generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
-# generate_Plot(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W[-1,...], CW[-1,...], time, model_para, 200., 30.)
 
 print('RMSE for spring-damper force is {0}'.format(np.sqrt( ((F_sd-F_pred)**2).mean() )))
 
