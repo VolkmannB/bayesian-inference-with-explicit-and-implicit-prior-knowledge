@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 
 from src.SingleMassOscillator import SingleMassOscillator, f_model, F_spring, F_damper
-from src.RGP import GaussianRBF, EnsambleGP, sq_dist
+from src.RGP import GaussianRBF, EnsambleGP, sq_dist, gaussian_RBF
 from src.KalmanFilter import EnsambleKalmanFilter
 from src.Plotting import generate_Animation
 
@@ -13,46 +13,6 @@ from src.Plotting import generate_Animation
 
 ################################################################################
 # Functions
-
-def Mahalanobis_distance(x, mu, P):
-    
-    S = np.linalg.cholesky(P+np.eye(P.shape[0])*1e-6)
-    x_ = x-mu
-    
-    z = np.linalg.solve(S, x_.T)
-    return np.sqrt(np.sum(z**2, axis=0))
-
-
-
-def calculate_LOF(X, k):
-    
-    # calculate euclidean distance
-    dist = np.sqrt(sq_dist(X, X))
-    
-    # sort distance
-    sorted_idx = np.argsort(dist, axis=1)
-    
-    # distance for the k-th nearest neighbor
-    k_dist = dist[:,sorted_idx[:,k]]
-    
-    # size of k-neighborhood // account for multiple equal distances
-    num_k_neighbors = np.sum(dist <= k_dist[...,None], axis=1)-1
-    
-    # reachability distance for all points
-    reach_dist = np.maximum(k_dist[None,...], dist)
-    
-    # local reachabilities
-    lr = [reach_dist[i,sorted_idx[i,1:num_k_neighbors[i]]] for i in range(X.shape[0])]
-    
-    # local reachability density
-    lrd = [np.mean(lr[i]) for i in range(X.shape[0])]
-    
-    # LOF
-    LOF = [np.mean(lrd[sorted_idx[i,1:num_k_neighbors[i]]])/lrd[i] for i in range(X.shape[0])]
-    
-    return np.array(LOF)
-
-
 
 def get_outlier(X, k, r=1.5):
     
@@ -114,8 +74,9 @@ x_points = np.arange(-5., 5.1, 1.)
 dx_points = np.arange(-5., 5.1, 1.)
 ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
 ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
-H = GaussianRBF(
-    centers=ip,
+H = lambda x: gaussian_RBF(
+    x,
+    inducing_points=ip,
     lengthscale=np.array([1.])
 )
 spring_damper_model = EnsambleGP(
