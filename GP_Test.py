@@ -6,7 +6,7 @@ from tqdm import tqdm
 
 
 
-from src.RGP import ApproximateGP, GaussianRBF, EnsambleGP
+from src.RGP import ApproximateGP, GaussianRBF, EnsambleGP, gaussian_RBF
 
 
 
@@ -22,18 +22,21 @@ def test_function2(x):
 
 
 inducing_points = np.arange(-10.0, 10.1, 0.5)
-H = GaussianRBF(
-    centers=inducing_points.reshape((inducing_points.size,1)),
+H = lambda x: gaussian_RBF(
+    x,
+    inducing_points=inducing_points.reshape((inducing_points.size,1)),
     lengthscale=np.array([0.5])
 )
 
 model1 = ApproximateGP(
-    basis_function=H
+    basis_function=H,
+    n_basis=len(inducing_points)
 )
 model1._cov *= 100
 
 model3 = ApproximateGP(
     basis_function=H,
+    n_basis=len(inducing_points),
     batch_shape=(3,)
 )
 model3._cov *= 100
@@ -41,6 +44,7 @@ model3._cov *= 100
 
 model2 = EnsambleGP(
     basis_function=H,
+    n_basis=len(inducing_points),
     w0=np.zeros(inducing_points.size),
     cov0=np.eye(inducing_points.size)*10**2,
     N=50,

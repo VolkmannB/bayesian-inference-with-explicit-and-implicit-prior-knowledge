@@ -34,13 +34,10 @@ def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
         between each pair of vectors.
     """
     
-    a = np.asarray(x1)
-    b = np.asarray(x2)
+    # a = np.asarray(x1)
+    # b = np.asarray(x2)
     
-    distance = np.sum(
-            (a[..., np.newaxis,:] - b[...,np.newaxis,:,:])**2,
-            axis=-1
-            )
+    distance = ((x1[..., np.newaxis,:] - x2[...,np.newaxis,:,:])**2).sum(axis=-1)
     
     return distance
     
@@ -206,14 +203,25 @@ class GaussianRBF(BaseBasisFunction):
     
     def __call__(self, x: npt.ArrayLike) -> scipy.sparse.sparray:
         
-        x_in = np.asarray(x)
+        # x_in = np.asarray(x)
         
         r = sq_dist(
-            x_in/self.lengthscale, 
+            x/self.lengthscale, 
             self.centers/self.lengthscale
             )
         
         return np.exp(-0.5*r)
+    
+
+
+def gaussian_RBF(x, inducing_points, lengthscale=1):
+    
+    r = sq_dist(
+        x/lengthscale, 
+        inducing_points/lengthscale
+        )
+        
+    return np.exp(-0.5*r)
 
 
 
@@ -243,6 +251,7 @@ class ApproximateGP(BaseGP):
     def __init__(
         self,
         basis_function: BaseBasisFunction,
+        n_basis: int,
         batch_shape: npt.ArrayLike = (),
         jitter_val: float = 1e-8
         ) -> None:
@@ -250,12 +259,12 @@ class ApproximateGP(BaseGP):
         super().__init__()
         
         # check for type
-        if not isinstance(basis_function, BaseBasisFunction):
-            raise ValueError("basis_function must be a BasisFunction object")
+        if not callable(basis_function):
+            raise ValueError("basis_function must be a callable object")
         self.H = basis_function
         
         # initialize mean and covariance with default values
-        n_H = basis_function.n_basis
+        n_H = n_basis
         self._mean = np.zeros((*batch_shape, n_H)) # batch of mean vectors
         self._cov = np.zeros((*batch_shape, n_H, n_H)) # batch ov covariance matrices
         idx = np.arange(n_H)
@@ -384,6 +393,7 @@ class EnsambleGP(BaseGP):
     def __init__(
         self,
         basis_function: BaseBasisFunction,
+        n_basis: int,
         w0: npt.ArrayLike,
         cov0: npt.ArrayLike,
         N: int,
@@ -392,12 +402,12 @@ class EnsambleGP(BaseGP):
         
         super().__init__()
         
-        if not isinstance(basis_function, BaseBasisFunction):
-            raise ValueError("basis_function must be a BaseBasisFunction object")
+        if not callable(basis_function):
+            raise ValueError("basis_function must be a callable object")
         self.H = basis_function
         
-        if len(w0) != basis_function.n_basis:
-            raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(basis_function.n_basis, len(w0))) 
+        if len(w0) != n_basis:
+            raise ValueError("Number of weights does not match basis functions. Expected {0} but got {1}".format(n_basis, len(w0))) 
         if cov0.shape[0] != cov0.shape[1] or len(cov0.shape) != 2:
             raise ValueError('Covariance matrix must be quadratic')
         if w0.size != cov0.shape[0]:
@@ -413,7 +423,7 @@ class EnsambleGP(BaseGP):
         self.error_cov = error_cov
         
         # tapering matrix
-        self.T = np.ones((basis_function.n_basis, basis_function.n_basis))
+        self.T = np.ones((n_basis, n_basis))
         
     
     

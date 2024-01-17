@@ -1,4 +1,8 @@
 import numpy as np
+import aesara
+import aesara.gradient
+
+from RGP import GaussianRBF, EnsambleGP, sq_dist, gaussian_RBF
 
 
 
@@ -104,3 +108,60 @@ class SingleMassOscillator():
     
     def measurent(self):
         return self.x[0] + np.random.randn(1)*np.linalg.cholesky(self.R).T
+    
+    
+    
+## State space model for filter
+
+# time step
+dt = aesara.tensor.scalar('dt')
+
+# mass
+m = aesara.tensor.scalar('m')
+
+# external force
+F = aesara.tensor.scalar('F')
+
+# state
+x = aesara.tensor.vector('x') # [x, dx, F_sd]
+dx1 = x[1]
+dx2 = -x[2]/m + F/m + 9.81
+
+# RBF for GP
+x_points = np.arange(-5., 5.1, 1.)
+dx_points = np.arange(-5., 5.1, 1.)
+ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
+ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
+lengthscale=np.array([1.])
+H = lambda x: gaussian_RBF(
+    x,
+    inducing_points=ip,
+    lengthscale=np.array([1.])
+)
+H_kf = lambda x_in: np.exp(-0.5 * ((x_in/lengthscale - ip/lengthscale)**2).sum(axis=-1))
+
+# parameters of GP
+theta = aesara.tensor.vector('theta')
+
+# feature vector
+H_sym = H_kf(x[[0,1]])
+dH_dt = aesara.gradient.Rop(H_sym, x, x)
+
+# time derivative of the spring damper force
+dF = dH_dt @ theta
+
+# complete state space model
+dx_ = aesara.tensor.stack([dx1, dx2, dF], axis=0)
+
+# derivative function for KF
+dx_KF_func = aesara.function([x, theta, m, F], dx_, mode='FAST_RUN', allow_input_downcast=True)
+
+# # Runge-Kutta4
+# k1 = dx_
+# k2 = dx_.subs({x: x+dt*k1/2})
+# k3 = dx_.subs({x: x+dt*k2/2})
+# k4 = dx_.subs({x: x+dt*k3})
+# x_rk4 = x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
+
+# # time diskrete state space model
+# x_update = aesara.function([x, theta, m, F, dt], x_rk4)
