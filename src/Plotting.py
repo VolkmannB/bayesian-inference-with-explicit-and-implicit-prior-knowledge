@@ -216,7 +216,7 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
                 line=dict(color='red', width=2))
             ],
         traces=list(range(5))
-        ) for k in tqdm(np.arange(1,len(time)), desc='Generating Frames')]
+        ) for k in tqdm(np.arange(1,len(time)), desc='Generating animated Frames')]
     
     # # add frames
     fig.update(frames=frames)

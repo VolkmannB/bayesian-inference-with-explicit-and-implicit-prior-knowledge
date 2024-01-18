@@ -1,11 +1,11 @@
 import numpy as np
 import jax.numpy as jnp
 import jax
-import functools 
 
-from src.RGP import GaussianRBF, EnsambleGP, sq_dist, gaussian_RBF
+from src.RGP import gaussian_RBF
 
 
+#### This section defines the simulated single mass oscillator
 
 def F_spring(x, c1, c2):
     return c1*x+c2*x**3
@@ -41,22 +41,10 @@ def f_x(x, F, m, c1, c2, d1, d2, dt):
 
 
 
-def f_model(s, v, F, F_sd, m, dt):
-    
-    
-    dx = np.concatenate(
-        [v, -F_sd/m + F/m + 9.81], axis=-1
-    )
-    
-    x = np.concatenate(
-        [s, v], axis=-1
-    )
-    
-    return x + dt*dx
-
-
-
 class SingleMassOscillator():
+    """
+    This class represents the single mass oscillator
+    """
     
     def __init__(
         self, 
@@ -91,6 +79,14 @@ class SingleMassOscillator():
     
     
     def update(self, F: float, dt: float):
+        """
+        Time update for internal state using the ode and Runge-Kutta 4 integration.
+        Gaussian process noise is added.
+
+        Args:
+            F (float): External force excitation
+            dt (float): Timr step for integration
+        """
         
         m = self.m
         c1 = self.c1
@@ -108,16 +104,20 @@ class SingleMassOscillator():
     
     
     def measurent(self):
+        """
+        Generates a noisy measurment.
+        """
         return self.x[0] + np.random.randn(1)*np.linalg.cholesky(self.R).T
     
     
     
-## State space model for filter
+#### this section defines functions related to the state space model of the filtering problem
 
 # the ode for the states of the single mass oscilator
-dx_SMO = lambda x, m, F: jnp.stack([x[...,1], -x[...,2]/m + F/m + 9.81], axis=-1)
+def dx_SMO(x, m, F):
+    return jnp.stack([x[...,1], -x[...,2]/m + F/m + 9.81], axis=-1)
 
-# RBF for GP
+# RBF for GP (the feature vector)
 x_points = np.arange(-5., 5.1, 1.)
 dx_points = np.arange(-5., 5.1, 1.)
 ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
@@ -128,10 +128,10 @@ H = lambda x: gaussian_RBF(
     lengthscale=jnp.array([1.])
 )
 
-# gradient of the Features
+# gradient of the Features wrt. the system states
 dH_dx = lambda x: jnp.squeeze( jax.vmap(jax.jacrev(H))(x[...,[0,1]]) )
 
-# ode of SMO and spring damper force
+# ode of SMO and spring damper force for the filter
 dx_KF = lambda x, m, F, theta: jnp.concatenate(
     [
         dx_SMO(x,m,F), 
@@ -143,7 +143,7 @@ dx_KF = lambda x, m, F, theta: jnp.concatenate(
     axis=-1
     )
 
-# time discrete state spae model for Kalman filter
+# time discrete state space model for the filter with Runge-Kutta 4 integration
 def fx_KF(dx, x, m, F, theta, dt):
     
     k1 = dx(x, m, F, theta)
