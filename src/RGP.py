@@ -6,6 +6,9 @@ import scipy.spatial
 import scipy.linalg
 import abc
 
+import jax.numpy as jnp
+import jax
+
 
 
 def sparse_cholesky(A): # The input matrix A must be a sparse symmetric positive-definite.
@@ -34,10 +37,10 @@ def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
         between each pair of vectors.
     """
     
-    # a = np.asarray(x1)
-    # b = np.asarray(x2)
+    a = jnp.asarray(x1)
+    b = jnp.asarray(x2)
     
-    distance = ((x1[..., np.newaxis,:] - x2[...,np.newaxis,:,:])**2).sum(axis=-1)
+    distance = ((x1[..., jnp.newaxis,:] - x2[...,jnp.newaxis,:,:])**2).sum(axis=-1)
     
     return distance
     
@@ -221,7 +224,7 @@ def gaussian_RBF(x, inducing_points, lengthscale=1):
         inducing_points/lengthscale
         )
         
-    return np.exp(-0.5*r)
+    return jnp.exp(-0.5*r)
 
 
 

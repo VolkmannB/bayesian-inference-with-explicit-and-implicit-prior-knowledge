@@ -1,10 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import jax
 
 
 
-from src.SingleMassOscillator import SingleMassOscillator, f_model, F_spring, F_damper
+from src.SingleMassOscillator import SingleMassOscillator, f_model, F_spring, F_damper, H, fx_KF, dx_KF, ip
 from src.RGP import GaussianRBF, EnsambleGP, sq_dist, gaussian_RBF
 from src.KalmanFilter import EnsambleKalmanFilter
 from src.Plotting import generate_Animation
@@ -70,17 +71,9 @@ SMO = SingleMassOscillator(
     R=np.array([[1e-2]]))
 
 
-x_points = np.arange(-5., 5.1, 1.)
-dx_points = np.arange(-5., 5.1, 1.)
-ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
-ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
-H = lambda x: gaussian_RBF(
-    x,
-    inducing_points=ip,
-    lengthscale=np.array([1.])
-)
 spring_damper_model = EnsambleGP(
     basis_function=H,
+    n_basis=len(ip),
     w0=np.zeros(ip.shape[0]),
     cov0=H(ip).T@H(ip)*10,
     N=N,
@@ -100,15 +93,15 @@ x_part = np.zeros((N,3))
 
 # noise
 meas_noise_var = np.array([[1e-2]])
-process_var = np.diag([5e-6, 5e-7, 0.5])
+process_var = np.diag([5e-6, 5e-7, 1e-3])
 
-fx_KF = lambda x, F: np.concatenate((f_model(x[:,0,None], x[:,1,None], F, x[:,2,None], m=m, dt=dt), x[:,2,None]), axis = 1)
+fx_EnKF = lambda x, F, theta: fx_KF(dx_KF, x, m, F, theta, dt)
 
 EnKF = EnsambleKalmanFilter(
     N,
     x0,
     P0,
-    fx_KF,
+    jax.jit(fx_EnKF),
     lambda x: x[:,0,None],
     process_var,
     meas_noise_var
@@ -164,11 +157,7 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
     ####### Filtering
     
     # time update
-    EnKF.predict(F=F[i])
-    spring_damper_model.W += np.random.randn(*spring_damper_model.W.shape) @ np.eye(spring_damper_model.W.shape[-1])*1e-8 
-    
-    # generate spring damper force
-    EnKF._sigma_x[:,2] = spring_damper_model.ensample_predict(EnKF._sigma_x[:,:2])
+    EnKF.predict(F=F[i], theta=spring_damper_model.W)
     
     # measurment update
     EnKF.update(y)
@@ -181,13 +170,13 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
         )
     
     # resampling
-    is_outlier = get_outlier(EnKF._sigma_x[:,:2], k=5, r=10)
+    is_outlier = get_outlier(EnKF._sigma_x, k=5, r=10)
     if np.any(is_outlier):
-        temp_mean = np.mean(EnKF._sigma_x[~is_outlier,:2], axis=0)
-        temp_cov = np.cov(EnKF._sigma_x[~is_outlier,:2].T)
+        temp_mean = np.mean(EnKF._sigma_x[~is_outlier,:], axis=0)
+        temp_cov = np.cov(EnKF._sigma_x[~is_outlier,:].T)
         temp_cov += np.eye(temp_cov.shape[0])*1e-6
         temp_L = np.linalg.cholesky(temp_cov)
-        EnKF._sigma_x[is_outlier,:2] = temp_mean + np.random.randn(np.sum(is_outlier),2) @ temp_L.T
+        EnKF._sigma_x = EnKF._sigma_x.at[is_outlier,:].set(temp_mean + np.random.randn(np.sum(is_outlier),temp_cov.shape[0]) @ temp_L.T)
         
     #     temp_mean = np.mean(spring_damper_model.W[~is_outlier,:], axis=0)
     #     temp_cov = np.cov(spring_damper_model.W[~is_outlier,:].T)*spring_damper_model.T
