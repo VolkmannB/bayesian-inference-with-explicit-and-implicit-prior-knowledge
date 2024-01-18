@@ -22,9 +22,6 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
     # create figure
     width = cm2in(width)
     fig = make_subplots(2, 2)
-    
-    # helper variables
-    H_ip = H(H.centers)
        
     # create point grid
     delta = 0.25
