@@ -192,6 +192,6 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
 
 fig = generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
 
-print('RMSE for spring-damper force is {0}'.format(np.sqrt( ((F_sd-F_pred)**2).mean() )))
+print('RMSE for spring-damper force is {0}'.format(np.std(F_sd-F_pred)))
 
 fig.show()
