@@ -128,17 +128,20 @@ H = lambda x: gaussian_RBF(
     lengthscale=jnp.array([1.])
 )
 
-# gradient of the Features wrt. the system states
-dH_dx = lambda x: jnp.squeeze( jax.vmap(jax.jacrev(H))(x[...,[0,1]]) )
+# gradient of the Features wrt. time: dH/dt = dH/dx @ dx/dt (total differential)
+# batched jacobian vector product
+def dH_dt(H, x, m, F):
+    jvp = lambda x, v: jax.jvp(H, (x,), (v,))[1]
+    return jnp.squeeze(jax.vmap(jvp)(x[...,[0,1]], dx_SMO(x, m, F)))
 
 # ode of SMO and spring damper force for the filter
 dx_KF = lambda x, m, F, theta: jnp.concatenate(
     [
-        dx_SMO(x,m,F), 
+        dx_SMO(x,m,F), # ode of system state
         jax.vmap(jnp.dot)(
-            jax.vmap(jnp.dot)(dH_dx(x), dx_SMO(x,m,F)),
+            dH_dt(H, x, m, F),
             theta
-        )[...,jnp.newaxis]
+        )[...,jnp.newaxis] # change of perceived spring damper force due to movent in state space
     ], 
     axis=-1
     )
