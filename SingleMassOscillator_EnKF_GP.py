@@ -1,12 +1,11 @@
 import numpy as np
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import jax
 
 
 
-from src.SingleMassOscillator import SingleMassOscillator, f_model, F_spring, F_damper, H, fx_KF, dx_KF, ip
-from src.RGP import GaussianRBF, EnsambleGP, sq_dist, gaussian_RBF
+from src.SingleMassOscillator import SingleMassOscillator, F_spring, F_damper, H, fx_KF, dx_KF, ip
+from src.RGP import EnsambleGP, sq_dist
 from src.KalmanFilter import EnsambleKalmanFilter
 from src.Plotting import generate_Animation
 
@@ -177,12 +176,6 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
         temp_cov += np.eye(temp_cov.shape[0])*1e-6
         temp_L = np.linalg.cholesky(temp_cov)
         EnKF._sigma_x = EnKF._sigma_x.at[is_outlier,:].set(temp_mean + np.random.randn(np.sum(is_outlier),temp_cov.shape[0]) @ temp_L.T)
-        
-    #     temp_mean = np.mean(spring_damper_model.W[~is_outlier,:], axis=0)
-    #     temp_cov = np.cov(spring_damper_model.W[~is_outlier,:].T)*spring_damper_model.T
-    #     temp_cov += np.eye(temp_cov.shape[0])*1e-6
-    #     temp_L = np.linalg.cholesky(temp_cov)
-    #     spring_damper_model.W[is_outlier,:] = temp_mean + np.random.randn(np.sum(is_outlier),temp_cov.shape[1]) @ temp_L.T
     
     # logging
     f = spring_damper_model.ensample_predict(EnKF._sigma_x[:,:2])
@@ -200,12 +193,5 @@ for i in tqdm(range(0,steps), desc="Running simulation"):
 fig = generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
 
 print('RMSE for spring-damper force is {0}'.format(np.sqrt( ((F_sd-F_pred)**2).mean() )))
-
-# fig, ax = plt.subplots(1,2)
-# pos1 = ax[0].imshow(spring_damper_model.cov)
-# fig.colorbar(pos1, ax=ax[0])
-
-# pos2 = ax[1].imshow(H(ip).T@H(ip))
-# fig.colorbar(pos2, ax=ax[1])
 
 fig.show()
