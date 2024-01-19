@@ -1,14 +1,10 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation
 from tqdm import tqdm
 
-import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-from src.RGP import ApproximateGP, GaussianRBF
 from src.SingleMassOscillator import F_spring, F_damper
 
 

@@ -83,13 +83,13 @@ class ApproximateGP(BaseGP):
         # check for type
         if not callable(basis_function):
             raise ValueError("basis_function must be a callable object")
-        self.H = basis_function
+        self.H = jax.jit(basis_function)
+        self.n_H = n_basis
         
         # initialize mean and covariance with default values
-        n_H = n_basis
-        self._mean = np.zeros((*batch_shape, n_H)) # batch of mean vectors
-        self._cov = np.zeros((*batch_shape, n_H, n_H)) # batch ov covariance matrices
-        idx = np.arange(n_H)
+        self._mean = np.zeros((*batch_shape, n_basis)) # batch of mean vectors
+        self._cov = np.zeros((*batch_shape, n_basis, n_basis)) # batch ov covariance matrices
+        idx = np.arange(n_basis)
         self._cov[..., idx, idx] = 1 # set main diagonals to zero
         
         self.batch_shape = batch_shape
@@ -140,18 +140,13 @@ class ApproximateGP(BaseGP):
         P = H @ np.einsum('...nm,...km->...nk', self._cov, H)
         
         # add jitter
-        idx = np.arange(P.shape[-1])
-        P[..., idx, idx] += self.jitter_val
-        
-        # add model uncertainty
-        # idx = np.arange(x.shape[-2])
-        # P[..., idx, idx] += self.error_cov
+        P += np.eye(P.shape[-1])*self.jitter_val
         
         return np.einsum('...nj,...j->...n', H, self._mean), P
     
     
     
-    def update(self, x: npt.NDArray, y: npt.NDArray, Q: npt.NDArray, is_diagonal: bool = False):
+    def update(self, x: npt.NDArray, y: npt.NDArray, Q: npt.NDArray):
         """
         Performs the parameter update for the Gaussian process given input 
         points x, observations y and observation covariance Q.
@@ -159,7 +154,7 @@ class ApproximateGP(BaseGP):
         Args:
             x (npt.NDArray): An [...,m,n] array of input points.
             y (npt.NDArray): An [...,m] array of observations.
-            Q (npt.NDArray): An [...,m,m] matrix of representing the covariance 
+            Q (npt.NDArray): An [...,m] matrix of representing the covariance 
             of the observations.
         """
         
@@ -171,9 +166,6 @@ class ApproximateGP(BaseGP):
         else:
             X = np.asarray(x)
         
-        if Q.shape[-1] != Q.shape[-2]:
-            raise ValueError('Covariance matrix Q is not square')
-        
         # basis function
         H = self.H(X)
         
@@ -181,20 +173,16 @@ class ApproximateGP(BaseGP):
         e = y - np.einsum('...nj,...j->...n', H, self._mean)
         
         # covariance matrix / einsum for broadcasting cov @ H.T
-        S = H @ np.einsum('...nm,...km->...nk', self._cov, H) + Q
+        S = H @ np.einsum('...nm,...km->...nk', self._cov, H) + np.diag(Q)
         
         # add jitter
-        idx = np.arange(Q.shape[-1])
-        S[..., idx, idx] += self.jitter_val
+        S += np.eye(S.shape[-1])*self.jitter_val
         
         # gain matrix
-        if Q.shape[-2] == 1:
-            G = (1/S) @ (H @ self._cov)
-        else:
-            G = np.linalg.solve(
-                S, 
-                (H @ self._cov)
-                )
+        G = np.linalg.solve(
+            S, 
+            (H @ self._cov)
+            )
         
         # k measurments; j basis functions
         self._mean = self._mean + np.einsum('...kj,...k->...j', G, e)
