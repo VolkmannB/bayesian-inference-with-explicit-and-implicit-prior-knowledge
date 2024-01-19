@@ -5,6 +5,7 @@ import scipy.sparse.linalg
 import scipy.spatial
 import scipy.linalg
 import abc
+import typing as tp
 
 import jax.numpy as jnp
 import jax
@@ -46,175 +47,9 @@ def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
     
 
 
-
-################################################################################
-# Distribution
-
-class BaseDistribution(abc.ABC):
-    
-    def __init__(self) -> None:
-        super().__init__()
-    
-    @abc.abstractmethod
-    def sample():
-        raise NotImplementedError()
-
-
-
-class SparseMultivariateNormal(BaseDistribution):
-    
-    def __init__(self, mean, cov) -> None:
-        super().__init__()
-
-        # check sizes 
-        if cov.shape[0] != cov.shape[1] or len(cov.shape) != 2:
-            raise ValueError('Covariance matrix must be quadratic')
-        if mean.size != cov.shape[0]:
-            raise ValueError('Size of mean vector does not match covariance matrix')
-        
-        self._mean = np.array(mean)
-        self._chol_cov = sparse_cholesky(
-            scipy.sparse.csc_matrix(np.asarray(cov))
-            )
-    
-    
-    
-    def sample(self, N: int):
-        
-        return self._mean + np.random.randn(N, self._mean.size) @ self._chol_cov.T
-    
-    
-    
-    @property
-    def cov(self):
-        return self._chol_cov @ self._chol_cov.T
-    
-    
-    
-    @property
-    def chol_cov(self):
-        return self._chol_cov
-    
-    
-    
-    @property
-    def mean(self):
-        return self._mean
-    
-    
-    
-class MultivariateNormal(BaseDistribution):
-    
-    def __init__(self, mean, cov) -> None:
-        super().__init__()
-
-        # check sizes 
-        if cov.shape[0] != cov.shape[1] or len(cov.shape) != 2:
-            raise ValueError('Covariance matrix must be quadratic')
-        if mean.size != cov.shape[0]:
-            raise ValueError('Size of mean vector does not match covariance matrix')
-        
-        self._mean = np.array(mean)
-        self._chol_cov = np.linalg.cholesky(cov)
-    
-    
-    
-    def sample(self, N: int):
-        
-        return self._mean + np.random.randn(N, self._mean.size) @ self._chol_cov.T
-    
-    
-    
-    @property
-    def cov(self):
-        return self._chol_cov @ self._chol_cov.T
-    
-    
-    
-    @property
-    def chol_cov(self):
-        return self._chol_cov
-    
-    
-    
-    @property
-    def mean(self):
-        return self._mean
-        
-        
-
-
-
 ################################################################################
 # Basis Function
 
-class BaseBasisFunction(abc.ABC):
-    
-    def __init__(self) -> None:
-        super().__init__()
-    
-    @abc.abstractmethod
-    def __call__(self):
-        raise NotImplementedError()
-    
-    @property
-    @abc.abstractmethod
-    def n_basis(self):
-        pass
-    
-    @property
-    @abc.abstractmethod
-    def n_input(self):
-        pass
-        
-
-
-class GaussianRBF(BaseBasisFunction):
-    
-    def __init__(
-        self, 
-        centers: npt.ArrayLike, 
-        lengthscale: npt.ArrayLike
-        ) -> None:
-        
-        super().__init__()
-        
-        self.centers = np.array(centers)
-        
-        self._n_input = centers.shape[1]
-        self._n_basis = centers.shape[0]
-        
-        if np.any(lengthscale<=0):
-            raise ValueError("Lengthscale must be positive")
-        if len(lengthscale) != 1 and len(lengthscale) != self.n_input:
-            raise ValueError("Lengthscale must be compatible with input dimensions or be a scalar")
-        self.lengthscale = np.array(lengthscale).flatten()
-    
-    
-    
-    @property
-    def n_input(self):
-        return self._n_input
-    
-    
-    
-    @property
-    def n_basis(self):
-        return self._n_basis
-    
-    
-    
-    def __call__(self, x: npt.ArrayLike) -> scipy.sparse.sparray:
-        
-        # x_in = np.asarray(x)
-        
-        r = sq_dist(
-            x/self.lengthscale, 
-            self.centers/self.lengthscale
-            )
-        
-        return np.exp(-0.5*r)
-    
 
 
 def gaussian_RBF(x, inducing_points, lengthscale=1):
@@ -253,7 +88,7 @@ class ApproximateGP(BaseGP):
     
     def __init__(
         self,
-        basis_function: BaseBasisFunction,
+        basis_function: callable,
         n_basis: int,
         batch_shape: npt.ArrayLike = (),
         jitter_val: float = 1e-8
@@ -395,7 +230,7 @@ class EnsambleGP(BaseGP):
     
     def __init__(
         self,
-        basis_function: BaseBasisFunction,
+        basis_function: tp.Callable,
         n_basis: int,
         w0: npt.ArrayLike,
         cov0: npt.ArrayLike,
