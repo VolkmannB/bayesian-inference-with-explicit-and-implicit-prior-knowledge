@@ -37,6 +37,8 @@ markov_chain = pm.Model()
 with markov_chain as mc:
     
     # priors
+    # https://x-engineer.org/tire-model-longitudinal-forces/
+    # https://uk.mathworks.com/help/physmod/sdl/ref/tireroadinteractionmagicformula.html
     mu = pm.Normal('mu', mu=0.9, sigma=0.1)
     
     C_f = pm.Normal('C_f', mu=1.4, sigma=0.5) # shape
