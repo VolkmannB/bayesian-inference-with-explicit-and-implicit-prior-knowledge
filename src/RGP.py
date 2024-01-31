@@ -2,7 +2,7 @@ import numpy as np
 import numpy.typing as npt
 import abc
 import typing as tp
-
+import functools
 import jax.numpy as jnp
 import jax
 
@@ -27,7 +27,7 @@ def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
     
     distance = ((x1[..., jnp.newaxis,:] - x2[...,jnp.newaxis,:,:])**2).sum(axis=-1)
     
-    return distance
+    return jnp.squeeze(distance)
     
 
 
@@ -311,3 +311,162 @@ class EnsambleGP(BaseGP):
         
         # Update
         self.W = self.W + (K_T * (y.flatten()-X).T).T
+        
+
+
+class BasisFunctionExpansion(abc.ABC):
+    
+    def __init__(self, n_basis, jitter_val=1e-8) -> None:
+        super().__init__()
+        
+        self.jitter_val = jitter_val
+        
+        if not isinstance(n_basis, int):
+            raise ValueError(f'Number of basis functions must be an integer but got {type(n_basis)}')
+        self.n_basis = n_basis
+        
+        self._psi = None
+        self._jacobian = None
+        self._jacvp = None
+        
+        self._mean = None
+        self._cov = None
+        
+    
+    
+    def register_basis_function(self, fcn):
+        
+        self._psi = jax.jit(fcn)
+        self._jacobian = jax.jit(jax.jacfwd(fcn))
+        self._jacvp = jax.jit(functools.partial(jax.jvp, fun=fcn))
+    
+    
+    
+    def initialize_prior(self, mean, cov):
+        
+        m = np.asarray(mean).flatten()
+        if len(m) != self.n_basis:
+            raise ValueError(f'Length of prior mean does not match the number of specified basis functions. Expected {self.n_basis} but got {len(m)}')
+        
+        c = np.asarray(cov)
+        if c.shape[0] != c.shape[1] or len(c.shape) != 2:
+            raise ValueError('The prior covariance matrix must be a 2d square matrix')
+        if c.shape[0] != self.n_basis:
+            raise ValueError('Size of prior covariance matrix must match the number of basis functions')
+        
+        self._mean = jnp.array(mean).flatten()
+        self._cov = jnp.array(cov)
+    
+    
+    
+    def psi(self, x):
+        
+        if self._psi == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._psi(jnp.asarray(x))
+    
+    
+    
+    def jacobian(self, x):
+        
+        if self._jacobian == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._jacobian(jnp.asarray(x))
+    
+    
+    
+    def jacvp(self, x, v):
+        
+        if self._jacvp == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._jacvp(jnp.asarray(x), jnp.asarray(v))
+    
+    
+    
+    def __call__(self, x):
+        
+        if self._mean == None:
+            raise ValueError('No prior was initialized')
+        
+        # evaluate bais functions for input
+        H = jax.jit(jax.vmap(self.psi))(x)
+        
+        # mean value
+        f_mean = H @ self._mean
+        
+        # covariance
+        f_cov = H @ jnp.einsum('nm,km->nk', self._cov, H)
+        
+        return f_mean, f_cov
+    
+    
+    
+    def fit_BOLS(self, x: npt.ArrayLike, y: npt.ArrayLike, sigma: npt.ArrayLike):
+        
+        if self._mean == None:
+            raise ValueError('No prior was initialized')
+        
+        # evaluate basis functions for input
+        H = self.psi(jnp.asarray(x))
+        
+        # if single task make H to row vector
+        if len(H.shape) == 1:
+            H = H.reshape((1,H.shape[0]))
+        
+        # mean value
+        y_hat = H @ self._mean
+        
+        # covariance
+        y_cov = H @ self._cov @ H.T + jnp.eye(len(y))*self.jitter_val + jnp.diag(jnp.asarray(sigma))
+        
+        # gain matrix
+        if y_cov.shape[0] == 1:
+            G = self._cov @ H.T / y_cov.flatten()
+        else:
+            G = jnp.linalg.solve(
+                y_cov, 
+                (H @ self._cov)
+                ).T
+        
+        # k measurments; j basis functions
+        self._mean = self._mean + G @ (jnp.asarray(y) - y_hat)
+        self._cov = self._cov - G @ y_cov @ G.T
+    
+    
+    
+    def fit_BTLS(self, X, Y):
+        
+        if self._mean == None:
+            raise ValueError('No prior was initialized')
+        
+        # evaluate basis functions for input
+        H = jax.jit(jax.vmap(self.psi))(X)
+        
+        # evaluate basis function at mean
+        x_mean = jnp.mean(X, axis=0)
+        H_mean = self.psi(x_mean)
+        
+        # sample theta
+        Theta = np.random.multivariate_normal(
+            self._mean,
+            self._cov,
+            X.shape[0]
+        )
+        
+        # calculate samples of prediction
+        Y_hat = jnp.sum(H * Theta, keepdims=True)
+        y_hat_mean = H_mean @ self._mean
+        Y_hat_centered = Y_hat - y_hat_mean
+        
+        # calculate correlations
+        P_xy = 1/(X.shape[0]-1) * np.einsum('ji,jk->ik', X-x_mean, Y_hat_centered)
+        P_yy = 1/(X.shape[0]-1) * np.einsum('ji,jk->ik', Y_hat_centered, Y_hat_centered) + jnp.cov(Y.T)
+        
+        # Gain matrix
+        G = jnp.linalg.solve(P_yy, P_xy.T)
+        
+        self._mean = self._mean + (jnp.mean(Y, axis=0) - y_hat_mean) @ G
+        self._cov = self._cov - G.T @ P_yy @ G
