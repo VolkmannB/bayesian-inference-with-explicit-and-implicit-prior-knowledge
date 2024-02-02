@@ -63,7 +63,7 @@ def sherman_morrison_inverse(A_inv, x):
 
 
 @jax.jit
-def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, X, y):
+def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, Psi, y):
     """
     Update the normal-inverse gamma (NIG) prior for Bayesian linear regression.
 
@@ -83,16 +83,16 @@ def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, X, y):
     """
     
     # Update precision matrix
-    xTx = jnp.einsum('...j,...k->...jk', X, X)
+    xTx = jnp.einsum('...j,...k->...jk', Psi, Psi)
     Lambda_n = Lambda_0 + xTx
 
     # Sherman-Morrison formula for updating inverse precision matrix
-    xL = jnp.einsum('...j,...jk->...k', X, Lambda_0_inv)
-    denominator = (1 + jnp.einsum('...j,...j->...', X, xL))[...,jnp.newaxis]
+    xL = jnp.einsum('...j,...jk->...k', Psi, Lambda_0_inv)
+    denominator = (1 + jnp.einsum('...j,...j->...', Psi, xL))[...,jnp.newaxis]
     Lambda_n_inv = Lambda_0_inv - (jnp.einsum('...j,...k->...jk', xL, xL)) / denominator
 
     # Update mean
-    xTy = jnp.einsum('...j,i->...j', X, y)
+    xTy = jnp.einsum('...j,i->...j', Psi, y)
     mu_n = jnp.einsum('...jk,...k->...j', 
                       Lambda_n_inv, 
                       (xTy + jnp.einsum('...jk,...k->...j', Lambda_0, mu_0)))
@@ -110,6 +110,27 @@ def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, X, y):
     beta_n = jnp.squeeze(beta_n)
 
     return mu_n, Lambda_n, Lambda_n_inv, alpha_n, beta_n
+
+
+
+@jax.jit
+def update_normal_prior(mu_0, P_0, Psi, y, sigma, jitter_val):
+    
+        # mean prediction error
+        e = y - jnp.einsum('...k,...k->...', Psi, mu_0)
+        
+        # covariance matrix of prediction
+        P_xy = jnp.einsum('...ji,...i->...j', P_0, Psi)
+        P_yy = Psi @ P_xy + sigma + jitter_val
+        
+        # gain matrix
+        G = P_xy/P_yy[...,jnp.newaxis]
+        
+        # k measurments; j basis functions
+        mu_n = mu_0 + jnp.einsum('...j,...->...j', G, e)
+        P_n = P_0 - jnp.einsum('...j,...k->...jk', G, jnp.einsum('...,...j->...j', P_yy, G))
+        
+        return jnp.squeeze(mu_n), jnp.squeeze(P_n)
     
 
 
@@ -398,7 +419,7 @@ class EnsambleGP(BaseGP):
 
 class BasisFunctionExpansion(abc.ABC):
     
-    def __init__(self, n_basis, jitter_val=1e-8) -> None:
+    def __init__(self, n_basis, batch_size=1, jitter_val=1e-8) -> None:
         super().__init__()
         
         self.jitter_val = jitter_val
@@ -406,6 +427,10 @@ class BasisFunctionExpansion(abc.ABC):
         if not isinstance(n_basis, int):
             raise ValueError(f'Number of basis functions must be an integer but got {type(n_basis)}')
         self.n_basis = n_basis
+        
+        if batch_size < 1 or not isinstance(batch_size, int):
+            raise ValueError(f'Given batch_size must be larger 1 and of type integer')
+        self._batch_size = batch_size
         
         self._psi = None
         self._jacobian = None
@@ -438,6 +463,11 @@ class BasisFunctionExpansion(abc.ABC):
         
         self._mean = jnp.array(mean).flatten()
         self._cov = jnp.array(cov)
+        
+        #broadcast to batch
+        if self._batch_size > 1:
+            self._mean = jnp.broadcast_to(self._mean, (self._batch_size, *self._mean.shape))
+            self._cov = jnp.broadcast_to(self._cov, (self._batch_size, *self._cov.shape))
     
     
     
@@ -486,72 +516,28 @@ class BasisFunctionExpansion(abc.ABC):
     
     
     
-    def fit_BOLS(self, x: npt.ArrayLike, y: npt.ArrayLike, sigma: npt.ArrayLike):
+    def update(self, X: npt.ArrayLike, y: npt.ArrayLike, sigma: npt.ArrayLike):
         
         if self._mean == None:
             raise ValueError('No prior was initialized')
         
-        # evaluate basis functions for input
-        H = self.psi(jnp.asarray(x))
-        
-        # if single task make H to row vector
-        if len(H.shape) == 1:
-            H = H.reshape((1,H.shape[0]))
-        
-        # mean value
-        y_hat = H @ self._mean
-        
-        # covariance
-        y_cov = H @ self._cov @ H.T + jnp.eye(len(y))*self.jitter_val + jnp.diag(jnp.asarray(sigma))
-        
-        # gain matrix
-        if y_cov.shape[0] == 1:
-            G = self._cov @ H.T / y_cov.flatten()
+        # evaluate features
+        if np.asarray(X).ndim == 1:
+            Psi = self.psi(X)
         else:
-            G = jnp.linalg.solve(
-                y_cov, 
-                (H @ self._cov)
-                ).T
+            Psi = jax.jit(jax.vmap(self.psi))(X)
         
-        # k measurments; j basis functions
-        self._mean = self._mean + G @ (jnp.asarray(y) - y_hat)
-        self._cov = self._cov - G @ y_cov @ G.T
-    
-    
-    
-    def fit_BTLS(self, X, Y):
+        mean_new, P_new = update_normal_prior(
+            self._mean, 
+            self._cov, 
+            Psi, 
+            y, 
+            sigma, 
+            self.jitter_val
+            )
         
-        if self._mean == None:
-            raise ValueError('No prior was initialized')
-        
-        # evaluate basis functions for input
-        H = jax.jit(jax.vmap(self.psi))(X)
-        
-        # evaluate basis function at mean
-        x_mean = jnp.mean(X, axis=0)
-        H_mean = self.psi(x_mean)
-        
-        # sample theta
-        Theta = np.random.multivariate_normal(
-            self._mean,
-            self._cov,
-            X.shape[0]
-        )
-        
-        # calculate samples of prediction
-        Y_hat = jnp.sum(H * Theta, keepdims=True)
-        y_hat_mean = H_mean @ self._mean
-        Y_hat_centered = Y_hat - y_hat_mean
-        
-        # calculate correlations
-        P_xy = 1/(X.shape[0]-1) * np.einsum('ji,jk->ik', X-x_mean, Y_hat_centered)
-        P_yy = 1/(X.shape[0]-1) * np.einsum('ji,jk->ik', Y_hat_centered, Y_hat_centered) + jnp.cov(Y.T)
-        
-        # Gain matrix
-        G = jnp.linalg.solve(P_yy, P_xy.T)
-        
-        self._mean = self._mean + (jnp.mean(Y, axis=0) - y_hat_mean) @ G
-        self._cov = self._cov - G.T @ P_yy @ G
+        self._mean = mean_new
+        self._cov = P_new
 
 
 
@@ -665,10 +651,10 @@ class LinearBayesianRegression(abc.ABC):
         #broadcast to batch
         if self._batch_size > 1:
             self._mean = jnp.broadcast_to(self._mean, (self._batch_size, *self._mean.shape))
-            self._Lambda = jnp.broadcast_to(self._mean, (self._batch_size, *self._Lambda.shape))
-            self._Lambda_inv = jnp.broadcast_to(self._mean, (self._batch_size, *self._Lambda_inv.shape))
-            self._a = jnp.broadcast_to(self._mean, (self._batch_size, *self._a.shape))
-            self._b = jnp.broadcast_to(self._mean, (self._batch_size, *self._b.shape))
+            self._Lambda = jnp.broadcast_to(self._Lambda, (self._batch_size, *self._Lambda.shape))
+            self._Lambda_inv = jnp.broadcast_to(self._Lambda_inv, (self._batch_size, *self._Lambda_inv.shape))
+            self._a = jnp.broadcast_to(self._a, (self._batch_size, *self._a.shape))
+            self._b = jnp.broadcast_to(self._b, (self._batch_size, *self._b.shape))
         
         
     
@@ -705,7 +691,17 @@ class LinearBayesianRegression(abc.ABC):
             raise ValueError('No prior was initialized')
         
         # evaluate features
-        Psi = jax.vmap(self.psi)(jnp.atleast_2d(X))
+        if np.asarray(X).ndim == 1:
+            Psi = self.psi(X)
+        else:
+            Psi = jax.jit(jax.vmap(self.psi))(X)
+        
+        # forgetting factor
+        # self._mean *= 0.99
+        self._Lambda *= 0.999
+        self._Lambda_inv /= 0.999
+        # self._a *= 0.99
+        # self._b *= 0.99
         
         # batched parameter updates
         mu_new, Lambda_new, Lambda_inv_new, a_new, b_new = update_nig_prior(

@@ -53,7 +53,7 @@ rng = np.random.default_rng()
 for i in tqdm(range(10000)):
     X_train = rng.uniform(-10,10,1)
     Y_train = test_function1(X_train) + rng.normal(0, 1, X_train.shape)
-    model.fit_BOLS(X_train, Y_train, [1])
+    model.update(X_train, Y_train, 1)
     BLR_model.update(X_train, Y_train)
 
 
