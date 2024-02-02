@@ -1,3 +1,4 @@
+from typing import Any
 import numpy as np
 import numpy.typing as npt
 import abc
@@ -28,6 +29,87 @@ def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
     distance = ((x1[..., jnp.newaxis,:] - x2[...,jnp.newaxis,:,:])**2).sum(axis=-1)
     
     return jnp.squeeze(distance)
+
+
+
+@jax.jit
+def sherman_morrison_inverse(A_inv, x):
+    """
+    Computes the Sherman-Morrison formula for a matrix A^{-1} and a vector x.
+
+    Args:
+        A_inv (numpy.ndarray): Inverse of matrix A.
+        x (numpy.ndarray): Vector x.
+
+    Returns:
+        numpy.ndarray: Updated inverse (A - x * x^T)^{-1}.
+
+    Raises:
+        ValueError: If the denominator in the formula is zero, indicating the formula is not applicable.
+    """
+    A_inv_x = jnp.dot(A_inv, x)
+    denominator = 1.0 + jnp.dot(x, A_inv_x)
+
+    # Check if the denominator is zero to avoid division by zero
+    # if denominator == 0:
+    #     raise ValueError("Denominator is zero. Sherman-Morrison formula not applicable.")
+
+    update_term = jnp.outer(A_inv_x, A_inv_x) / denominator
+
+    updated_inverse = A_inv - update_term
+
+    return updated_inverse
+
+
+
+@jax.jit
+def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, X, y):
+    """
+    Update the normal-inverse gamma (NIG) prior for Bayesian linear regression.
+
+    Parameters:
+    - mu_0: Mean vector(s) of shape (n_features,)
+    - Lambda_0_inv: Inverse of the precision matrix(s) of shape (n_features, n_features)
+    - alpha_0: Shape parameter(s)
+    - beta_0: Scale parameter(s)
+    - X: Feature matrix of shape (n_samples, n_features) for the new data points
+    - y: Response vector of shape (n_samples,) for the new data points
+
+    Returns:
+    - mu_n: Updated mean vector(s) of shape (n_features,)
+    - Lambda_n_inv: Updated inverse precision matrix(s) of shape (n_features, n_features)
+    - alpha_n: Updated shape parameter(s)
+    - beta_n: Updated scale parameter(s)
+    """
+    
+    # Update precision matrix
+    xTx = jnp.einsum('...j,...k->...jk', X, X)
+    Lambda_n = Lambda_0 + xTx
+
+    # Sherman-Morrison formula for updating inverse precision matrix
+    xL = jnp.einsum('...j,...jk->...k', X, Lambda_0_inv)
+    denominator = (1 + jnp.einsum('...j,...j->...', X, xL))[...,jnp.newaxis]
+    Lambda_n_inv = Lambda_0_inv - (jnp.einsum('...j,...k->...jk', xL, xL)) / denominator
+
+    # Update mean
+    xTy = jnp.einsum('...j,i->...j', X, y)
+    mu_n = jnp.einsum('...jk,...k->...j', 
+                      Lambda_n_inv, 
+                      (xTy + jnp.einsum('...jk,...k->...j', Lambda_0, mu_0)))
+
+    # Update parameters of inverse gamma
+    alpha_n = alpha_0 + 0.5
+    mLm_0 = jnp.einsum('...j,...jk,...k->...', mu_0, Lambda_0, mu_0)
+    mLm_n = jnp.einsum('...j,...jk,...k->...', mu_n, Lambda_n, mu_n)
+    beta_n = beta_0 + 0.5 * (y**2 + mLm_0 - mLm_n)
+
+    # Squeeze dimensions back if necessary
+    mu_n = jnp.squeeze(mu_n)
+    Lambda_n_inv = jnp.squeeze(Lambda_n_inv)
+    alpha_n = jnp.squeeze(alpha_n)
+    beta_n = jnp.squeeze(beta_n)
+
+    return mu_n, Lambda_n, Lambda_n_inv, alpha_n, beta_n
     
 
 
@@ -470,3 +552,190 @@ class BasisFunctionExpansion(abc.ABC):
         
         self._mean = self._mean + (jnp.mean(Y, axis=0) - y_hat_mean) @ G
         self._cov = self._cov - G.T @ P_yy @ G
+
+
+
+class MultivariateBayesianRegression(abc.ABC):
+    
+    def __init__(self, n_basis, n_tasks, jitter_val=1e-8) -> None:
+        super().__init__()
+        
+        self.jitter_val = jitter_val
+        
+        if not isinstance(n_basis, int):
+            raise ValueError(f'Number of basis functions must be an integer but got {type(n_basis)}')
+        self.n_basis = n_basis
+        
+        if not isinstance(n_tasks, int):
+            raise ValueError(f'Number of basis functions must be an integer but got {type(n_tasks)}')
+        self.n_tasks = n_tasks
+        
+        self._psi = None
+        self._jacobian = None
+        self._jacvp = None
+        
+    
+    
+    def register_basis_function(self, fcn):
+        
+        self._psi = jax.jit(fcn)
+        self._jacobian = jax.jit(jax.jacfwd(fcn))
+        self._jacvp = jax.jit(functools.partial(jax.jvp, fun=fcn))
+        
+        
+        
+    def psi(self, x):
+        
+        if self._psi == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._psi(jnp.asarray(x))
+    
+    
+    
+    def jacobian(self, x):
+        
+        if self._jacobian == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._jacobian(jnp.asarray(x))
+    
+    
+    
+    def jacvp(self, x, v):
+        
+        if self._jacvp == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._jacvp(jnp.asarray(x), jnp.asarray(v))
+
+
+
+class LinearBayesianRegression(abc.ABC):
+    
+    def __init__(self, n_basis, batch_size=1, jitter_val=1e-8) -> None:
+        super().__init__()
+        
+        self.jitter_val = jitter_val
+        
+        if not isinstance(n_basis, int):
+            raise ValueError(f'Number of basis functions must be an integer but got {type(n_basis)}')
+        self.n_basis = n_basis
+        
+        if batch_size < 1 or not isinstance(batch_size, int):
+            raise ValueError(f'Given batch_size must be larger 1 and of type integer')
+        self._batch_size = batch_size
+        
+        self._psi = None
+        self._jacobian = None
+        self._jacvp = None
+        
+        self._Lambda_inv = None
+        self._a = None
+        self._b = None
+        
+    
+    
+    def register_basis_function(self, fcn):
+        
+        self._psi = jax.jit(fcn)
+        self._jacobian = jax.jit(jax.jacfwd(fcn))
+        self._jacvp = jax.jit(functools.partial(jax.jvp, fun=fcn))
+    
+    
+    
+    def initialize_prior(self, mean, Lambda, a=1, b=1):
+        
+        m = np.asarray(mean).flatten()
+        if len(m) != self.n_basis:
+            raise ValueError(f'Length of prior mean does not match the number of specified basis functions. Expected {self.n_basis} but got {len(m)}')
+        
+        c = np.asarray(Lambda)
+        if c.shape[0] != c.shape[1] or len(c.shape) != 2:
+            raise ValueError('The prior covariance matrix must be a 2d square matrix')
+        if c.shape[0] != self.n_basis:
+            raise ValueError('Size of prior covariance matrix must match the number of basis functions')
+        
+        self._mean = jnp.array(m)
+        self._Lambda = jnp.array(Lambda)
+        self._Lambda_inv = jnp.linalg.inv(Lambda)
+        self._a = jnp.array(a)
+        self._b = jnp.array(b)
+        
+        #broadcast to batch
+        if self._batch_size > 1:
+            self._mean = jnp.broadcast_to(self._mean, (self._batch_size, *self._mean.shape))
+            self._Lambda = jnp.broadcast_to(self._mean, (self._batch_size, *self._Lambda.shape))
+            self._Lambda_inv = jnp.broadcast_to(self._mean, (self._batch_size, *self._Lambda_inv.shape))
+            self._a = jnp.broadcast_to(self._mean, (self._batch_size, *self._a.shape))
+            self._b = jnp.broadcast_to(self._mean, (self._batch_size, *self._b.shape))
+        
+        
+    
+    def psi(self, x):
+        
+        if self._psi == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._psi(jnp.asarray(x))
+    
+    
+    
+    def jacobian(self, x):
+        
+        if self._jacobian == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._jacobian(jnp.asarray(x))
+    
+    
+    
+    def jacvp(self, x, v):
+        
+        if self._jacvp == None:
+            raise ValueError('No basis function was registered during init')
+        
+        return self._jacvp(jnp.asarray(x), jnp.asarray(v))
+    
+    
+    
+    def update(self, X, y):
+        
+        if self._mean == None:
+            raise ValueError('No prior was initialized')
+        
+        # evaluate features
+        Psi = jax.vmap(self.psi)(jnp.atleast_2d(X))
+        
+        # batched parameter updates
+        mu_new, Lambda_new, Lambda_inv_new, a_new, b_new = update_nig_prior(
+            self._mean, 
+            self._Lambda,
+            self._Lambda_inv, 
+            self._a, 
+            self._b, 
+            Psi, 
+            y
+            )
+        
+        if jnp.linalg.norm(Lambda_new@Lambda_inv_new-jnp.eye(Lambda_new.shape[-1])) > 1e-3:
+            Lambda_inv_new = jnp.linalg.inv(Lambda_new)
+        
+        # assign new parameters
+        self._mean = mu_new
+        self._Lambda = Lambda_new
+        self._Lambda_inv = Lambda_inv_new
+        self._a = a_new
+        self._b = b_new
+    
+    
+    
+    def __call__(self, X):
+        
+        if self._mean == None:
+            raise ValueError('No prior was initialized')
+        
+        # evaluate features
+        Psi = jax.jit(jax.vmap(self.psi))(X)
+        
+        return Psi @ self._mean
