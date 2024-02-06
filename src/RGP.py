@@ -6,6 +6,17 @@ import typing as tp
 import functools
 import jax.numpy as jnp
 import jax
+import functools
+
+
+
+def sample_nig(mean, Lambda_inv, a, b, key, N=1):
+    
+    V_chol = jnp.linalg.cholesky(b/a*Lambda_inv)
+    
+    T = jax.random.t(key, 2*a, (N, Lambda_inv.shape[0]))
+    
+    return jnp.squeeze(mean + jnp.einsum('ij,...j->...i', V_chol, T))
 
 
 
@@ -63,7 +74,7 @@ def sherman_morrison_inverse(A_inv, x):
 
 
 @jax.jit
-def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, Psi, y):
+def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, psi, y):
     """
     Update the normal-inverse gamma (NIG) prior for Bayesian linear regression.
 
@@ -83,24 +94,20 @@ def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, Psi, y):
     """
     
     # Update precision matrix
-    xTx = jnp.einsum('...j,...k->...jk', Psi, Psi)
+    xTx = jnp.outer(psi, psi)
     Lambda_n = Lambda_0 + xTx
 
     # Sherman-Morrison formula for updating inverse precision matrix
-    xL = jnp.einsum('...j,...jk->...k', Psi, Lambda_0_inv)
-    denominator = (1 + jnp.einsum('...j,...j->...', Psi, xL))[...,jnp.newaxis]
-    Lambda_n_inv = Lambda_0_inv - (jnp.einsum('...j,...k->...jk', xL, xL)) / denominator
+    Lambda_n_inv = sherman_morrison_inverse(Lambda_0_inv, psi)
 
     # Update mean
-    xTy = jnp.einsum('...j,i->...j', Psi, y)
-    mu_n = jnp.einsum('...jk,...k->...j', 
-                      Lambda_n_inv, 
-                      (xTy + jnp.einsum('...jk,...k->...j', Lambda_0, mu_0)))
+    xTy = psi * y
+    mu_n = Lambda_n_inv @ (xTy + Lambda_0 @ mu_0)
 
     # Update parameters of inverse gamma
     alpha_n = alpha_0 + 0.5
-    mLm_0 = jnp.einsum('...j,...jk,...k->...', mu_0, Lambda_0, mu_0)
-    mLm_n = jnp.einsum('...j,...jk,...k->...', mu_n, Lambda_n, mu_n)
+    mLm_0 = mu_0 @ Lambda_0 @ mu_0
+    mLm_n = mu_n @ Lambda_n @ mu_n
     beta_n = beta_0 + 0.5 * (y**2 + mLm_0 - mLm_n)
 
     # Squeeze dimensions back if necessary
@@ -114,21 +121,21 @@ def update_nig_prior(mu_0, Lambda_0, Lambda_0_inv, alpha_0, beta_0, Psi, y):
 
 
 @jax.jit
-def update_normal_prior(mu_0, P_0, Psi, y, sigma, jitter_val):
+def update_normal_prior(mu_0, P_0, psi, y, sigma, jitter_val):
     
         # mean prediction error
-        e = y - jnp.einsum('...k,...k->...', Psi, mu_0)
+        e = y - psi @ mu_0
         
         # covariance matrix of prediction
-        P_xy = jnp.einsum('...ji,...i->...j', P_0, Psi)
-        P_yy = Psi @ P_xy + sigma + jitter_val
+        P_xy = P_0 @ psi
+        P_yy = psi @ P_xy + sigma + jitter_val
         
         # gain matrix
-        G = P_xy/P_yy[...,jnp.newaxis]
+        G = P_xy/P_yy
         
         # k measurments; j basis functions
-        mu_n = mu_0 + jnp.einsum('...j,...->...j', G, e)
-        P_n = P_0 - jnp.einsum('...j,...k->...jk', G, jnp.einsum('...,...j->...j', P_yy, G))
+        mu_n = mu_0 + G * e
+        P_n = P_0 - P_yy * jnp.outer(G, G)
         
         return jnp.squeeze(mu_n), jnp.squeeze(P_n)
     
@@ -373,36 +380,38 @@ class BasisFunctionExpansion(abc.ABC):
         if self._mean == None:
             raise ValueError('No prior was initialized')
         
-        # evaluate bais functions for input
-        H = jax.jit(jax.vmap(self.psi))(x)
+        X = jnp.asarray(x)
+        if X.ndim == 1:
+            X = X[:,jnp.newaxis]
+        
+        # evaluate basis functions for input
+        Psi = jax.jit(jax.vmap(self.psi))(X)
+        Psi = jnp.broadcast_to(Psi, (self._batch_size, *Psi.shape))
         
         # mean value
-        f_mean = H @ self._mean
+        f_mean = jnp.einsum('...ij,...j->...i',Psi , self._mean)
         
         # covariance
-        f_cov = H @ jnp.einsum('nm,km->nk', self._cov, H)
+        f_cov = jnp.einsum('...jn,...ni->...ji', Psi, jnp.einsum('...nj,...ij->...ni', self._cov, Psi))
         
-        return f_mean, f_cov
+        return jnp.squeeze(f_mean), jnp.squeeze(f_cov)
     
     
     
-    def update(self, X: npt.ArrayLike, y: npt.ArrayLike, sigma: npt.ArrayLike):
+    def update(self, x: npt.ArrayLike, y: npt.ArrayLike, sigma: npt.ArrayLike):
         
         if self._mean == None:
             raise ValueError('No prior was initialized')
         
         # evaluate features
-        if np.asarray(X).ndim == 1:
-            Psi = self.psi(X)
-        else:
-            Psi = jax.jit(jax.vmap(self.psi))(X)
+        psi = self.psi(x)
         
         mean_new, P_new = update_normal_prior(
             self._mean, 
             self._cov, 
-            Psi, 
+            psi, 
             y, 
-            sigma, 
+            sigma,
             self.jitter_val
             )
         
@@ -469,7 +478,7 @@ class MultivariateBayesianRegression(abc.ABC):
 
 class LinearBayesianRegression(abc.ABC):
     
-    def __init__(self, n_basis, batch_size=1, jitter_val=1e-8) -> None:
+    def __init__(self, n_basis, jitter_val=1e-8, forgetting_factor=0.001) -> None:
         super().__init__()
         
         self.jitter_val = jitter_val
@@ -478,9 +487,9 @@ class LinearBayesianRegression(abc.ABC):
             raise ValueError(f'Number of basis functions must be an integer but got {type(n_basis)}')
         self.n_basis = n_basis
         
-        if batch_size < 1 or not isinstance(batch_size, int):
-            raise ValueError(f'Given batch_size must be larger 1 and of type integer')
-        self._batch_size = batch_size
+        if forgetting_factor > 1 or forgetting_factor <= 0:
+            raise ValueError(f'Given forgetting_factor must be in the interval (0, 1]')
+        self._forgetting_factor = forgetting_factor
         
         self._psi = None
         self._jacobian = None
@@ -490,6 +499,34 @@ class LinearBayesianRegression(abc.ABC):
         self._a = None
         self._b = None
         
+        self._RNGKey = jax.random.PRNGKey(np.random.randint(0, 1e8))
+    
+    
+    
+    def sample_theta(self, N=1):
+        
+        self._RNGKey, sample_Key = jax.random.split(self._RNGKey)
+        Theta = sample_nig(self._mean, self._Lambda_inv, self._a, self._b, sample_Key, N)
+        
+        return Theta
+    
+    
+    
+    def sample_f(self, x, N=1):
+        
+        Theta = self.sample_theta(N)
+        
+        X = jnp.asarray(x)
+        if X.ndim == 1:
+            X = X[:,jnp.newaxis]
+        
+        # evaluate basis functions for input
+        Psi = jax.jit(jax.vmap(self.psi))(X)
+        
+        Psi, Theta = jnp.broadcast_arrays(Psi, Theta[...,jnp.newaxis,:])
+        
+        return jnp.einsum('...j,...j->...', Psi, Theta)
+            
     
     
     def register_basis_function(self, fcn):
@@ -517,14 +554,6 @@ class LinearBayesianRegression(abc.ABC):
         self._Lambda_inv = jnp.linalg.inv(Lambda)
         self._a = jnp.array(a)
         self._b = jnp.array(b)
-        
-        #broadcast to batch
-        if self._batch_size > 1:
-            self._mean = jnp.broadcast_to(self._mean, (self._batch_size, *self._mean.shape))
-            self._Lambda = jnp.broadcast_to(self._Lambda, (self._batch_size, *self._Lambda.shape))
-            self._Lambda_inv = jnp.broadcast_to(self._Lambda_inv, (self._batch_size, *self._Lambda_inv.shape))
-            self._a = jnp.broadcast_to(self._a, (self._batch_size, *self._a.shape))
-            self._b = jnp.broadcast_to(self._b, (self._batch_size, *self._b.shape))
         
         
     
@@ -555,23 +584,20 @@ class LinearBayesianRegression(abc.ABC):
     
     
     
-    def update(self, X, y):
+    def update(self, x, y):
         
         if self._mean == None:
             raise ValueError('No prior was initialized')
         
         # evaluate features
-        if np.asarray(X).ndim == 1:
-            Psi = self.psi(X)
-        else:
-            Psi = jax.jit(jax.vmap(self.psi))(X)
+        psi = self.psi(x)
         
         # forgetting factor
         # self._mean *= 0.99
-        self._Lambda *= 0.999
-        self._Lambda_inv /= 0.999
-        # self._a *= 0.99
-        # self._b *= 0.99
+        self._Lambda *= 1 - self._forgetting_factor
+        self._Lambda_inv /= 1 - self._forgetting_factor
+        self._a *= 1 - self._forgetting_factor
+        self._b *= 1 - self._forgetting_factor
         
         # batched parameter updates
         mu_new, Lambda_new, Lambda_inv_new, a_new, b_new = update_nig_prior(
@@ -580,7 +606,7 @@ class LinearBayesianRegression(abc.ABC):
             self._Lambda_inv, 
             self._a, 
             self._b, 
-            Psi, 
+            psi, 
             y
             )
         
@@ -596,12 +622,19 @@ class LinearBayesianRegression(abc.ABC):
     
     
     
-    def __call__(self, X):
+    def __call__(self, x):
         
         if self._mean == None:
             raise ValueError('No prior was initialized')
         
-        # evaluate features
+        X = jnp.asarray(x)
+        if X.ndim == 1:
+            X = X[:,jnp.newaxis]
+        
+        # evaluate basis functions for input
         Psi = jax.jit(jax.vmap(self.psi))(X)
         
-        return Psi @ self._mean
+        # mean value
+        f_mean = jnp.einsum('kj,j->k',Psi , self._mean)
+        
+        return f_mean
