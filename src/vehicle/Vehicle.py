@@ -87,6 +87,22 @@ para = jnp.array([
 
 
 
-##### Filter
+##### MCMC model for parameter identification
+@jax.jit
+def f_x_MCMC(x_MCMC, u_MCMC, para, dt, m, l_f, l_r, g):
+    
+    x = x_MCMC[:-2]
+    u = jnp.stack(x_MCMC[-1], u_MCMC)
+    
+    I_zz, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r = para
+    
+    k1 = f_dx_sim(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
+    k2 = f_dx_sim(x + dt*k1/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
+    k3 = f_dx_sim(x + dt*k2/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
+    k4 = f_dx_sim(x + dt*k3/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
+    
+    x_out = x + dt/6.0*(k1+2*k2+2*k3+k4)
+    
+    return jnp.stack([x_out, x_MCMC[-1]])
 
 
