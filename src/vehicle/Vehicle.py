@@ -2,6 +2,7 @@ import numpy as np
 import math
 import jax
 import jax.numpy as jnp
+import functools
 
 
 
@@ -68,7 +69,7 @@ def f_x(x, u, dt, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r):
 
 
 ##### Parameters (dt, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
-para = jnp.array([
+default_para = jnp.array([
     0.01, # dt
     1720, # m
     1827.5431059723351, # J_z
@@ -89,12 +90,12 @@ para = jnp.array([
 
 ##### MCMC model for parameter identification
 @jax.jit
-def f_x_MCMC(x_MCMC, u_MCMC, para, dt, m, l_f, l_r, g):
+def f_x_MCMC(x_MCMC, u_MCMC, para, dt, m, I_zz, l_f, l_r, g):
     
-    x = x_MCMC[:-2]
-    u = jnp.stack(x_MCMC[-1], u_MCMC)
+    x = x_MCMC[:-1]
+    u = jnp.array([x_MCMC[-1], *u_MCMC])
     
-    I_zz, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r = para
+    mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r = para.flatten()
     
     k1 = f_dx_sim(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
     k2 = f_dx_sim(x + dt*k1/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
@@ -103,6 +104,88 @@ def f_x_MCMC(x_MCMC, u_MCMC, para, dt, m, l_f, l_r, g):
     
     x_out = x + dt/6.0*(k1+2*k2+2*k3+k4)
     
-    return jnp.stack([x_out, x_MCMC[-1]])
+    return jnp.array([*x_out, x_MCMC[-1]]).flatten()
 
 
+
+# bootstrap proposal
+@jax.jit
+def p_x_Bootstrap(X_MCMC, u_MCMC, para, key, dt, m, I_zz, l_f, l_r, g, Q):
+    
+    X_MCMC_new = jax.vmap(
+        functools.partial(f_x_MCMC, u_MCMC=u_MCMC, para=para, dt=dt, m=m, I_zz=I_zz, l_f=l_f, l_r=l_r, g=g)
+        )(
+            X_MCMC
+        )
+    
+    return X_MCMC_new + jax.random.multivariate_normal(key, jnp.zeros((Q.shape[0],)), Q, (X_MCMC_new.shape[0],))
+
+
+
+# likelihood
+@jax.jit
+def p_y_Bootstrap(X_MCMC, y, R):
+    
+    Y_ = X_MCMC[:,:-1]
+    
+    r = Y_ - y
+    
+    likelihood = lambda r: jnp.exp(-0.5 * r @ jnp.linalg.solve(R, r))
+    
+    return jax.vmap(likelihood)(r)
+
+
+
+@jax.jit
+def systematic_resampling(w, key):
+    
+    # number of samples
+    N = len(w)
+    
+    # initialize array of indices
+    indices = jnp.zeros((N,), dtype=jnp.int32)
+    
+    # select deterministic samples
+    U = jax.random.uniform(key, minval=0, maxval=1/N) + jnp.arange(0, N) / N
+    W = jnp.cumsum(w, 0)
+    
+    indices = jnp.searchsorted(W, U)
+    
+    return indices
+
+
+
+def forward_Bootstrap_PF(Y, U, X_0, para, Q, R):
+    
+    # generate initial key
+    key = jax.random.PRNGKey(np.random.random_integers(100, 1e3))
+    
+    # variables for logging
+    unnormalized_weights = np.zeros((Y.shape[0], X_0.shape[0]))
+    X_trajectory = np.zeros((Y.shape[0], *X_0.shape))
+    
+    # weight initial particles
+    unnormalized_weights[0,:] = p_y_Bootstrap(X_0, Y[0,:], R)
+    
+    # prepare proposal distribution
+    proposal_dist = lambda X, u, key: p_x_Bootstrap(X, u, para, key, *default_para[:6], Q)
+    
+    for t in np.arange(1, Y.shape[0]):
+        
+        # resample previous particles
+        key, temp_key = jax.random.split(key)
+        w = unnormalized_weights[t-1,:] / np.sum(unnormalized_weights[t-1,:])
+        idx = systematic_resampling(w, temp_key)
+        
+        # draw samples from the propsal
+        key, temp_key = jax.random.split(key)
+        resampled_particles = X_trajectory[t-1, idx, :]
+        X_trajectory[t,...] = proposal_dist(resampled_particles, U[t-1], temp_key)
+        
+        # weight particles
+        unnormalized_weights[t,:] = p_y_Bootstrap(X_trajectory[t,...], Y[t,:], R)
+        
+        if np.isclose(0, np.sum(unnormalized_weights[t,:])):
+            raise ValueError(f"Particle depleteion at iteration {t}")
+    
+    return X_trajectory, unnormalized_weights
