@@ -1,12 +1,12 @@
 import pandas as pd
-import pymc as pm
 from tqdm import tqdm
-import arviz as az
+import numpy as np
 import matplotlib.pyplot as plt
-import bokeh.plotting
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 
 
-from src.vehicle.Vehicle import f_x
+from src.vehicle.Vehicle import forward_Bootstrap_PF, default_para
 
 
 
@@ -14,64 +14,107 @@ from src.vehicle.Vehicle import f_x
 data = pd.read_csv('src/vehicle/measurment_3.csv', sep=';')
 N = 10
     
-u = data[['Steering_Angle', 'v_x']].to_numpy()
-x = data[['dpsi', 'v_y']].to_numpy()
+U = data[['v_x']].to_numpy()
+Y = data[['dpsi', 'v_y']].to_numpy()
 
-# Parameters
-dt = 0.01
-l_f = 1.1625348837209302
-l_r = 1.4684651162790696
-m = 1720
-I_zz = 1827.5431059723351
-g = 9.81
-mu_x = 0.9
+# transition noise for steering angle
+delta = data[['Steering_Angle']].to_numpy().flatten()
+sigma_delta = np.var(delta[1:] - delta[:-1])
 
-# wrap ssm
-state_space_model = lambda x, u, mu, B_f, C_f, E_f, B_r, C_r, E_r: f_x(
-            x, u, dt, m, I_zz, l_f, l_r, g, mu_x, 
-            mu, B_f, C_f, E_f, B_r, C_r, E_r
-            )
+# Parameter
+Q = np.diag([1e-3, 1e-3, sigma_delta])
+R = np.diag([0.001/180*np.pi, (0.03/3.6)**2])
 
-# create model
-markov_chain = pm.Model()
-with markov_chain as mc:
-    
-    # priors
-    # https://x-engineer.org/tire-model-longitudinal-forces/
-    # https://uk.mathworks.com/help/physmod/sdl/ref/tireroadinteractionmagicformula.html
-    mu = pm.Normal('mu', mu=0.9, sigma=0.1)
-    
-    C_f = pm.Normal('C_f', mu=1.4, sigma=0.5) # shape
-    B_f = pm.Normal('B_f', mu=25, sigma=7) # stiffnes
-    E_f = pm.Normal('E_f', mu=0.0, sigma=0.25) # curve
-    
-    C_r = pm.Normal('C_r', mu=1.4, sigma=0.5) # shape
-    B_r = pm.Normal('B_r', mu=25, sigma=7) # stiffnes
-    E_r = pm.Normal('E_r', mu=0.0, sigma=0.25) # curve
-    
-    # initial state
-    # x_0 = pm.Normal('x_0', mu=x[0:N,:], sigma=[0.02, 0.15])
-    
-    states = [x[0]]
-    for i in tqdm(range(1, N), desc='Chaining states'):
-        state_t = state_space_model(
-            states[i-1], u[i], mu, B_f, C_f, E_f, B_r, C_r, E_r
-            )
-        states.append(state_t)
-    
-    print('Building likelihood')
-    likelihood = pm.Normal('y', mu=states, sigma=[0.02, 0.15], observed=x[1:N+1])
-    
-    print('Sampling')
-    trace = pm.sample(cores=1)
+# generate initial particles
+N = 5000
+X_0 = data[['dpsi', 'v_y', 'Steering_Angle']].to_numpy()[0,:] + np.random.multivariate_normal([0, 0, 0], np.diag([0.001/180*np.pi, (0.03/3.6)**2, sigma_delta]), (N,))
+
+# sample parameters
+theta_mean = default_para[6:]
+Sigma = np.diag([0.01, 0.01, *((theta_mean[2:]*0.1)**2)])
+
+theta_sample = np.random.multivariate_normal(theta_mean, Sigma, (1,))
+
+# start particle filter
+X, w = forward_Bootstrap_PF(Y, U, X_0, theta_sample, Q, R)
+
+# normalize weights
+w = w / np.sum(w, axis=1, keepdims=True)
+
+dpsi = np.sum(X[...,0]*w, axis=1)
+v_y = np.sum(X[...,1]*w, axis=1)
+delta = np.sum(X[...,2]*w, axis=1)
 
 
-# bokeh.plotting.output_file(filename='Trace_Plot.html', title='Trace Plot')
-fig = az.plot_trace(trace, combined=True)
-# bokeh.plotting.save(fig)
-# bokeh.plotting
-plt.show()
 
-summary = az.summary(trace, round_to=2)
-print(summary)
-summary.to_csv('Posterior_Statistics.csv', sep=';')
+fig = make_subplots(3,1)
+
+time = np.arange(data.index[0], data.index[-1]+default_para[0], default_para[0])
+fig.add_trace(
+    go.Scatter(
+            x=time,
+            y=dpsi,
+            mode='lines',
+            name='d_psi'
+        ),
+        row=1,
+        col=1
+    )
+
+fig.add_trace(
+    go.Scatter(
+            x=time,
+            y=v_y,
+            mode='lines',
+            name='v_y'
+        ),
+        row=2,
+        col=1
+    )
+
+fig.add_trace(
+    go.Scatter(
+            x=time,
+            y=delta,
+            mode='lines',
+            name='delta'
+        ),
+        row=3,
+        col=1
+    )
+
+# plot Reference
+fig.add_trace(
+    go.Scatter(
+            x=time,
+            y=data[['dpsi']].to_numpy().flatten(),
+            mode='lines',
+            name='d_psi_ref'
+        ),
+        row=1,
+        col=1
+    )
+
+fig.add_trace(
+    go.Scatter(
+            x=time,
+            y=data[['v_y']].to_numpy().flatten(),
+            mode='lines',
+            name='v_y_ref'
+        ),
+        row=2,
+        col=1
+    )
+
+fig.add_trace(
+    go.Scatter(
+            x=time,
+            y=data[['Steering_Angle']].to_numpy().flatten(),
+            mode='lines',
+            name='delta_ref'
+        ),
+        row=3,
+        col=1
+    )
+
+fig.show()

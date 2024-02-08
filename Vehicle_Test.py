@@ -4,12 +4,12 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-from src.vehicle.Vehicle import f_x, para
+from src.vehicle.Vehicle import f_x, default_para
 
 
 
 t_end = 100
-time = np.arange(0, t_end, para[0])
+time = np.arange(0, t_end, default_para[0])
 
 x = np.zeros((time.size, 2))
 x[0,:] = np.array([0.0, 0.0])
@@ -22,7 +22,7 @@ u[8000:,0] = 0.0
 
 for t in tqdm(np.arange(1, len(time)-1)):
     
-    x[t] = f_x(x[t-1], u[t-1], *para)
+    x[t] = f_x(x[t-1], u[t-1], *default_para)
     
 
 
