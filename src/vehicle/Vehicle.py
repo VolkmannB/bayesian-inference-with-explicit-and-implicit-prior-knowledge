@@ -3,6 +3,7 @@ import math
 import jax
 import jax.numpy as jnp
 import functools
+from tqdm import tqdm
 
 
 
@@ -117,6 +118,12 @@ def p_x_Bootstrap(X_MCMC, u_MCMC, para, key, dt, m, I_zz, l_f, l_r, g, Q):
         )(
             X_MCMC
         )
+        
+    L = default_para[3] + default_para[4]
+    
+    X_MCMC_new.at[:,2].set(jnp.arctan(u_MCMC*L/default_para[4]/X_MCMC_new[:,1]))
+        
+    # X_MCMC_new.at[:,2].set(X_MCMC_new[:,1] + 0.7715*X_MCMC_new[:,0]-X_MCMC[:,0])
     
     return X_MCMC_new + jax.random.multivariate_normal(key, jnp.zeros((Q.shape[0],)), Q, (X_MCMC_new.shape[0],))
 
@@ -126,11 +133,12 @@ def p_x_Bootstrap(X_MCMC, u_MCMC, para, key, dt, m, I_zz, l_f, l_r, g, Q):
 @jax.jit
 def p_y_Bootstrap(X_MCMC, y, R):
     
-    Y_ = X_MCMC[:,:-1]
+    inv_path_radius = jnp.tan(X_MCMC[:,-1])/(default_para[3]+default_para[4])
+    Y_ = jnp.vstack([X_MCMC[:,:-1].T, inv_path_radius]).T
     
     r = Y_ - y
     
-    likelihood = lambda r: jnp.exp(-0.5 * r @ jnp.linalg.solve(R, r))
+    likelihood = lambda r: -0.5 * r @ jnp.linalg.solve(R, r)
     
     return jax.vmap(likelihood)(r)
 
@@ -170,22 +178,24 @@ def forward_Bootstrap_PF(Y, U, X_0, para, Q, R):
     # prepare proposal distribution
     proposal_dist = lambda X, u, key: p_x_Bootstrap(X, u, para, key, *default_para[:6], Q)
     
-    for t in np.arange(1, Y.shape[0]):
+    for t in tqdm(np.arange(1, Y.shape[0]), desc='Simulating PF for SSM'):
         
         # resample previous particles
         key, temp_key = jax.random.split(key)
-        w = unnormalized_weights[t-1,:] / np.sum(unnormalized_weights[t-1,:])
+        w = np.exp(unnormalized_weights[t-1,:])
+        w = w / np.sum(w)
         idx = systematic_resampling(w, temp_key)
+        X_trajectory = X_trajectory[:,idx,:]
         
         # draw samples from the propsal
         key, temp_key = jax.random.split(key)
-        resampled_particles = X_trajectory[t-1, idx, :]
-        X_trajectory[t,...] = proposal_dist(resampled_particles, U[t-1], temp_key)
+        # resampled_particles = X_trajectory[t-1, idx, :]
+        X_trajectory[t,...] = proposal_dist(X_trajectory[t-1,:,:], U[t-1], temp_key)
         
         # weight particles
         unnormalized_weights[t,:] = p_y_Bootstrap(X_trajectory[t,...], Y[t,:], R)
         
-        if np.isclose(0, np.sum(unnormalized_weights[t,:])):
+        if np.isclose(0, np.sum(np.exp(unnormalized_weights[t,:]))):
             raise ValueError(f"Particle depleteion at iteration {t}")
     
     return X_trajectory, unnormalized_weights
