@@ -1,9 +1,9 @@
 import pandas as pd
-from tqdm import tqdm
 import numpy as np
-import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+import scipy.signal
+import scipy.io
 
 
 from src.vehicle.Vehicle import forward_Bootstrap_PF, default_para
@@ -11,11 +11,12 @@ from src.vehicle.Vehicle import forward_Bootstrap_PF, default_para
 
 
 # load measurments
-data = pd.read_csv('src/vehicle/measurment_3.csv', sep=';')
+file_name = 'Measurment_3'
+data = pd.read_csv(f'src/vehicle/{file_name}.csv', sep=';')
 U = data[['v_x']].to_numpy()
 Y = data[['dpsi', 'v_y', 'Inv_Path_Radius']].to_numpy()
 
-# Parameter
+# Noise Parameter
 Q = np.diag([1e-3, 1e-3, 0.02])
 R = np.diag([0.001/180*np.pi, (0.03/3.6)**2, 1e-3])
 
@@ -43,7 +44,7 @@ X_0 = data[['dpsi', 'v_y', 'Steering_Angle']].to_numpy()[0,:] + np.random.multiv
 # Initial PF
 X, log_w = forward_Bootstrap_PF(Y, U, X_0, Theta[0,:], Q, R)
     
-    # save smoothed steering angle
+# save smoothed steering angle
 w = np.exp(log_w[-1,...]) / np.sum(np.exp(log_w[-1,...]))
 Delta[0,:] = np.sum(X[...,2]*w, axis=1)
 
@@ -91,14 +92,14 @@ for i in np.arange(1, M):
         w = np.exp(log_w[-1,...]) / np.sum(np.exp(log_w[-1,...]))
         Delta[i,:] = np.sum(X[...,2]*w, axis=1)
         
+        # save old likelihood 
+        log_P_y_theta_old = log_P_y_theta_new
+        
     else:
         Theta[i,:] = Theta[i-1,:]
         Delta[i,:] = Delta[i-1,:]
         print('Particle rejected')
     
-    # save old likelihood 
-    log_P_y_theta_old = log_P_y_theta_new
-
 
 
 dpsi = np.sum(X[...,0]*w, axis=1)
@@ -106,7 +107,14 @@ v_y = np.sum(X[...,1]*w, axis=1)
 delta = np.mean(Delta, axis=0)
 
 
+# filter steering angle
+sos4 = scipy.signal.butter(4, 0.07, output='sos')
+delta = scipy.signal.sosfiltfilt(sos4, delta)
 
+# save data
+scipy.io.savemat(f'{file_name}.mat', {'Theta': Theta, 'Delta': Delta, 'delta_filt': delta})
+
+# plot results
 fig = make_subplots(3,1)
 
 time = np.arange(data.index[0], data.index[-1]+default_para[0], default_para[0])
@@ -194,3 +202,4 @@ fig.add_trace(
     )
 
 fig.show()
+fig.write_html('PMCMC.html')

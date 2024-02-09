@@ -6,6 +6,8 @@ import functools
 from tqdm import tqdm
 
 
+from src.RGP import gaussian_RBF
+
 
 # x = [dpsi, v_y]
 # u = [delta, v_x]
@@ -63,9 +65,27 @@ def f_x(x, u, dt, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r):
     k1 = f_dx_sim(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
     k2 = f_dx_sim(x + dt*k1/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
     k3 = f_dx_sim(x + dt*k2/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
-    k4 = f_dx_sim(x + dt*k3/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
+    k4 = f_dx_sim(x + dt*k3, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
     
     return x + dt/6.0*(k1+2*k2+2*k3+k4)
+
+
+
+# measurment model
+@jax.jit
+def f_y(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r):
+    
+    F_zf, F_zr = f_Fz(m, g, l_f, l_r)
+    alpha_f, alpha_r = f_alpha(x, u)
+    mu_yf = mu_y(alpha_f, mu, B_f, C_f, E_f)
+    mu_yr = mu_y(alpha_r, mu, B_r, C_r, E_r)
+    
+    dv_y = 1/m*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*mu_x*jnp.sin(u[0])) - u[1]*x[0]
+    
+    return jnp.array([x[0], dv_y])
+    
+    
+    
 
 
 
@@ -101,7 +121,7 @@ def f_x_MCMC(x_MCMC, u_MCMC, para, dt, m, I_zz, l_f, l_r, g):
     k1 = f_dx_sim(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
     k2 = f_dx_sim(x + dt*k1/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
     k3 = f_dx_sim(x + dt*k2/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
-    k4 = f_dx_sim(x + dt*k3/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
+    k4 = f_dx_sim(x + dt*k3, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
     
     x_out = x + dt/6.0*(k1+2*k2+2*k3+k4)
     
@@ -199,3 +219,75 @@ def forward_Bootstrap_PF(Y, U, X_0, para, Q, R):
             raise ValueError(f"Particle depleteion at iteration {t}")
     
     return X_trajectory, unnormalized_weights
+
+
+
+##### Filtering
+
+# features for front and rear tire
+vehicle_RBF_ip = jnp.atleast_2d(jnp.linspace(-20/180*jnp.pi, 20/180*jnp.pi, 11)).T
+vehicle_lengthscale = vehicle_RBF_ip[1] - vehicle_RBF_ip[0]
+H_vehicle = lambda alpha: gaussian_RBF(alpha, vehicle_RBF_ip, vehicle_lengthscale)
+
+def features_MTF_front(x, u):
+    
+    alpha = u[0] + jnp.arctan2(u[1], x[1])
+    
+    return H_vehicle(alpha)
+
+def features_MTF_rear(x, u):
+    
+    alpha = jnp.arctan2(u[1], x[1])
+    
+    return H_vehicle(alpha)
+
+
+
+# SSM for filtering
+# x = [dpsi, v_y, mu_yf, mu_yr]
+@jax.jit
+def dx_filter(x, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x):
+    
+    f_Fz(m, g, l_f, l_r)
+    F_zf, F_zr = f_Fz(m, g, l_f, l_r)
+    
+    mu_yf = x[2]
+    mu_yr = x[3]
+    
+    dv_y = 1/m*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*mu_x*jnp.sin(u[0])) - u[1]*x[0]
+    ddpsi = 1/I_zz*(l_f*F_zf*mu_yf*jnp.cos(u[0]) - l_r*F_zr*mu_yr + l_f*F_zf*mu_x*jnp.sin(u[0]))
+    
+    _, dH_f = jax.jvp(functools.partial(features_MTF_front, u=u), x[:2], jnp.array([ddpsi, dv_y]))
+    _, dH_r = jax.jvp(functools.partial(features_MTF_rear, u=u), x[:2], jnp.array([ddpsi, dv_y]))
+    
+    dmu_yf = dH_f @ theta_f
+    dmu_yr = dH_r @ theta_r
+    
+    return jnp.array([ddpsi, dv_y, dmu_yf, dmu_yr])
+
+
+
+# time discrete SSM with Runge-Kutta 4
+@jax.jit
+def fx_filter(x, u, theta_f, theta_r, dt, m, I_zz, l_f, l_r, g, mu_x):
+    
+    k1 = dx_filter(x, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x)
+    k2 = dx_filter(x + dt*k1/2.0, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x)
+    k3 = dx_filter(x + dt*k2/2.0, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x)
+    k4 = dx_filter(x + dt*k3, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x)
+    
+    return x + dt/6.0*(k1 + 2*k2 + 2*k3 + k4)
+
+
+@jax.jit
+def fy_filter(x, u, m, I_zz, l_f, l_r, g, mu_x):
+    
+    f_Fz(m, g, l_f, l_r)
+    F_zf, F_zr = f_Fz(m, g, l_f, l_r)
+    
+    mu_yf = x[2]
+    mu_yr = x[3]
+    
+    dv_y = 1/m*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*mu_x*jnp.sin(u[0])) - u[1]*x[0]
+    
+    jnp.array([x[0], dv_y])
