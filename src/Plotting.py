@@ -31,7 +31,7 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
     P_pred = np.var(Sigma_X, axis=1)
 
     # calculate ground truth for spring damper force
-    grid_F = F_spring(grid_x, model_para['c1'], model_para['c2']) + F_damper(grid_y, model_para['d1'], model_para['d2'])
+    grid_F = F_spring(grid_x, **model_para) + F_damper(grid_y, **model_para)
     
     # resample time
     samples = 10
