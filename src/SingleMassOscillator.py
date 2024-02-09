@@ -7,115 +7,47 @@ from src.RGP import gaussian_RBF
 
 #### This section defines the simulated single mass oscillator
 
-def F_spring(x, c1, c2):
-    return c1*x+c2*x**3
+def F_spring(x, **para):
+    return para['c1'] * x + para['c2'] * x**3
 
 
 
-def F_damper(dx, d1, d2):
-    return d1*dx * (1/(1+d2*dx*np.tanh(dx)))
+def F_damper(dx, **para):
+    return para['d1']*dx * (1/(1+para['d2']*dx*jnp.tanh(dx)))
 
 
 
-def dx(x, F, m, c1, c2, d1, d2):
-    
-    F_s = F_spring(x[0], c1, c2)
-    F_d= F_damper(x[1], d1, d2)
-    
-    return np.array(
-        [x[1], -F_s/m - F_d/m + F/m + 9.81]
+def dx(x, F, F_sd, **para):
+    return jnp.array(
+        [x[1], -F_sd/para['m'] + F/para['m'] + 9.81]
     )
 
 
 
-def f_x(x, F, m, c1, c2, d1, d2, dt):
+def dx_sim(x, F, **para):
+    
+    F_s = F_spring(x[0], **para)
+    F_d= F_damper(x[1], **para)
+    
+    return dx(x, F, F_s+F_d, **para)
+
+
+
+@jax.jit
+def f_x_sim(x, F, **para):
     
     # Runge-Kutta 4
-    k1 = dx(x, F, m, c1, c2, d1, d2)
-    k2 = dx(x+dt/2.0*k1, F, m, c1, c2, d1, d2)
-    k3 = dx(x+dt/2.0*k2, F, m, c1, c2, d1, d2)
-    k4 = dx(x+dt*k3, F, m, c1, c2, d1, d2)
-    x = x + dt/6.0*(k1+2*k2+2*k3+k4) 
+    k1 = dx_sim(x, F, **para)
+    k2 = dx_sim(x+para['dt']/2.0*k1, F, **para)
+    k3 = dx_sim(x+para['dt']/2.0*k2, F, **para)
+    k4 = dx_sim(x+para['dt']*k3, F, **para)
+    x = x + para['dt']/6.0*(k1+2*k2+2*k3+k4) 
     
     return x
-
-
-
-class SingleMassOscillator():
-    """
-    This class represents the single mass oscillator
-    """
-    
-    def __init__(
-        self, 
-        x0 = np.array([0., 0.]),
-        Q = np.diag([5e-6, 5e-7]),
-        R = np.array([[1e-2]]),
-        m=2., 
-        c1=10., 
-        c2=2., 
-        d1=0.4, 
-        d2=0.4
-        ) -> None:
-        
-        if m <= 0:
-            raise ValueError("Mass must be positive")
-        if c1 <=0 or c2 < 0:
-            raise ValueError("Spring coefficients ust be c1 >= 0 or c2 > 0")
-        if d1 <=0 or d2 < 0:
-            raise ValueError("Spring coefficients ust be d1 >= 0 or d2 > 0")
-        
-        self.m = m
-        self.c1 = c1
-        self.c2 = c2
-        self.d1 = d1
-        self.d2 = d2
-        
-        self.x = x0
-        
-        self.Q = Q
-        self.R = R
-    
-    
-    
-    def update(self, F: float, dt: float):
-        """
-        Time update for internal state using the ode and Runge-Kutta 4 integration.
-        Gaussian process noise is added.
-
-        Args:
-            F (float): External force excitation
-            dt (float): Timr step for integration
-        """
-        
-        m = self.m
-        c1 = self.c1
-        c2 = self.c2
-        d1 = self.d1
-        d2 = self.d2
-        
-        # Runge-Kutta 4
-        k1 = dx(self.x, F, m, c1, c2, d1, d2)
-        k2 = dx(self.x+dt/2.0*k1, F, m, c1, c2, d1, d2)
-        k3 = dx(self.x+dt/2.0*k2, F, m, c1, c2, d1, d2)
-        k4 = dx(self.x+dt*k3, F, m, c1, c2, d1, d2)
-        self.x = self.x + dt/6.0*(k1+2*k2+2*k3+k4) + np.random.randn(*self.x.shape) @ np.linalg.cholesky(self.Q).T
-    
-    
-    
-    def measurent(self):
-        """
-        Generates a noisy measurment.
-        """
-        return self.x[0] + np.random.randn(1)*np.linalg.cholesky(self.R).T
     
     
     
 #### this section defines functions related to the state space model of the filtering problem
-
-# the ode for the states of the single mass oscilator
-def dx_SMO(x, m, F):
-    return jnp.stack([x[...,1], -x[...,2]/m + F/m + 9.81], axis=-1)
 
 # RBF for GP (the feature vector)
 x_points = np.arange(-5., 5.1, 1.)
@@ -128,30 +60,26 @@ H = lambda x: gaussian_RBF(
     lengthscale=jnp.array([1.])
 )
 
-# gradient of the Features wrt. time: dH/dt = dH/dx @ dx/dt (total differential)
-# batched jacobian vector product
-def dH_dt(H, x, m, F):
-    jvp = lambda x, v: jax.jvp(H, (x,), (v,))[1]
-    return jnp.squeeze(jax.vmap(jvp)(x[...,[0,1]], dx_SMO(x, m, F)))
 
-# ode of SMO and spring damper force for the filter
-dx_KF = lambda x, m, F, theta: jnp.concatenate(
-    [
-        dx_SMO(x,m,F), # ode of system state
-        jax.vmap(jnp.dot)(
-            dH_dt(H, x, m, F),
-            theta
-        )[...,jnp.newaxis] # change of perceived spring damper force due to movent in state space
-    ], 
-    axis=-1
-    )
+
+# the ode for the KF
+def dx_KF(x, F, theta, **para):
+    
+    x_dot = dx(x[:2], F, x[2], **para)
+    
+    dH_dt = jax.jvp(H, (x[:2],), (x_dot,))[1]
+    
+    return jnp.hstack([x_dot, dH_dt@theta])
+    
+    
 
 # time discrete state space model for the filter with Runge-Kutta 4 integration
-def fx_KF(dx, x, m, F, theta, dt):
+@jax.jit
+def fx_KF(x, F, theta, **para):
     
-    k1 = dx(x, m, F, theta)
-    k2 = dx(x+dt*k1/2, m, F, theta)
-    k3 = dx(x+dt*k2/2, m, F, theta)
-    k4 = dx(x+dt*k3, m, F, theta)
+    k1 = dx_KF(x, F, theta, **para)
+    k2 = dx_KF(x+para['dt']*k1/2, F, theta, **para)
+    k3 = dx_KF(x+para['dt']*k2/2, F, theta, **para)
+    k4 = dx_KF(x+para['dt']*k3, F, theta, **para)
     
-    return x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
+    return x + para['dt']/6*(k1 + 2*k2 + 2*k3 + k4)
