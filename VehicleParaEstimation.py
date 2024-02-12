@@ -7,6 +7,7 @@ import scipy.io
 
 
 from src.vehicle.Vehicle import forward_Bootstrap_PF, default_para
+from src.RGP import gaussian_RBF
 
 
 
@@ -26,7 +27,7 @@ Sigma = np.diag([0.01, 0.01, *((theta_mean[2:]*0.1)**2)])
 
 # Number of Particles
 N = 5000
-M = 10
+M = 5
 
 # Logging
 Theta = np.zeros((M, theta_mean.shape[0]))
@@ -42,7 +43,12 @@ Theta[0,:] = np.random.multivariate_normal(theta_mean, Sigma, (1,))
 X_0 = data[['dpsi', 'v_y', 'Steering_Angle']].to_numpy()[0,:] + np.random.multivariate_normal([0, 0, 0], np.diag([0.001/180*np.pi, (0.03/3.6)**2, Q[2,2]]), (N,))
 
 # Initial PF
-X, log_w = forward_Bootstrap_PF(Y, U, X_0, Theta[0,:], Q, R)
+while True:
+    try:
+        X, log_w = forward_Bootstrap_PF(Y, U, X_0, Theta[0,:], Q, R)
+        break
+    except:
+        print('Experienced particle depletion and starting over')
     
 # save smoothed steering angle
 w = np.exp(log_w[-1,...]) / np.sum(np.exp(log_w[-1,...]))
@@ -106,10 +112,16 @@ dpsi = np.sum(X[...,0]*w, axis=1)
 v_y = np.sum(X[...,1]*w, axis=1)
 delta = np.mean(Delta, axis=0)
 
+time = np.arange(0, default_para[0]*data.index[-1]+default_para[0], default_para[0])
 
-# filter steering angle
-sos4 = scipy.signal.butter(4, 0.07, output='sos')
-delta = scipy.signal.sosfiltfilt(sos4, delta)
+# filter steering angle with rbf-kernel
+ip = np.arange(0, default_para[0]*data.index[-1]+0.75, 0.75/2)
+Psi = gaussian_RBF(np.atleast_2d(time).T, np.atleast_2d(ip).T, 0.5)
+delta_w = np.linalg.lstsq(Psi, delta, rcond=None)[0]
+delta = Psi @ delta_w
+
+delta_RMSE = np.std(data[['Steering_Angle']].to_numpy().flatten() - delta)
+print(f'RMSE for steering angle is {delta_RMSE}')
 
 # save data
 scipy.io.savemat(f'{file_name}.mat', {'Theta': Theta, 'Delta': Delta, 'delta_filt': delta})
@@ -117,7 +129,6 @@ scipy.io.savemat(f'{file_name}.mat', {'Theta': Theta, 'Delta': Delta, 'delta_fil
 # plot results
 fig = make_subplots(3,1)
 
-time = np.arange(data.index[0], data.index[-1]+default_para[0], default_para[0])
 fig.add_trace(
     go.Scatter(
             x=time,
