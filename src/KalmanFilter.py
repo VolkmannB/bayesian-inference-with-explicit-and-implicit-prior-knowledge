@@ -3,7 +3,8 @@ import numpy.typing as npt
 import typing as tp
 import itertools
 import abc
-
+import jax
+import jax.numpy as jnp
 
 
 def sigma_point_transform(
@@ -112,6 +113,30 @@ def squared_error(x, y, cov):
     return np.exp(-0.5 * r)
 
 
+
+@jax.jit
+def EnKF_update(sigma_x, sigma_y, y, R):
+    
+    N = sigma_x.shape[0]
+    
+    mean_y = jnp.mean(sigma_y, axis=0)
+    mean_x = jnp.mean(sigma_x, axis=0)
+    
+    x_centered = sigma_x - mean_x
+    y_centered = sigma_y - mean_y
+    
+    P_yy = 1/(N-1) * jnp.einsum('ji,jk->ik', y_centered, y_centered) + R
+    P_xy = 1/(N-1) * jnp.einsum('ji,jk->ik', x_centered, y_centered)
+    
+    K_T = jnp.linalg.solve(P_yy, P_xy.T)
+    
+    return sigma_x + (y - sigma_y) @ K_T
+
+
+
+################################################################################
+    
+    
 
 class BaseFilter(abc.ABC):
     
@@ -487,114 +512,3 @@ class EnsambleKalmanFilter(BaseFilter):
         mu_x = self.x_post
         
         self._sigma_x = mu_x + np.random.randn(*self._sigma_x.shape) @ np.linalg.cholesky(P_x).T
-
-
-
-class GaussHermiteKalmanFilter(BaseFilter):
-    
-    def __init__(
-        self, 
-        x0: npt.ArrayLike,
-        P0: npt.ArrayLike,
-        f_x: tp.Callable, 
-        f_y: tp.Callable,
-        Q: npt.ArrayLike, 
-        R: npt.ArrayLike,
-        N: int = 3
-        ) -> None:
-        
-        super().__init__(Q, R)
-        
-        # set state and measurment model
-        if not callable(f_x):
-            raise ValueError('State space model must be callable')
-        self.f_x = f_x
-        if not callable(f_y):
-            raise ValueError('Measurment model must be callable')
-        self.f_y = f_y
-        
-        # set state prior
-        x_ = np.array(x0)
-        P_ = np.array(P0)
-        if x_.shape[0] != self._n_x:
-            raise ValueError('Prior mean for state does not match noise covariance matrix')
-        if P_.shape[0] != self._n_x or P_.shape[1] != self._n_x:
-            raise ValueError('Shape of prior covariance for state does not match noise covariance matrix')
-        self._x = x_
-        self._P = P_
-        
-        # these will always be a copy of x,P after predict() is called
-        self.x_prior = self._x.copy()
-        self.P_prior = self._P.copy()
-
-        # these will always be a copy of x,P after update() is called
-        self.x_post = self._x.copy()
-        self.P_post = self._P.copy()
-        
-        # order of cubature transformation
-        self.N = N
-    
-    
-    
-    def predict(self, **fx_args):
-        
-        # save prior
-        self.x_prior = np.copy(self._x)
-        self.P_prior = np.copy(self._P)
-        
-        # create sigma points
-        w, sigma_x = GaussHermiteCubature(
-            self._x, 
-            self._P,
-            N=self.N
-            )
-        
-        # transform sigma points
-        sigma_x = self.f_x(sigma_x, **fx_args)
-        
-        # calculate predictive distribution
-        self._x = sigma_x.T @ w
-        sigma_x = sigma_x - self._x
-        P_ = np.einsum('mn, mN->mnN', sigma_x, sigma_x)
-        self._P = np.einsum('m, mnN->nN', w, P_) + self.Q
-        
-        
-        
-    def update(self, y:npt.ArrayLike, **fy_args):
-        
-        # generate sigma points
-        w, sigma_X = GaussHermiteCubature(
-            self._x, 
-            self._P,
-            N=self.N
-            )
-        
-        # get sigma points for measurment
-        sigma_y = self.f_y(sigma_X, **fy_args)
-        
-        # get measurment distribution
-        y_ = sigma_y.T @ w
-        sigma_y = sigma_y - y_
-        P_yy_ = np.einsum('mn, mN->mnN', sigma_y, sigma_y)
-        P_yy = np.einsum('m, mnN->nN', w, P_yy_) + self.R
-        
-        # get Kalman gain
-        P_xy_ = np.einsum('mn, mN->mnN', sigma_X - self._x, sigma_y)
-        P_xy = np.einsum('m, mnN->nN', w, P_xy_)
-        K_T = np.linalg.solve(P_yy,P_xy.T)
-        
-        # calculate measurment update
-        self._x = self._x + K_T.T @ (y - y_)
-        self._P = self._P - K_T.T @ P_yy @ K_T
-        
-        # save posterior
-        self.x_post = np.copy(self._x)
-        self.P_post = np.copy(self._P)
-    
-    @property
-    def x(self):
-        return self._x
-    
-    @property
-    def P(self):
-        return self._P
