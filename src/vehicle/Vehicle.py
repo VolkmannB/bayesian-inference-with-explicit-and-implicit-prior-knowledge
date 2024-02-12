@@ -15,16 +15,19 @@ from src.RGP import gaussian_RBF
 ##### Simulation
 
 # tire load
-def f_Fz(m, g, l_f, l_r):
+def f_Fz(**para):
     
-    l = l_f + l_r
-    F_zf = m*g*l_r/l
-    F_zr = m*g*l_f/l
+    l = para['l_f'] + para['l_r']
+    mg = para['m']*para['g']
+    F_zf = mg*para['l_r']/l
+    F_zr = mg*para['l_f']/l
+    
     return F_zf, F_zr
 
 
 
 # friction MTF curve
+@jax.jit
 def mu_y(alpha, mu, B, C, E):
     
     return mu * jnp.sin(C * jnp.arctan(B*(1-E)*jnp.tan(alpha) + E*jnp.arctan(B*jnp.tan(alpha))))
@@ -32,55 +35,64 @@ def mu_y(alpha, mu, B, C, E):
 
 
 # side slip
-def f_alpha(x, u):
+@jax.jit
+def f_alpha(x, u, **para):
 
     vx_f = u[1]
-    vy_f = x[1]
+    vy_f = x[1] + x[0]*para['l_f']
     
     vx_r = u[1]
-    vy_r = x[1]
+    vy_r = x[1] - x[0]*para['l_f']
     
-    return u[0]-jnp.arctan2(vx_f, vy_f), jnp.arctan2(vx_r, vy_r)
+    return u[0]-jnp.arctan(vy_f/vx_f), -jnp.arctan(vy_r/vx_r)
+
+
+
+def dx(x, u, mu_yf, mu_yr, **para):
+    
+    F_zf, F_zr = f_Fz(**para)
+    
+    dv_y = 1/para['m']*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*para['mu_x']*jnp.sin(u[0])) - u[1]*x[0]
+    ddpsi = 1/para['I_zz']*(para['l_f']*F_zf*mu_yf*jnp.cos(u[0]) - para['l_r']*F_zr*mu_yr + para['l_f']*F_zf*para['mu_x']*jnp.sin(u[0]))
+    
+    return jnp.stack([ddpsi, dv_y])
+
 
 
 # state space model
-def f_dx_sim(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r):
+def f_dx_sim(x, u, **para):
     
-    F_zf, F_zr = f_Fz(m, g, l_f, l_r)
-    alpha_f, alpha_r = f_alpha(x, u)
-    mu_yf = mu_y(alpha_f, mu, B_f, C_f, E_f)
-    mu_yr = mu_y(alpha_r, mu, B_r, C_r, E_r)
+    alpha_f, alpha_r = f_alpha(x, u, **para)
+    mu_yf = mu_y(alpha_f, para['mu'], para['B_f'], para['C_f'], para['E_f'])
+    mu_yr = mu_y(alpha_r, para['mu'], para['B_r'], para['C_r'], para['E_r'])
     
-    dv_y = 1/m*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*mu_x*jnp.sin(u[0])) - u[1]*x[0]
-    dpsi = 1/I_zz*(l_f*F_zf*mu_yf*jnp.cos(u[0]) - l_r*F_zr*mu_yr + l_f*F_zf*mu_x*jnp.sin(u[0]))
-    
-    return jnp.stack([dv_y, dpsi])
+    return dx(x, u, mu_yf, mu_yr, **para)
 
 
 
 # time discrete state space pdel with Runge-Kutta-4
 @jax.jit
-def f_x(x, u, dt, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r):
+def f_x_sim(x, u, **para):
     
-    k1 = f_dx_sim(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
-    k2 = f_dx_sim(x + dt*k1/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
-    k3 = f_dx_sim(x + dt*k2/2.0, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
-    k4 = f_dx_sim(x + dt*k3, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
+    k1 = f_dx_sim(x, u, **para)
+    k2 = f_dx_sim(x + para['dt']*k1/2.0, u, **para)
+    k3 = f_dx_sim(x + para['dt']*k2/2.0, u, **para)
+    k4 = f_dx_sim(x + para['dt']*k3, u, **para)
     
-    return x + dt/6.0*(k1+2*k2+2*k3+k4)
+    return x + para['dt']/6.0*(k1+2*k2+2*k3+k4)
 
 
 
 # measurment model
 @jax.jit
-def f_y(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r):
+def f_y(x, u, **para):
     
-    F_zf, F_zr = f_Fz(m, g, l_f, l_r)
+    F_zf, F_zr = f_Fz(**para)
     alpha_f, alpha_r = f_alpha(x, u)
-    mu_yf = mu_y(alpha_f, mu, B_f, C_f, E_f)
-    mu_yr = mu_y(alpha_r, mu, B_r, C_r, E_r)
+    mu_yf = mu_y(alpha_f, para['mu'], para['B_f'], para['C_f'], para['E_f'])
+    mu_yr = mu_y(alpha_r, para['mu'], para['B_r'], para['C_r'], para['E_r'])
     
-    dv_y = 1/m*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*mu_x*jnp.sin(u[0])) - u[1]*x[0]
+    dv_y = 1/para['m']*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*para['mu_x']*jnp.sin(u[0])) - u[1]*x[0]
     
     return jnp.array([x[0], dv_y])
     
@@ -89,23 +101,23 @@ def f_y(x, u, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r):
 
 
 
-##### Parameters (dt, m, I_zz, l_f, l_r, g, mu_x, mu, B_f, C_f, E_f, B_r, C_r, E_r)
-default_para = jnp.array([
-    0.01, # dt
-    1720, # m
-    1827.5431059723351, # J_z
-    1.1625348837209302, # l_f
-    1.4684651162790696, #l_r
-    9.81, # g
-    0.9, # mu_x
-    0.9, # mu
-    10.0, # B_f
-    1.9, # C_f
-    0.97, # E_f
-    10.0, # B_r
-    1.9, # C_r
-    0.97, # E_r
-])
+##### default arameters
+default_para = {
+    'dt': 0.01,
+    'm': 1720,
+    'I_zz': 1827.5431059723351,
+    'l_f': 1.1625348837209302,
+    'l_r': 1.4684651162790696,
+    'g':9.81,
+    'mu_x': 0.9,
+    'mu': 0.9,
+    'B_f': 10.0,
+    'C_f': 1.9,
+    'E_f': 0.97,
+    'B_r': 10.0,
+    'C_r': 1.9,
+    'E_r': 0.97
+}
 
 
 
@@ -246,16 +258,12 @@ def features_MTF_rear(x, u):
 # SSM for filtering
 # x = [dpsi, v_y, mu_yf, mu_yr]
 @jax.jit
-def dx_filter(x, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x):
-    
-    f_Fz(m, g, l_f, l_r)
-    F_zf, F_zr = f_Fz(m, g, l_f, l_r)
+def dx_filter(x, u, theta_f, theta_r, **para):
     
     mu_yf = x[2]
     mu_yr = x[3]
     
-    dv_y = 1/m*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*mu_x*jnp.sin(u[0])) - u[1]*x[0]
-    ddpsi = 1/I_zz*(l_f*F_zf*mu_yf*jnp.cos(u[0]) - l_r*F_zr*mu_yr + l_f*F_zf*mu_x*jnp.sin(u[0]))
+    dv_y, ddpsi = dx(x[0:2], u, mu_yf, mu_yr, **para)
     
     _, dH_f = jax.jvp(functools.partial(features_MTF_front, u=u), x[:2], jnp.array([ddpsi, dv_y]))
     _, dH_r = jax.jvp(functools.partial(features_MTF_rear, u=u), x[:2], jnp.array([ddpsi, dv_y]))
@@ -263,7 +271,7 @@ def dx_filter(x, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x):
     dmu_yf = dH_f @ theta_f
     dmu_yr = dH_r @ theta_r
     
-    return jnp.array([ddpsi, dv_y, dmu_yf, dmu_yr])
+    return jnp.array([dv_y, ddpsi, dmu_yf, dmu_yr])
 
 
 
