@@ -88,7 +88,7 @@ def f_x_sim(x, u, **para):
 def f_y(x, u, **para):
     
     F_zf, F_zr = f_Fz(**para)
-    alpha_f, alpha_r = f_alpha(x, u)
+    alpha_f, alpha_r = f_alpha(x, u, **para)
     mu_yf = mu_y(alpha_f, para['mu'], para['B_f'], para['C_f'], para['E_f'])
     mu_yr = mu_y(alpha_r, para['mu'], para['B_r'], para['C_r'], para['E_r'])
     
@@ -241,15 +241,21 @@ vehicle_RBF_ip = jnp.atleast_2d(jnp.linspace(-20/180*jnp.pi, 20/180*jnp.pi, 11))
 vehicle_lengthscale = vehicle_RBF_ip[1] - vehicle_RBF_ip[0]
 H_vehicle = lambda alpha: gaussian_RBF(alpha, vehicle_RBF_ip, vehicle_lengthscale)
 
-def features_MTF_front(x, u):
+@jax.jit
+def features_MTF_front(x, u, **para):
     
-    alpha = u[0] + jnp.arctan2(u[1], x[1])
+    vx = u[1]
+    vy = x[1] + x[0]*para['l_f']
+    alpha = u[0] - jnp.arctan(vy/vx)
     
     return H_vehicle(alpha)
 
-def features_MTF_rear(x, u):
+@jax.jit
+def features_MTF_rear(x, u, **para):
     
-    alpha = jnp.arctan2(u[1], x[1])
+    vx = u[1]
+    vy = x[1] - x[0]*para['l_f']
+    alpha = -jnp.arctan(vy/vx)
     
     return H_vehicle(alpha)
 
@@ -265,8 +271,8 @@ def dx_filter(x, u, theta_f, theta_r, **para):
     
     dv_y, ddpsi = dx(x[0:2], u, mu_yf, mu_yr, **para)
     
-    _, dH_f = jax.jvp(functools.partial(features_MTF_front, u=u), x[:2], jnp.array([ddpsi, dv_y]))
-    _, dH_r = jax.jvp(functools.partial(features_MTF_rear, u=u), x[:2], jnp.array([ddpsi, dv_y]))
+    _, dH_f = jax.jvp(functools.partial(features_MTF_front, u=u, **para), (x[:2],), (jnp.array([ddpsi, dv_y]),))
+    _, dH_r = jax.jvp(functools.partial(features_MTF_rear, u=u, **para), (x[:2],), (jnp.array([ddpsi, dv_y]),))
     
     dmu_yf = dH_f @ theta_f
     dmu_yr = dH_r @ theta_r
@@ -277,25 +283,24 @@ def dx_filter(x, u, theta_f, theta_r, **para):
 
 # time discrete SSM with Runge-Kutta 4
 @jax.jit
-def fx_filter(x, u, theta_f, theta_r, dt, m, I_zz, l_f, l_r, g, mu_x):
+def fx_filter(x, u, theta_f, theta_r, **para):
     
-    k1 = dx_filter(x, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x)
-    k2 = dx_filter(x + dt*k1/2.0, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x)
-    k3 = dx_filter(x + dt*k2/2.0, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x)
-    k4 = dx_filter(x + dt*k3, u, theta_f, theta_r, m, I_zz, l_f, l_r, g, mu_x)
+    k1 = dx_filter(x, u, theta_f, theta_r, **para)
+    k2 = dx_filter(x + para['dt']*k1/2.0, u, theta_f, theta_r, **para)
+    k3 = dx_filter(x + para['dt']*k2/2.0, u, theta_f, theta_r, **para)
+    k4 = dx_filter(x + para['dt']*k3, u, theta_f, theta_r, **para)
     
-    return x + dt/6.0*(k1 + 2*k2 + 2*k3 + k4)
+    return x + para['dt']/6.0*(k1 + 2*k2 + 2*k3 + k4)
 
 
 @jax.jit
-def fy_filter(x, u, m, I_zz, l_f, l_r, g, mu_x):
+def fy_filter(x, u, **para):
     
-    f_Fz(m, g, l_f, l_r)
-    F_zf, F_zr = f_Fz(m, g, l_f, l_r)
+    F_zf, F_zr = f_Fz(**para)
     
     mu_yf = x[2]
     mu_yr = x[3]
     
-    dv_y = 1/m*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*mu_x*jnp.sin(u[0])) - u[1]*x[0]
+    dv_y = 1/para['m']*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*para['mu_x']*jnp.sin(u[0])) - u[1]*x[0]
     
-    jnp.array([x[0], dv_y])
+    return jnp.array([x[0], dv_y])
