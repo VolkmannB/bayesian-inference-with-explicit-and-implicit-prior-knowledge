@@ -15,15 +15,13 @@ x = np.zeros((time.size, 2))
 x[0,:] = np.array([0.0, 0.0])
 u = np.zeros((time.size, 2))
 u[:,1] = 8.0
-u[4000:,0] = 5/180*np.pi
-u[6000:,0] = -5/180*np.pi
-u[8000:,0] = 0.0
+u[3000:,0] = 10/180*np.pi
+u[4000:,0] = 0
+u[5000:,0] = -10/180*np.pi
+u[6000:,0] = 0
 
 
 for t in tqdm(np.arange(1, len(time)-1)):
-    
-    if u[t-1,0] != 0:
-        pass
     
     x[t] = f_x_sim(x[t-1], u[t-1], **default_para)
     
