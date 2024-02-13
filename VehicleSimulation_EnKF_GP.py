@@ -53,7 +53,7 @@ mu_f_model = EnsambleGP(
     basis_function=H_vehicle,
     n_basis=len(vehicle_RBF_ip),
     w0=np.zeros(vehicle_RBF_ip.shape[0]),
-    cov0=H_vehicle(vehicle_RBF_ip).T @ H_vehicle(vehicle_RBF_ip)*10,
+    cov0=H_vehicle(vehicle_RBF_ip).T @ H_vehicle(vehicle_RBF_ip),
     N=N,
     error_cov=0.001
 )
@@ -64,7 +64,7 @@ mu_r_model = EnsambleGP(
     basis_function=H_vehicle,
     n_basis=len(vehicle_RBF_ip),
     w0=np.zeros(vehicle_RBF_ip.shape[0]),
-    cov0=H_vehicle(vehicle_RBF_ip).T @ H_vehicle(vehicle_RBF_ip)*10,
+    cov0=H_vehicle(vehicle_RBF_ip).T @ H_vehicle(vehicle_RBF_ip),
     N=N,
     error_cov=0.001
 )
@@ -105,21 +105,8 @@ CW_r = np.zeros((steps, vehicle_RBF_ip.shape[0], vehicle_RBF_ip.shape[0]))
 
 # input
 u = np.zeros((steps,2))
-u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/7) * np.exp(-0.5*(time-t_end/2)**2/(0.5*t_end/3.4)**2)
+u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/4) * np.exp(-0.5*(time-t_end/2)**2/(0.5*t_end/3.4)**2)
 u[:,1] = 8.0
-
-# initial training
-alpha_f, alpha_r = jax.vmap(functools.partial(f_alpha, u=u[0], **default_para))(x=Sigma_X[0,:,0:2])
-mu_f_model.ensample_update(
-    np.atleast_2d(alpha_f).T,
-    Sigma_X[0,:,2],
-    np.var(Sigma_X[0,:,2])
-)
-mu_r_model.ensample_update(
-    np.atleast_2d(alpha_r).T,
-    Sigma_X[0,:,3],
-    np.var(Sigma_X[0,:,3])
-)
 
 # initial values
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,))
