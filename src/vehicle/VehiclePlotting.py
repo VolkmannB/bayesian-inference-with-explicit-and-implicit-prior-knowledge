@@ -199,10 +199,11 @@ def generate_Vehicle_Animation(X, Y, u, mu_yf, mu_yr, Sigma_X, W_f, CW_f, W_r, C
     )
     
     # estimated MTF front
-    mu_f_ = H_vehicle(np.atleast_2d(alpha).T) @ W_f[0,...]
+    mu_frac = 10
+    mu_f_ = H_vehicle(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_f[0,...]
     fig.add_trace(
         go.Scatter(
-                x=alpha,
+                x=alpha[0:-1:mu_frac],
                 y=mu_f_,
                 mode='markers',
                 name='GP mu_yf',
@@ -213,10 +214,10 @@ def generate_Vehicle_Animation(X, Y, u, mu_yf, mu_yr, Sigma_X, W_f, CW_f, W_r, C
         )
     
     # estimated MTF rear
-    mu_r_ = H_vehicle(np.atleast_2d(alpha).T) @ W_r[0,...]
+    mu_r_ = H_vehicle(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_r[0,...]
     fig.add_trace(
         go.Scatter(
-                x=alpha,
+                x=alpha[0:-1:mu_frac],
                 y=mu_r_,
                 mode='markers',
                 name='GP mu_yr',
@@ -262,18 +263,18 @@ def generate_Vehicle_Animation(X, Y, u, mu_yf, mu_yr, Sigma_X, W_f, CW_f, W_r, C
         ts_vy = go.Scatter(x=[time[i], time[i]], y=[vy_min, vy_max], mode='lines', line=dict(color='red', width=2))
         
         # MTF front
-        mu_f_ = H_vehicle(np.atleast_2d(alpha).T) @ W_f[i,...]
+        mu_f_ = H_vehicle(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_f[i,...]
         MTF_f = go.Scatter(
-            x=alpha, 
+            x=alpha[0:-1:mu_frac], 
             y=mu_f_
             # mode='lines',
             # line=dict(color='orange', width=4, dash='dot')
             )
         
         # MTF rear
-        mu_r_ = H_vehicle(np.atleast_2d(alpha).T) @ W_r[i,...]
+        mu_r_ = H_vehicle(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_r[i,...]
         MTF_r = go.Scatter(
-            x=alpha, 
+            x=alpha[0:-1:mu_frac], 
             y=mu_r_
             # mode='lines',
             # line=dict(color='orange', width=4, dash='dot')
