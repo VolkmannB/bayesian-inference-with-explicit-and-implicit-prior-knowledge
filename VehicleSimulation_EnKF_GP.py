@@ -11,29 +11,6 @@ from src.KalmanFilter import EnKF_update
 from src.vehicle.VehiclePlotting import generate_Vehicle_Animation
 
 
-def oscillating_step_signal(amplitude, hold_time, num_samples):
-    """
-    Generates an oscillating step signal with the given amplitude and hold time.
-
-    Parameters:
-        amplitude (float): The amplitude of the step signal.
-        hold_time (int): The number of samples to hold the signal at each level.
-        num_samples (int): The total number of samples in the output signal.
-
-    Returns:
-        numpy.ndarray: The oscillating step signal.
-    """
-    signal = np.zeros(num_samples)
-    step = 2 * amplitude / hold_time
-    
-    # Generate the oscillating step signal
-    for i in range(0, num_samples, hold_time * 2):
-        signal[i:i + hold_time] = amplitude
-        signal[i + hold_time:i + 2 * hold_time] = -amplitude
-
-    return signal
-
-
 
 ################################################################################
 # Model
@@ -81,7 +58,7 @@ x_part = np.zeros((N,3))
 
 # noise
 R = np.diag([0.01/180*np.pi, 1e-3])
-Q = np.diag([5e-6, 5e-7, 1e-4, 1e-4])
+Q = np.diag([5e-6, 5e-7, 1e-4, 1e-3])
 w = lambda size=(): np.random.multivariate_normal(np.zeros((Q.shape[0],)), Q, size)
 e = lambda size=(): np.random.multivariate_normal(np.zeros((R.shape[0],)), R, size)
 
@@ -93,8 +70,6 @@ e = lambda size=(): np.random.multivariate_normal(np.zeros((R.shape[0],)), R, si
 # time series for plot
 X = np.zeros((steps,2)) # sim
 Y = np.zeros((steps,2))
-mu_yf = np.zeros((steps,))
-mu_yr = np.zeros((steps,))
 
 Sigma_X = np.zeros((steps,N,4))
 
@@ -105,7 +80,7 @@ CW_r = np.zeros((steps, vehicle_RBF_ip.shape[0], vehicle_RBF_ip.shape[0]))
 
 # input
 u = np.zeros((steps,2))
-u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/4) * np.exp(-0.5*(time-t_end/2)**2/(0.5*t_end/3.4)**2)
+u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * np.exp(-0.5*(time-t_end/2)**2/(0.5*t_end/3.4)**2)
 u[:,1] = 8.0
 
 # initial values
@@ -132,10 +107,6 @@ mu_r_model.ensample_update(
 for i in tqdm(range(1,steps), desc="Running simulation"):
     
     ####### Model simulation
-    alpha_f, alpha_r = f_alpha(X[i-1], u[i-1], **default_para)
-    mu_yf[i-1] = mu_y(alpha_f, default_para['mu'], default_para['B_f'], default_para['C_f'], default_para['E_f'])
-    mu_yr[i-1] = mu_y(alpha_r, default_para['mu'], default_para['B_r'], default_para['C_r'], default_para['E_r'])
-    
     X[i] = f_x_sim(X[i-1], u[i-1], **default_para)
     Y[i] = f_y(X[i], u[i-1], **default_para) + e()
     
@@ -177,5 +148,5 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     
 
-fig = generate_Vehicle_Animation(X, Y, u, mu_yf, mu_yr, Sigma_X, W_f, CW_f, W_r, CW_r, time, default_para, 200., 30., 30)
+fig = generate_Vehicle_Animation(X, Y, u, Sigma_X, W_f, CW_f, W_r, CW_r, time, default_para, 200., 30., 30)
 fig.show()
