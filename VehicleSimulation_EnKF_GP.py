@@ -80,7 +80,7 @@ CW_r = np.zeros((steps, vehicle_RBF_ip.shape[0], vehicle_RBF_ip.shape[0]))
 
 # input
 u = np.zeros((steps,2))
-u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * np.exp(-0.5*(time-t_end/2)**2/(0.5*t_end/3.4)**2)
+u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * 0.5*(np.tanh(0.2*(time-15))-np.tanh(0.2*(time-85)))
 u[:,1] = 8.0
 
 # initial values
