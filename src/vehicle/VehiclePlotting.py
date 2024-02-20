@@ -379,6 +379,21 @@ def generate_Vehicle_Animation(X, Y, u, Sigma_X, W_f, CW_f, W_r, CW_r, time, mod
     fig.update_xaxes(showgrid=True, gridcolor='black', linecolor='black', zerolinecolor='black')
     fig.update_yaxes(showgrid=True, gridcolor='black', linecolor='black', zerolinecolor='black')
     
+    # axis descriptions
+    fig.update_xaxes(title_text='alpha in (rad)', title_font_size=24, row=1, col=1)
+    fig.update_xaxes(title_text='alpha in (rad)', title_font_size=24, row=1, col=2)
+    fig.update_xaxes(title_text='Time in (s)', title_font_size=24, row=2, col=1)
+    fig.update_xaxes(title_text='Time in (s)', title_font_size=24, row=2, col=2)
+    fig.update_xaxes(title_text='Time in (s)', title_font_size=24, row=3, col=1)
+    fig.update_xaxes(title_text='Time in (s)', title_font_size=24, row=3, col=2)
+    
+    fig.update_yaxes(title_text='mu_front', title_font_size=24, row=1, col=1)
+    fig.update_yaxes(title_text='mu_rear', title_font_size=24, row=1, col=2)
+    fig.update_yaxes(title_text='delta in (rad)', title_font_size=24, row=2, col=1)
+    fig.update_yaxes(title_text='dpsi in (rad/s)', title_font_size=24, row=2, col=2)
+    fig.update_yaxes(title_text='v_x in (m/s)', title_font_size=24, row=3, col=1)
+    fig.update_yaxes(title_text='v_y in (m/s)', title_font_size=24, row=3, col=2)
+    
     # save file
     fig.write_html(filne_name)
     
