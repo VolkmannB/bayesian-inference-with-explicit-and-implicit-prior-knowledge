@@ -25,9 +25,10 @@ steps = len(time)
 
 
 # model prior
+p = np.atleast_2d(np.linspace(-20/180*np.pi, 20/180*np.pi, 40)).T
 prior = (
     np.zeros((vehicle_RBF_ip.shape[0])),
-    H_vehicle(vehicle_RBF_ip)@H_vehicle(vehicle_RBF_ip).T
+    np.linalg.inv(H_vehicle(p).T @ H_vehicle(p))*2
 )
 
 # model for the front tire
@@ -77,7 +78,7 @@ CW_r = np.zeros((steps, vehicle_RBF_ip.shape[0], vehicle_RBF_ip.shape[0]))
 # input
 u = np.zeros((steps,2))
 u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * 0.5*(np.tanh(0.2*(time-15))-np.tanh(0.2*(time-85)))
-u[:,1] = 8.0
+u[:,1] = 11.0
 
 # initial values
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,))
@@ -101,10 +102,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     ####### Filtering
     
     # time update
-    Sigma_X[i,...] = jax.vmap(functools.partial(fx_filter, u=u[i-1], **default_para))(
-        x = Sigma_X[i-1,...],
-        theta_f = np.zeros((N,vehicle_RBF_ip.shape[0])),#para_model_f[0] + (np.linalg.cholesky(para_model_f[1]) @ np.random.randn(vehicle_RBF_ip.shape[0],N)).T,
-        theta_r = np.zeros((N,vehicle_RBF_ip.shape[0]))#para_model_r[0] + (np.linalg.cholesky(para_model_r[1]) @ np.random.randn(vehicle_RBF_ip.shape[0],N)).T
+    Sigma_X[i,...] = jax.vmap(functools.partial(fx_filter, u=u[i-1], theta_f=para_model_f[0], theta_r=para_model_r[0], **default_para))(
+        x = Sigma_X[i-1,...]
     ) + w((N,))
     
     # measurment update
