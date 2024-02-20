@@ -5,6 +5,7 @@ import abc
 import typing as tp
 import functools
 import jax.numpy as jnp
+import jax.scipy as jsc
 import jax
 import functools
 
@@ -70,6 +71,17 @@ def sherman_morrison_inverse(A_inv, x):
     updated_inverse = A_inv - update_term
 
     return updated_inverse
+
+
+@jax.jit
+def SMF_update(A_inv, V):
+    
+    V_A_inv = V @ A_inv
+    
+    L = jnp.linalg.cholesky(jnp.eye(V.shape[0]) + V_A_inv @ V.T)
+    C = jsc.linalg.cho_solve((L.T, False), V_A_inv)
+    
+    return A_inv - C.T @ C
 
 
 
@@ -138,6 +150,33 @@ def update_normal_prior(mu_0, P_0, psi, y, sigma, jitter_val):
         P_n = P_0 - P_yy * jnp.outer(G, G)
         
         return jnp.squeeze(mu_n), jnp.squeeze(P_n)
+    
+
+
+# @jax.jit
+def update_EIV_normal(psi, y, R, mu_theta, P_theta, mu_theta_prior, P_theta_prior):
+    
+    y = np.concatenate([[y], mu_theta_prior])
+    psi = np.vstack([psi, np.eye(psi.shape[0])])
+    R_ = np.zeros((psi.shape[0], psi.shape[0]))
+    R_[0,0] = R
+    R_[1:,1:] = P_theta_prior
+    
+    e = y - psi @ mu_theta
+    P_xy = psi @ P_theta
+    P_yy = P_xy @ psi.T + R_ + np.eye(psi.shape[0])*1e-6
+    
+    G_T = np.linalg.solve(P_yy, P_xy)
+    
+    mu_theta_new = mu_theta + e @ G_T
+    P_theta_new = P_theta - G_T.T @ P_yy @ G_T
+    
+    return mu_theta_new, P_theta_new
+    
+    
+    
+    
+    
     
 
 
