@@ -237,7 +237,7 @@ def forward_Bootstrap_PF(Y, U, X_0, para, Q, R):
 ##### Filtering
 
 # features for front and rear tire
-vehicle_RBF_ip = jnp.atleast_2d(jnp.linspace(-20/180*jnp.pi, 20/180*jnp.pi, 20)).T
+vehicle_RBF_ip = jnp.atleast_2d(jnp.linspace(-20/180*jnp.pi, 20/180*jnp.pi, 12)).T
 vehicle_lengthscale = vehicle_RBF_ip[1] - vehicle_RBF_ip[0]
 H_vehicle = lambda alpha: gaussian_RBF(alpha, vehicle_RBF_ip, vehicle_lengthscale)
 
