@@ -6,7 +6,7 @@ import functools
 
 
 from src.vehicle.Vehicle import features_MTF_front, features_MTF_rear, vehicle_RBF_ip, default_para, f_x_sim, f_y, fx_filter, fy_filter, f_alpha, mu_y, H_vehicle
-from src.RGP import EnsambleGP, update_EIV_normal
+from src.RGP import EnsambleGP, update_EIV_normal, weight_prior_from_function, gaussian_RBF
 from src.KalmanFilter import EnKF_update
 from src.vehicle.VehiclePlotting import generate_Vehicle_Animation
 
@@ -26,9 +26,13 @@ steps = len(time)
 
 # model prior
 p = np.atleast_2d(np.linspace(-20/180*np.pi, 20/180*np.pi, 40)).T
-prior = (
-    np.zeros((vehicle_RBF_ip.shape[0])),
-    np.linalg.inv(H_vehicle(p).T @ H_vehicle(p))*2
+Psi = H_vehicle(p)
+prior = weight_prior_from_function(
+    np.zeros((vehicle_RBF_ip.shape[0],)),
+    np.eye(vehicle_RBF_ip.shape[0]),
+    Psi,
+    np.zeros(p.shape[0]),
+    gaussian_RBF(p, p, p[1]-p[0])
 )
 
 # model for the front tire
@@ -77,7 +81,7 @@ CW_r = np.zeros((steps, vehicle_RBF_ip.shape[0], vehicle_RBF_ip.shape[0]))
 
 # input
 u = np.zeros((steps,2))
-u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * 0.5*(np.tanh(0.2*(time-15))-np.tanh(0.2*(time-85)))
+u[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * 0.5*(np.tanh(0.2*(time-15))-np.tanh(0.2*(time-75)))
 u[:,1] = 11.0
 
 # initial values
@@ -102,8 +106,10 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     ####### Filtering
     
     # time update
-    Sigma_X[i,...] = jax.vmap(functools.partial(fx_filter, u=u[i-1], theta_f=para_model_f[0], theta_r=para_model_r[0], **default_para))(
-        x = Sigma_X[i-1,...]
+    Sigma_X[i,...] = jax.vmap(functools.partial(fx_filter, u=u[i-1], **default_para))(
+        x = Sigma_X[i-1,...],
+        theta_f=para_model_f[0] + (np.linalg.cholesky(para_model_f[1]) @ np.random.randn(vehicle_RBF_ip.shape[0],N)).T, 
+        theta_r=para_model_r[0] + (np.linalg.cholesky(para_model_r[1]) @ np.random.randn(vehicle_RBF_ip.shape[0],N)).T
     ) + w((N,))
     
     # measurment update
