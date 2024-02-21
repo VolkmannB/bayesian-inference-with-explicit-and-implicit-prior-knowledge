@@ -16,7 +16,7 @@ def generate_Vehicle_Animation(X, Y, u, Sigma_X, W_f, CW_f, W_r, CW_r, time, mod
     
     # create figure
     width = 0.3937007874*width
-    fig = make_subplots(3, 2)
+    fig = make_subplots(3, 2, subplot_titles=('MTF Front', 'MTF Rear', 'Steering Angle', 'Yaw Rate', 'Longitudinal Velocity', 'Lateral Velocity'))
        
     # create point grid
     alpha = np.arange(-20/180*np.pi, 20/180*np.pi, 40/180*np.pi/1000)
