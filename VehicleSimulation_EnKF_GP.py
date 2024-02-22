@@ -34,6 +34,13 @@ prior = weight_prior_from_function(
     np.zeros(p.shape[0]),
     gaussian_RBF(p, p, p[1]-p[0])
 )
+noise = weight_prior_from_function(
+    np.zeros((vehicle_RBF_ip.shape[0],)),
+    np.eye(vehicle_RBF_ip.shape[0])*1e-9,
+    Psi,
+    np.zeros(p.shape[0]),
+    gaussian_RBF(p, p, p[1]-p[0])*1e-9
+)
 
 # model for the front tire
 para_model_f = [
@@ -111,6 +118,9 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         theta_f=para_model_f[0] + (np.linalg.cholesky(para_model_f[1]) @ np.random.randn(vehicle_RBF_ip.shape[0],N)).T, 
         theta_r=para_model_r[0] + (np.linalg.cholesky(para_model_r[1]) @ np.random.randn(vehicle_RBF_ip.shape[0],N)).T
     ) + w((N,))
+    
+    para_model_f[1] += noise[1]
+    para_model_r[1] += noise[1]
     
     # measurment update
     sigma_y = jax.vmap(functools.partial(fy_filter, u=u[i], **default_para))(
