@@ -25,15 +25,13 @@ steps = len(time)
 
 
 # model prior
-p = np.atleast_2d(np.linspace(-20/180*np.pi, 20/180*np.pi, 40)).T
-Psi = H_vehicle(p)
 prior = [
     np.zeros((vehicle_RBF_ip.shape[0],)),
     np.eye(vehicle_RBF_ip.shape[0])
 ]
 noise = [
     np.zeros((vehicle_RBF_ip.shape[0],)),
-    np.eye(vehicle_RBF_ip.shape[0])*1e-9
+    np.eye(vehicle_RBF_ip.shape[0])*1e-8
 ]
 
 # model for the front tire
@@ -112,9 +110,6 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         theta_r=para_model_r[0] + (np.linalg.cholesky(para_model_r[1]) @ np.random.randn(vehicle_RBF_ip.shape[0],N)).T
     ) + w((N,))
     
-    para_model_f[1] += noise[1]
-    para_model_r[1] += noise[1]
-    
     # measurment update
     sigma_y = jax.vmap(functools.partial(fy_filter, u=u[i], **default_para))(
         x = Sigma_X[i,...]
@@ -130,8 +125,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         psi,
         mu_x[2],
         P_x[2,2] - 2*para_model_f[0]@J_psi@P_x[:2,2] + para_model_f[0]@J_psi@P_x[:2,:2]@J_psi.T@para_model_f[0].T,
-        *para_model_f,
-        *prior
+        *para_model_f
     )
     
     # update model back
@@ -141,9 +135,11 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         psi,
         mu_x[3],
         P_x[3,3] - 2*psi@J_psi@P_x[:2,3] + psi@J_psi@P_x[:2,:2]@J_psi.T@psi.T,
-        *para_model_r,
-        *prior
+        *para_model_r
     )
+    
+    para_model_f[1] += noise[1]
+    para_model_r[1] += noise[1]
     
     # logging
     W_f[i,:] = para_model_f[0]

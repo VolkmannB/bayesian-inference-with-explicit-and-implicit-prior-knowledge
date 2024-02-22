@@ -154,22 +154,16 @@ def update_normal_prior(mu_0, P_0, psi, y, sigma, jitter_val):
 
 
 # @jax.jit
-def update_EIV_normal(psi, y, R, mu_theta, P_theta, mu_theta_prior, P_theta_prior):
-    
-    y = np.concatenate([[y], mu_theta_prior])
-    psi = np.vstack([psi, np.eye(psi.shape[0])])
-    R_ = np.zeros((psi.shape[0], psi.shape[0]))
-    R_[0,0] = R
-    R_[1:,1:] = P_theta_prior
+def update_EIV_normal(psi, y, R, mu_theta, P_theta):
     
     e = y - psi @ mu_theta
     P_xy = psi @ P_theta
-    P_yy = P_xy @ psi.T + R_ + np.eye(psi.shape[0])*1e-6
+    P_yy = P_xy @ psi.T + R + 1e-8
     
-    G_T = np.linalg.solve(P_yy, P_xy)
+    G_T = P_xy / P_yy
     
-    mu_theta_new = mu_theta + e @ G_T
-    P_theta_new = P_theta - G_T.T @ P_yy @ G_T
+    mu_theta_new = mu_theta + e * G_T
+    P_theta_new = P_theta - P_yy * np.outer(G_T,G_T)
     
     return [mu_theta_new, P_theta_new]
     
