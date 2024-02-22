@@ -53,7 +53,10 @@ para_model_r = [
     prior[0],
     prior[1]
 ]
-T = H_vehicle(vehicle_RBF_ip)@H_vehicle(vehicle_RBF_ip).T
+prior = [
+    prior[0],
+    np.diag(np.diag(prior[1]))
+]
 
 
 
@@ -126,7 +129,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     sigma_y = jax.vmap(functools.partial(fy_filter, u=u[i], **default_para))(
         x = Sigma_X[i,...]
     )
-    Sigma_X[i,...] = EnKF_update(Sigma_X[i,...], sigma_y, Y[i], R)
+    Sigma_X[i,...] = EnKF_update(Sigma_X[i,...], sigma_y, np.concatenate([Y[i], [0]]), np.diag(np.concatenate([np.diag(R), [0.1]])))
     
     # update model front
     mu_x = np.mean(Sigma_X[i,...], axis=0)

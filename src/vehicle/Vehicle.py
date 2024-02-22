@@ -303,4 +303,4 @@ def fy_filter(x, u, **para):
     
     dv_y = 1/para['m']*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*para['mu_x']*jnp.sin(u[0])) - u[1]*x[0]
     
-    return jnp.array([x[0], dv_y])
+    return jnp.array([x[0], dv_y, x[1]])
