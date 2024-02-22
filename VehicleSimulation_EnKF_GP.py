@@ -6,7 +6,7 @@ import functools
 
 
 from src.vehicle.Vehicle import features_MTF_front, features_MTF_rear, vehicle_RBF_ip, default_para, f_x_sim, f_y, fx_filter, fy_filter, f_alpha, mu_y, H_vehicle
-from src.RGP import EnsambleGP, update_EIV_normal, weight_prior_from_function, gaussian_RBF
+from src.RGP import EnsambleGP, update_EIV_normal
 from src.KalmanFilter import EnKF_update
 from src.vehicle.VehiclePlotting import generate_Vehicle_Animation
 
@@ -27,20 +27,14 @@ steps = len(time)
 # model prior
 p = np.atleast_2d(np.linspace(-20/180*np.pi, 20/180*np.pi, 40)).T
 Psi = H_vehicle(p)
-prior = weight_prior_from_function(
+prior = [
     np.zeros((vehicle_RBF_ip.shape[0],)),
-    np.eye(vehicle_RBF_ip.shape[0]),
-    Psi,
-    np.zeros(p.shape[0]),
-    gaussian_RBF(p, p, p[1]-p[0])
-)
-noise = weight_prior_from_function(
+    np.eye(vehicle_RBF_ip.shape[0])
+]
+noise = [
     np.zeros((vehicle_RBF_ip.shape[0],)),
-    np.eye(vehicle_RBF_ip.shape[0])*1e-9,
-    Psi,
-    np.zeros(p.shape[0]),
-    gaussian_RBF(p, p, p[1]-p[0])*1e-9
-)
+    np.eye(vehicle_RBF_ip.shape[0])*1e-9
+]
 
 # model for the front tire
 para_model_f = [
@@ -52,10 +46,6 @@ para_model_f = [
 para_model_r = [
     prior[0],
     prior[1]
-]
-prior = [
-    prior[0],
-    np.diag(np.diag(prior[1]))
 ]
 
 
@@ -129,7 +119,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     sigma_y = jax.vmap(functools.partial(fy_filter, u=u[i], **default_para))(
         x = Sigma_X[i,...]
     )
-    Sigma_X[i,...] = EnKF_update(Sigma_X[i,...], sigma_y, np.concatenate([Y[i], [0]]), np.diag(np.concatenate([np.diag(R), [0.1]])))
+    Sigma_X[i,...] = EnKF_update(Sigma_X[i,...], sigma_y, np.concatenate([Y[i], [0]]), np.diag(np.concatenate([np.diag(R), [0.01]])))
     
     # update model front
     mu_x = np.mean(Sigma_X[i,...], axis=0)
@@ -139,7 +129,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     para_model_f = update_EIV_normal(
         psi,
         mu_x[2],
-        P_x[2,2] - 2*psi@J_psi@P_x[:2,2] + psi@J_psi@P_x[:2,:2]@J_psi.T@psi.T,
+        P_x[2,2] - 2*para_model_f[0]@J_psi@P_x[:2,2] + para_model_f[0]@J_psi@P_x[:2,:2]@J_psi.T@para_model_f[0].T,
         *para_model_f,
         *prior
     )
@@ -154,10 +144,6 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         *para_model_r,
         *prior
     )
-    
-    # convert to list
-    para_model_f = list(para_model_f)
-    para_model_r = list(para_model_r)
     
     # logging
     W_f[i,:] = para_model_f[0]

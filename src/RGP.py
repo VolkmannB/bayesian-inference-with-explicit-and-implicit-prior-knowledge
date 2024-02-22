@@ -171,7 +171,7 @@ def update_EIV_normal(psi, y, R, mu_theta, P_theta, mu_theta_prior, P_theta_prio
     mu_theta_new = mu_theta + e @ G_T
     P_theta_new = P_theta - G_T.T @ P_yy @ G_T
     
-    return mu_theta_new, P_theta_new
+    return [mu_theta_new, P_theta_new]
     
     
     
@@ -182,7 +182,7 @@ def weight_prior_from_function(m, D, Psi, Y, R):
     
     K_T = np.linalg.solve(P_yy, P_xy)
     
-    return m - (Y - Psi @ m) @ K_T, D - K_T.T @ P_yy @ K_T
+    return [m - (Y - Psi @ m) @ K_T, D - K_T.T @ P_yy @ K_T]
     
     
 
