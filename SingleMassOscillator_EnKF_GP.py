@@ -82,8 +82,8 @@ P0 = np.diag([1e-4, 1e-4, 1e-4])
 # noise
 R = np.array([[1e-2]])
 Q = np.diag([5e-6, 5e-7, 1e-3])
-w = lambda n=...: np.random.multivariate_normal(np.zeros((3,)), Q)
-e = lambda n=...: np.random.multivariate_normal(np.zeros((1,)), R)
+w = lambda n=1: np.random.multivariate_normal(np.zeros((3,)), Q, n)
+e = lambda n=1: np.random.multivariate_normal(np.zeros((1,)), R, n)
 
 
 
