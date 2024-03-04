@@ -59,7 +59,8 @@ def GaussHermiteCubature(
 
 
 
-def systematic_SISR(w: npt.ArrayLike):
+@jax.jit
+def systematic_SISR(u, w: npt.ArrayLike):
     
     # number of samples
     N = len(w)
@@ -68,8 +69,8 @@ def systematic_SISR(w: npt.ArrayLike):
     # indices = np.zeros((N,), dtype=np.int64)
     
     # select deterministic samples
-    U = (np.random.rand() + np.array(range(0, N))) / N
-    W = np.cumsum(w, 0)
+    U = u/N + jnp.array(range(0, N))/N
+    W = jnp.cumsum(w, 0)
     
     i, j = 0, 0
     # while i < N:
@@ -81,36 +82,21 @@ def systematic_SISR(w: npt.ArrayLike):
     #     if j >= N:
     #         if i > N: indices[i:] = j-1
     #         break
-    indices = np.searchsorted(W, U)
+    indices = jnp.searchsorted(W, U)
     
     return indices
 
 
 
+@jax.jit
 def squared_error(x, y, cov):
-    """
-    RBF kernel, supporting masked values in the observation
-    Parameters:
-    -----------
-    x : array (N,D) array of values
-    y : array (N,D) array of values
-
-    Returns:
-    -------
-
-    distance : scalar
-        Total similarity, using equation:
-
-            d(x,y) = e^((-1 * (x - y) ** 2) / (2 * sigma ** 2))
-
-        summed over all samples. Supports masked arrays.
-    """
+    
     dx = x - y
     
-    t = np.linalg.solve(cov, dx.T).T
-    r = np.einsum('nd,nd->n',dx, t)
+    t = jnp.linalg.solve(cov, dx)
+    r = dx @ t
     
-    return np.exp(-0.5 * r)
+    return jnp.exp(-0.5 * r)
 
 
 
