@@ -38,7 +38,8 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
     time = time[0:-1:samples]
     
     # calculate predictions for spring damper force
-    F_GP = np.einsum('...n,mn->...m', H(points), W[0:-1:samples,...])
+    F_GP = np.einsum('...n,mn->...m', H(points.reshape((points.shape[0]*points.shape[1],2))), W[0:-1:samples,...])
+    F_GP = F_GP.reshape((points.shape[0], points.shape[1], len(time)))
     
     # error between mean of prediction and ground truth
     e = np.abs(grid_F[...,None] - F_GP)
