@@ -50,12 +50,13 @@ def f_x_sim(x, F, **para):
 #### this section defines functions related to the state space model of the filtering problem
 
 # RBF for GP (the feature vector)
-x_points = np.arange(-5., 5.1, 1.)
-dx_points = np.arange(-5., 5.1, 1.)
+N_ip = 11
+x_points = np.linspace(-5., 5., N_ip)
+dx_points = np.linspace(-5., 5., N_ip)
 ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
 ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
 H = lambda x: gaussian_RBF(
-    x,
+    jnp.atleast_2d(x),
     inducing_points=jnp.asarray(ip),
     lengthscale=jnp.array([1.])
 )
