@@ -11,6 +11,94 @@ import functools
 
 
 
+################################################################################
+# Priors
+
+# Matrix Normal Inverse Wishart
+# For a multivariate Gaussian likelihood with unknown mean and covariance
+@jax.jit
+def prior_mniw_2naturalPara(M, V, Psi, nu):
+    
+    M = jnp.atleast_2d(M)
+    Psi = jnp.atleast_2d(Psi)
+
+    V_chol = jnp.linalg.cholesky(V)
+    temp = jsc.linalg.cho_solve((V_chol, True), jnp.hstack([M.T, jnp.eye(V.shape[0])]))
+    eta_1 = temp[:,:M.shape[0]]
+    eta_2 = temp[:,M.shape[0]:]
+    eta_0 = M @ eta_1 + Psi
+    
+    return eta_0, eta_1, eta_2, nu
+
+@jax.jit
+def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
+    
+    eta_2_chol = jnp.linalg.cholesky(eta_2)
+    temp = jsc.linalg.cho_solve((eta_2_chol, True), jnp.hstack([eta_1, jnp.eye(eta_2.shape[0])]))
+    
+    M = temp[:,:eta_1.shape[1]].T
+    V = temp[:,eta_1.shape[1]:]
+    Psi = eta_0 - M @ eta_1
+    
+    return jnp.atleast_2d(M), V, jnp.atleast_2d(Psi), eta_3
+
+@jax.jit
+def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, psi):
+    
+    T_0 = T_0 + jnp.outer(y,y)
+    T_1 = T_1 + jnp.outer(psi,y)
+    T_2 = T_2 + jnp.outer(psi,psi)
+    T_3 = T_3 + 1
+    
+    return T_0, T_1, T_2, T_3
+
+@jax.jit
+def prior_mniw_samplePredictiveDist(eta, T, psi, key):
+    
+    # calculate standard posterior parameters from natural parameters and 
+    # sufficient statistics
+    eta_0 = eta[0] + T[0]
+    eta_1 = eta[1] + T[1]
+    eta_2 = eta[2] + T[2]
+    eta_3 = eta[3] + T[3]
+    M, V, Psi, nu = prior_iw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3)
+    
+    # Calculate parameters of the NIW predictive distribution
+    Scale = Psi * (psi @ V @ psi)
+    Scale_chol = jnp.linalg.cholesky(Scale)
+    Mean = M @ psi
+    df = eta_3 + 1
+    
+    # generate a sample of the carrier measure wich is a t distribution
+    sample = jax.random.t(key, df, (M.shape[0],))
+    
+    return Mean + Scale_chol @ sample
+    
+
+
+
+# Inverse Wishart
+# For a multivariate Gaussian likelihood with known mean and unknown covariance
+@jax.jit
+def prior_iw_2naturalPara(Psi, nu):
+    
+    return Psi, nu
+
+@jax.jit
+def prior_iw_2naturalPara_inv(eta_0, eta_1):
+
+    return eta_0, eta_1
+
+@jax.jit
+def prior_iw_updateStatistics(T_0, T_1, y, mu):
+    
+    e = y - mu
+    T_0 = T_0 + jnp.outer(e,e)
+    T_1 = T_1 + 1
+    
+    return T_0, T_1
+
+
 def sample_nig(mean, Lambda_inv, a, b, key, N=1):
     
     V_chol = jnp.linalg.cholesky(b/a*Lambda_inv)
@@ -19,6 +107,20 @@ def sample_nig(mean, Lambda_inv, a, b, key, N=1):
     
     return jnp.squeeze(mean + jnp.einsum('ij,...j->...i', V_chol, T))
 
+
+
+def sample_mniw(M, Lambda, V, nu, psi, key):
+    
+    n_x = M.shape[1]
+    M_ = psi @ M
+    nu_ = nu - n_x + 1
+    Lambda_chol = jnp.linalg.cholesky(Lambda)
+    scale = psi @ jsc.linalg.cho_solve((Lambda_chol, True), psi)
+    
+    sample = jax.random.t(key, nu_, (n_x,))
+    
+    return M_ + jnp.linalg.cholesky(scale*V) @ sample
+    
 
 
 def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
@@ -112,7 +214,7 @@ def update_mniw_prior(M_0, Lambda_0, V_0, nu_0, psi, y):
     
     s = y - psi @ M_n
     d = M_n - M_0
-    V_n = V_0 + np.outer(s, s) + d @ Lambda_0 @ d
+    V_n = V_0 + jnp.outer(s, s) + d.T @ Lambda_0 @ d
     
     nu_n = nu_0 + 1
     
@@ -138,18 +240,14 @@ def sample_BMNIW_prior(Phi, Psi, Sigma, nu, Lambda_0, v, psi, key):
     n_x = Phi.shape[0]
     
     Sigma_star_inv = Sigma + jnp.diag(1/v)
-    Sigma_star_inv_chol = jnp.linalg.cholesky(Sigma_star_inv)
-    Sigma_star = jsc.linalg.cho_solve((Sigma_star_inv_chol, True), jnp.eye(Sigma.shape[0]))
-    Sigma_star_chol = jnp.linalg.cholesky(Sigma_star)
     
-    M = jsc.linalg.cho_solve((Sigma_star_inv_chol, True), Psi.T).T
-    M_bar = M @ psi
+    M_star = jnp.linalg.solve(Sigma_star_inv, Psi.T).T
+    M_bar = M_star @ psi
     
-    Lambda_star = Lambda_0 + Phi - M @ Psi.T
-    # Lambda_star_chol = jnp.linalg.cholesky(Lambda_star)
+    Lambda_star = Lambda_0 + Phi - M_star @ Psi.T
     
-    temp = Sigma_star_chol @ psi
-    Lambda_bar = jnp.inner(temp, temp) * Lambda_star
+    temp = psi @ jnp.linalg.solve(Sigma_star_inv, psi)
+    Lambda_bar = temp * Lambda_star
     Lambda_bar_chol = jnp.linalg.cholesky(Lambda_bar)
     
     w = jax.random.t(key, nu-n_x+1, (n_x,))
@@ -163,6 +261,7 @@ def sample_BMNIW_prior(Phi, Psi, Sigma, nu, Lambda_0, v, psi, key):
 
 
 
+@jax.jit
 def gaussian_RBF(x, inducing_points, lengthscale=1):
     
     r = sq_dist(
