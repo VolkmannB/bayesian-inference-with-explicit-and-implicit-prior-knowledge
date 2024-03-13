@@ -8,6 +8,7 @@ import jax.numpy as jnp
 import jax.scipy as jsc
 import jax
 import functools
+import itertools
 
 
 
@@ -24,50 +25,42 @@ def prior_mniw_2naturalPara(M, V, Psi, nu):
 
     V_chol = jnp.linalg.cholesky(V)
     temp = jsc.linalg.cho_solve((V_chol, True), jnp.hstack([M.T, jnp.eye(V.shape[0])]))
-    eta_1 = temp[:,:M.shape[0]]
-    eta_2 = temp[:,M.shape[0]:]
-    eta_0 = M @ eta_1 + Psi
+    eta_0 = temp[:,:M.shape[0]]
+    eta_1 = temp[:,M.shape[0]:]
+    eta_2 = M @ eta_0 + Psi
     
     return eta_0, eta_1, eta_2, nu
 
-@jax.jit
+# @jax.jit
 def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
     
-    eta_2_chol = jnp.linalg.cholesky(eta_2)
-    temp = jsc.linalg.cho_solve((eta_2_chol, True), jnp.hstack([eta_1, jnp.eye(eta_2.shape[0])]))
+    eta_1_chol = jnp.linalg.cholesky(eta_1)
+    temp = jsc.linalg.cho_solve((eta_1_chol, True), jnp.hstack([eta_0, jnp.eye(eta_1.shape[0])]))
     
-    M = temp[:,:eta_1.shape[1]].T
-    V = temp[:,eta_1.shape[1]:]
-    Psi = eta_0 - M @ eta_1
+    M = temp[:,:eta_0.shape[1]].T
+    V = temp[:,eta_0.shape[1]:]
+    Psi = eta_2 - M @ eta_0
     
     return jnp.atleast_2d(M), V, jnp.atleast_2d(Psi), eta_3
 
 @jax.jit
-def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, psi):
+def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, phi):
     
-    T_0 = T_0 + jnp.outer(y,y)
-    T_1 = T_1 + jnp.outer(psi,y)
-    T_2 = T_2 + jnp.outer(psi,psi)
+    T_0 = T_0 + jnp.outer(phi,y) 
+    T_1 = T_1 + jnp.outer(phi,phi)
+    T_2 = T_2 + jnp.outer(y,y)
     T_3 = T_3 + 1
     
     return T_0, T_1, T_2, T_3
 
 @jax.jit
-def prior_mniw_samplePredictiveDist(eta, T, psi, key):
-    
-    # calculate standard posterior parameters from natural parameters and 
-    # sufficient statistics
-    eta_0 = eta[0] + T[0]
-    eta_1 = eta[1] + T[1]
-    eta_2 = eta[2] + T[2]
-    eta_3 = eta[3] + T[3]
-    M, V, Psi, nu = prior_iw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3)
+def prior_mniw_sampleLikelihood(key, M, V, Psi, nu, phi):
     
     # Calculate parameters of the NIW predictive distribution
-    Scale = Psi * (psi @ V @ psi)
+    df = nu + 1
+    Scale = Psi * (phi @ V @ phi)#/df
     Scale_chol = jnp.linalg.cholesky(Scale)
-    Mean = M @ psi
-    df = eta_3 + 1
+    Mean = M @ phi
     
     # generate a sample of the carrier measure wich is a t distribution
     sample = jax.random.t(key, df, (M.shape[0],))
@@ -270,3 +263,52 @@ def gaussian_RBF(x, inducing_points, lengthscale=1):
         )
         
     return jnp.exp(-0.5*r)
+
+
+
+def generate_Hilbert_BasisFunction(M, L, l, sigma, j_start=1, j_step=1):
+    
+    # dimensionality of the input
+    L = np.atleast_2d(L)
+    d = L.shape[0]
+    
+    # center domain L
+    L_center = (L[:,0] + L[:,1])/2
+    L_centedred  = L - L_center
+    
+    # set start index to 1 if value is negative
+    if j_start < 1:
+        j_start = 1
+    
+    # set indices per dimension
+    L_size = L[:,1] - L[:,0]
+    j_end = M*j_step+1+j_start
+    j = np.arange(j_start, j_end, j_step)
+    
+    # create all combinations of indices
+    S = np.array(list(
+        itertools.product(*np.repeat(j[None,:], d, axis=0))
+        ))
+    
+    # calculate eigenvalues
+    eig_val = (np.pi*S/L_size)**2
+    
+    # sort eigenvalues in decending order
+    idx = np.flip(np.argsort(np.sum(eig_val, axis=1)))
+    
+    # get M combinations of highest eigenvalues
+    idx = idx[:M]
+    
+    # create function for basis functions
+    eigen_fun = lambda x: functools.partial(_eigen_fnc, L=L_size/2, eigen_val=eig_val[idx])(x=x)
+    
+    # calculate spectral density
+    sd = np.prod(sigma * (2*np.pi)**(3/2) * np.atleast_2d(l) * np.exp(-0.5 * np.sum(l**2 * eig_val[idx,:], axis=1, keepdims=True)), axis=1)
+    
+    return jax.jit(eigen_fun), sd
+    
+    
+    
+def _eigen_fnc(x, eigen_val, L):
+    
+    return jnp.prod(jnp.sqrt(1/L) * jnp.sin(jnp.sqrt(eigen_val) * (x + L)), axis=1)
