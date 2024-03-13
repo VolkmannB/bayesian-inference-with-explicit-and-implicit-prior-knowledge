@@ -13,7 +13,7 @@ def cm2in(cm):
 
 
 
-def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, dpi, width, fps, filne_name='test.html'):
+def generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, model_para, dpi, width, fps, filne_name='test.html'):
     
     # create figure
     width = cm2in(width)
@@ -27,8 +27,8 @@ def generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, mod
     points = np.dstack([grid_x, grid_y])
     
     # state trajectory as gaussian
-    X_pred = np.mean(Sigma_X, axis=1)
-    P_pred = np.var(Sigma_X, axis=1)
+    X_pred = np.sum(Sigma_X * weights[...,None], axis=1)
+    F_pred = np.sum(Sigma_F * weights, axis=1)
 
     # calculate ground truth for spring damper force
     grid_F = F_spring(grid_x, **model_para) + F_damper(grid_y, **model_para)

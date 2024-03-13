@@ -60,27 +60,28 @@ H = lambda x: gaussian_RBF(
     inducing_points=jnp.asarray(ip),
     lengthscale=jnp.array([1.])
 )
+N_ip = ip.shape[0]
 
 
 
 # the ode for the KF
-def dx_KF(x, F, theta, **para):
+def dx_KF(x, F, F_sd, **para):
     
-    x_dot = dx(x[:2], F, x[2], **para)
+    x_dot = dx(x, F, F_sd, **para)
     
-    dH_dt = jax.jvp(H, (x[:2],), (x_dot,))[1]
+    # dH_dt = jax.jvp(H, (x[:2],), (x_dot,))[1]
     
-    return jnp.hstack([x_dot, dH_dt@theta])
+    return x_dot
     
     
 
 # time discrete state space model for the filter with Runge-Kutta 4 integration
 @jax.jit
-def fx_KF(x, F, theta, **para):
+def fx_KF(x, F, F_sd, **para):
     
-    k1 = dx_KF(x, F, theta, **para)
-    k2 = dx_KF(x+para['dt']*k1/2, F, theta, **para)
-    k3 = dx_KF(x+para['dt']*k2/2, F, theta, **para)
-    k4 = dx_KF(x+para['dt']*k3, F, theta, **para)
+    k1 = dx_KF(x, F, F_sd, **para)
+    k2 = dx_KF(x+para['dt']*k1/2, F, F_sd, **para)
+    k3 = dx_KF(x+para['dt']*k2/2, F, F_sd, **para)
+    k4 = dx_KF(x+para['dt']*k3, F, F_sd, **para)
     
     return x + para['dt']/6*(k1 + 2*k2 + 2*k3 + k4)

@@ -6,8 +6,8 @@ import functools
 
 
 
-from src.SingleMassOscillator import F_spring, F_damper, H, fx_KF, dx_KF, ip, f_x_sim, N_ip
-from src.RGP import sq_dist, update_BMNIW_prior, sample_BMNIW_prior
+from src.SingleMassOscillator import F_spring, F_damper, f_x_sim, fx_KF, N_ip, H
+from src.RGP import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, gaussian_RBF
 from src.KalmanFilter import systematic_SISR, squared_error
 from src.Plotting import generate_Animation
 
@@ -19,7 +19,7 @@ from src.Plotting import generate_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 150
+N = 100
 t_end = 100.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
@@ -33,15 +33,23 @@ d1=0.7
 d2=0.4
 model_para = {'dt':dt, 'm':m, 'c1':c1, 'c2':c2, 'd1':d1, 'd2':d2}
 
-
 # model of the spring damper system
-v = np.ones((N_ip**2,))
-Lambda_0 = np.diag([5e-7, 5e-8])
-GP_model = [
-    np.zeros((N,2,2)),# Phi
-    np.zeros((N,2,N_ip**2)), #Psi
-    np.zeros((N,N_ip**2,N_ip**2)), #Sigma
-    np.ones((N,))*2, # nu
+GP_model_prior_eta = list(prior_mniw_2naturalPara(
+    np.zeros((1, N_ip)),
+    np.eye(N_ip)*100,
+    np.eye(1),
+    0
+))
+# GP_model_prior_eta[0] = np.repeat(GP_model_prior_eta[0][None,...], N, axis=0)
+# GP_model_prior_eta[1] = np.repeat(GP_model_prior_eta[1][None,...], N, axis=0)
+# GP_model_prior_eta[2] = np.repeat(GP_model_prior_eta[2][None,...], N, axis=0)
+# GP_model_prior_eta[3] = np.repeat(GP_model_prior_eta[3][None,...], N, axis=0)
+
+GP_model_stats = [
+    np.zeros((N, N_ip, 1)),
+    np.zeros((N, N_ip, N_ip)),
+    np.zeros((N, 1, 1)),
+    np.zeros((N,))
 ]
 
 
@@ -54,7 +62,7 @@ key = jax.random.key(np.random.randint(100, 1000))
 # noise
 R = np.array([[1e-2]])
 Q = np.diag([5e-6, 5e-7])
-w = lambda n=1: np.random.multivariate_normal(np.zeros((3,)), Q, n)
+w = lambda n=1: np.random.multivariate_normal(np.zeros((2,)), Q, n)
 e = lambda n=1: np.random.multivariate_normal(np.zeros((1,)), R, n)
 
 
@@ -68,14 +76,14 @@ X = np.zeros((steps,2)) # sim
 Y = np.zeros((steps,))
 F_sd = np.zeros((steps,))
 
-F_pred = np.zeros((steps,)) # Filter
-PF_pred = np.zeros((steps,))
 Sigma_X = np.zeros((steps,N,2))
+Sigma_F = np.zeros((steps,N))
 
-W = np.zeros((steps, N_ip**2)) # GP
-CW = np.zeros((steps, N_ip**2, N_ip**2))
+W = np.zeros((steps, N_ip)) # GP
+CW = np.zeros((steps, N_ip, N_ip))
 
 # input
+# F = np.ones((steps,)) * -9.81*m + np.sin(2*np.pi*np.arange(0,t_end,dt)/10) * 9.81
 F = np.zeros((steps,)) 
 F[int(t_end/(5*dt)):] = -9.81*m
 F[int(2*t_end/(5*dt)):] = -9.81*m*2
@@ -84,8 +92,9 @@ F[int(4*t_end/(5*dt)):] = 0
 
 # set initial values
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,))
+Sigma_F[0,...] = np.sqrt(1e-4) * np.random.randn(N)
 X[0,...] = x0
-weights = np.ones((N,))/N
+weights = np.ones((steps,N))/N
 
 
 
@@ -99,71 +108,93 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     F_sd[i] = F_spring(X[i,0], **model_para) + F_damper(X[i,1], **model_para)
     
     # generate measurment
-    Y[i] = X[i,0] + e()[0]
+    Y[i] = X[i,0] + e()[0,0]
     
     
     ####### Filtering
     
-    # time update
+    ## time update
+    
+    # evaluate basis functions
+    phi = jax.vmap(H)(Sigma_X[i-1])
+    
+    # update GP parameters
+    GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)(
+        *GP_model_stats,
+        Sigma_F[i-1],
+        phi
+    ))
+    
+    # apply forgetting operator for t+1
+    GP_model_stats[0] *= 0.99
+    GP_model_stats[1] *= 0.99
+    GP_model_stats[2] *= 0.99
+    GP_model_stats[3] *= 0.99
+    
+    # create auxiliary variable
+    x_aux = jax.vmap(functools.partial(fx_KF, F=F[i-1], **model_para))(x=Sigma_X[i-1,...], F_sd=Sigma_F[i-1,...])
+    
+    # calculate first stage weights
+    l = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x_aux[:,0,None])
+    p = weights[i-1] * l
+    p = p/np.sum(p)
+    
+    # draw new indices
+    u = np.random.rand()
+    idx = systematic_SISR(u, p)
+    
+    # copy statistics
+    GP_model_stats[0] = GP_model_stats[0][idx,...]
+    GP_model_stats[1] = GP_model_stats[1][idx,...]
+    GP_model_stats[2] = GP_model_stats[2][idx,...]
+    GP_model_stats[3] = GP_model_stats[3][idx,...]
+    
+    # sample from proposal for x
+    w_x = w((N,))
+    Sigma_X[i] = jax.vmap(functools.partial(fx_KF, F=F[i-1], **model_para))(x=Sigma_X[i-1,idx,:], F_sd=Sigma_F[i-1,idx])
+    
+    # calculate parameters of posterior
+    GP_posterior = list(jax.vmap(prior_mniw_2naturalPara_inv)(
+        GP_model_prior_eta[0] + GP_model_stats[0],
+        GP_model_prior_eta[1] + GP_model_stats[1],
+        GP_model_prior_eta[2] + GP_model_stats[2],
+        GP_model_prior_eta[3] + GP_model_stats[3]
+    ))
+    
+    # sample from proposal for F
+    phi = jax.vmap(H)(Sigma_X[i])
     key, *keys = jax.random.split(key, N+1)
-    psi = jax.vmap(H)(Sigma_X[i-1])
-    Sigma_X[i] = jax.vmap(functools.partial(sample_BMNIW_prior, v=v, Lambda_0=Lambda_0))(
-        Phi = GP_model[0],
-        Psi = GP_model[1],
-        Sigma = GP_model[2],
-        nu = GP_model[3],
-        psi = psi,
-        key = jnp.asarray(keys)
-    )
+    Sigma_F[i] = jax.vmap(prior_mniw_sampleLikelihood)(
+        key=jnp.asarray(keys),
+        M=GP_posterior[0],
+        V=GP_posterior[1],
+        Psi=GP_posterior[2],
+        nu=GP_posterior[3],
+        phi=phi
+    ).flatten()
+    
+    # apply sampled noise on x
+    Sigma_X[i] = Sigma_X[i] + w_x
+    # Sigma_F[i] = F_spring(Sigma_X[i,:,0], **model_para) + F_damper(Sigma_X[i,:,1], **model_para)
     
     # measurment update
     sigma_y = Sigma_X[i,:,0,None]
     q = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(sigma_y)
-    weights = weights * q
-    weights = weights/np.sum(weights)
-    if np.any(np.isnan(weights)):
+    weights[i] = q / p[idx]
+    weights[i] = weights[i]/np.sum(weights[i])
+    if np.any(np.isnan(weights[i])):
         raise ValueError('PF divergence')
     
-    # resampling
-    u = np.random.rand()
-    idx = systematic_SISR(u, weights)
-    
-    # copy statistics
-    psi = psi[idx,...]
-    Sigma_X[i,...] = Sigma_X[i,idx,...]
-    GP_model[0] = GP_model[0][idx,...]
-    GP_model[1] = GP_model[1][idx,...]
-    GP_model[2] = GP_model[2][idx,...]
-    GP_model[3] = GP_model[3][idx,...]
-    weights = np.ones((N,))/N
-    
-    # update GP parameters
-    GP_model = jax.vmap(update_BMNIW_prior)(
-        *GP_model,
-        Sigma_X[i],
-        psi
-    )
-    
-    # apply forgetting operator for t+1
-    GP_model[0] *= 0.99
-    GP_model[1] *= 0.99
-    GP_model[2] *= 0.99
-    GP_model[3] *= 0.99
-    
     # logging
-    # f = spring_damper_model.ensample_predict(Sigma_X[i,:,:2])
-    # F_pred[i] = np.mean(f)
-    # PF_pred[i] = np.var(f)
-    # W[i,...] = spring_damper_model.W.mean(axis=0)
-    # CW[i,...] = np.cov(spring_damper_model.W.T)
+    W[i,...] = np.sum(weights[i,:,None,None] * GP_posterior[0], axis=0).flatten()
     
     
 
 ################################################################################
 # Plots
 
-fig = generate_Animation(X, Y, F_sd, Sigma_X, F_pred, PF_pred, H, W, CW, time, model_para, 200., 30., 30)
+fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, model_para, 200., 30., 30)
 
-print('RMSE for spring-damper force is {0}'.format(np.std(F_sd-F_pred)))
+# print('RMSE for spring-damper force is {0}'.format(np.std(F_sd-Sigma_F)))
 
 fig.show()
