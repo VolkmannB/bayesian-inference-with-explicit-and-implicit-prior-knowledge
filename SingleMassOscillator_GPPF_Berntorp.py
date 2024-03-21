@@ -36,8 +36,8 @@ model_para = {'dt':dt, 'm':m, 'c1':c1, 'c2':c2, 'd1':d1, 'd2':d2}
 # model of the spring damper system
 GP_model_prior_eta = list(prior_mniw_2naturalPara(
     np.zeros((1, N_ip)),
-    np.eye(N_ip)*100,
-    np.eye(1),
+    np.eye(N_ip)*20,
+    np.eye(1)*1e-4,
     0
 ))
 # GP_model_prior_eta[0] = np.repeat(GP_model_prior_eta[0][None,...], N, axis=0)
@@ -115,21 +115,11 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     ## time update
     
-    # evaluate basis functions
-    phi = jax.vmap(H)(Sigma_X[i-1])
-    
-    # update GP parameters
-    GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)(
-        *GP_model_stats,
-        Sigma_F[i-1],
-        phi
-    ))
-    
     # apply forgetting operator for t+1
-    GP_model_stats[0] *= 0.99
-    GP_model_stats[1] *= 0.99
-    GP_model_stats[2] *= 0.99
-    GP_model_stats[3] *= 0.99
+    GP_model_stats[0] *= 0.999
+    GP_model_stats[1] *= 0.999
+    GP_model_stats[2] *= 0.999
+    GP_model_stats[3] *= 0.999
     
     # create auxiliary variable
     x_aux = jax.vmap(functools.partial(fx_KF, F=F[i-1], **model_para))(x=Sigma_X[i-1,...], F_sd=Sigma_F[i-1,...])
@@ -177,16 +167,25 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     Sigma_X[i] = Sigma_X[i] + w_x
     # Sigma_F[i] = F_spring(Sigma_X[i,:,0], **model_para) + F_damper(Sigma_X[i,:,1], **model_para)
     
+    # update GP parameters
+    GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)(
+        *GP_model_stats,
+        Sigma_F[i],
+        phi
+    ))
+    
     # measurment update
     sigma_y = Sigma_X[i,:,0,None]
     q = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(sigma_y)
     weights[i] = q / p[idx]
     weights[i] = weights[i]/np.sum(weights[i])
-    if np.any(np.isnan(weights[i])):
-        raise ValueError('PF divergence')
     
     # logging
     W[i,...] = np.sum(weights[i,:,None,None] * GP_posterior[0], axis=0).flatten()
+    
+    #abort
+    if np.any(np.isnan(weights[i])):
+        break
     
     
 
