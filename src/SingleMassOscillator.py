@@ -2,7 +2,7 @@ import numpy as np
 import jax.numpy as jnp
 import jax
 
-from src.RGP import gaussian_RBF
+from src.RGP import gaussian_RBF, bump_RBF, generate_Hilbert_BasisFunction
 
 
 #### This section defines the simulated single mass oscillator
@@ -55,12 +55,15 @@ x_points = np.linspace(-5., 5., N_ip)
 dx_points = np.linspace(-5., 5., N_ip)
 ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
 ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
-H = lambda x: gaussian_RBF(
+H = lambda x: bump_RBF(
     jnp.atleast_2d(x),
     inducing_points=jnp.asarray(ip),
     lengthscale=jnp.array([1.])
 )
 N_ip = ip.shape[0]
+
+# N_ip = 41
+# H, sd = generate_Hilbert_BasisFunction(N_ip, np.array([[-5, 5],[-5, 5]]), 1, 10**2)
 
 
 
