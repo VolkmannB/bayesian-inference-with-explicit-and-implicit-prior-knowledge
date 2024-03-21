@@ -1,7 +1,5 @@
-from typing import Any
 import numpy as np
 import numpy.typing as npt
-import abc
 import typing as tp
 import functools
 import jax.numpy as jnp
@@ -31,7 +29,7 @@ def prior_mniw_2naturalPara(M, V, Psi, nu):
     
     return eta_0, eta_1, eta_2, nu
 
-# @jax.jit
+@jax.jit
 def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
     
     eta_1_chol = jnp.linalg.cholesky(eta_1)
@@ -58,7 +56,8 @@ def prior_mniw_sampleLikelihood(key, M, V, Psi, nu, phi):
     
     # Calculate parameters of the NIW predictive distribution
     df = nu + 1
-    Scale = Psi * (phi @ V @ phi)#/df
+    l = 1/(phi @ V @ phi)
+    Scale = Psi * (l + 1)/(l * df)
     Scale_chol = jnp.linalg.cholesky(Scale)
     Mean = M @ phi
     
@@ -67,7 +66,6 @@ def prior_mniw_sampleLikelihood(key, M, V, Psi, nu, phi):
     
     return Mean + Scale_chol @ sample
     
-
 
 
 # Inverse Wishart
@@ -90,29 +88,11 @@ def prior_iw_updateStatistics(T_0, T_1, y, mu):
     T_1 = T_1 + 1
     
     return T_0, T_1
+    
 
 
-def sample_nig(mean, Lambda_inv, a, b, key, N=1):
-    
-    V_chol = jnp.linalg.cholesky(b/a*Lambda_inv)
-    
-    T = jax.random.t(key, 2*a, (N, Lambda_inv.shape[0]))
-    
-    return jnp.squeeze(mean + jnp.einsum('ij,...j->...i', V_chol, T))
-
-
-
-def sample_mniw(M, Lambda, V, nu, psi, key):
-    
-    n_x = M.shape[1]
-    M_ = psi @ M
-    nu_ = nu - n_x + 1
-    Lambda_chol = jnp.linalg.cholesky(Lambda)
-    scale = psi @ jsc.linalg.cho_solve((Lambda_chol, True), psi)
-    
-    sample = jax.random.t(key, nu_, (n_x,))
-    
-    return M_ + jnp.linalg.cholesky(scale*V) @ sample
+################################################################################
+# Basis Function
     
 
 
@@ -138,123 +118,6 @@ def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
 
 
 @jax.jit
-def update_nig_prior(mu_0, Lambda_0, alpha_0, beta_0, psi, y):
-    """
-    Update the normal-inverse gamma (NIG) prior for Bayesian linear regression.
-
-    Parameters:
-    - mu_0: Mean vector(s) of shape (n_features,)
-    - Lambda_0_inv: Inverse of the precision matrix(s) of shape (n_features, n_features)
-    - alpha_0: Shape parameter(s)
-    - beta_0: Scale parameter(s)
-    - X: Feature matrix of shape (n_samples, n_features) for the new data points
-    - y: Response vector of shape (n_samples,) for the new data points
-
-    Returns:
-    - mu_n: Updated mean vector(s) of shape (n_features,)
-    - Lambda_n_inv: Updated inverse precision matrix(s) of shape (n_features, n_features)
-    - alpha_n: Updated shape parameter(s)
-    - beta_n: Updated scale parameter(s)
-    """
-    
-    # Update precision matrix
-    xTx = jnp.outer(psi, psi)
-    Lambda_n = Lambda_0 + xTx
-
-    # Update mean
-    xTy = psi * y
-    mu_n = jnp.linalg.solve(Lambda_n, xTy + Lambda_0 @ mu_0)
-
-    # Update parameters of inverse gamma
-    alpha_n = alpha_0 + 0.5
-    mLm_0 = mu_0 @ Lambda_0 @ mu_0
-    mLm_n = mu_n @ Lambda_n @ mu_n
-    beta_n = beta_0 + 0.5 * (y**2 + mLm_0 - mLm_n)
-
-    return [mu_n, Lambda_n, alpha_n, beta_n]
-
-
-
-@jax.jit
-def update_normal_prior(mu_0, P_0, psi, y, sigma):
-    
-        # mean prediction error
-        e = y - psi @ mu_0
-        
-        # covariance matrix of prediction
-        P_xy = P_0 @ psi
-        P_yy = psi @ P_xy + sigma
-        
-        # gain matrix
-        G = P_xy/P_yy
-        
-        # k measurments; j basis functions
-        mu_n = mu_0 + G * e
-        P_n = P_0 - P_yy * jnp.outer(G, G)
-        
-        return [jnp.squeeze(mu_n), jnp.squeeze(P_n)]
-
-
-
-@jax.jit
-def update_mniw_prior(M_0, Lambda_0, V_0, nu_0, psi, y):
-    
-    xTx = jnp.outer(psi, psi)
-    Lambda_n = Lambda_0 + xTx
-    
-    xTy = jnp.outer(psi, y)
-    M_n = jnp.linalg.solve(Lambda_n, Lambda_0 @ M_0 + xTy)
-    
-    s = y - psi @ M_n
-    d = M_n - M_0
-    V_n = V_0 + jnp.outer(s, s) + d.T @ Lambda_0 @ d
-    
-    nu_n = nu_0 + 1
-    
-    return [M_n, Lambda_n, V_n, nu_n]
-
-
-
-@jax.jit
-def update_BMNIW_prior(Phi_0, Psi_0, Sigma_0, nu_0, x_1, psi_0):
-    
-    Phi_1 = Phi_0 + jnp.outer(x_1, x_1)
-    Psi_1 = Psi_0 + jnp.outer(x_1, psi_0)
-    Sigma_1 = Sigma_0 + jnp.outer(psi_0, psi_0)
-    nu_1 = nu_0 + 1
-    
-    return [Phi_1, Psi_1, Sigma_1, nu_1]
-
-
-
-@jax.jit
-def sample_BMNIW_prior(Phi, Psi, Sigma, nu, Lambda_0, v, psi, key):
-    
-    n_x = Phi.shape[0]
-    
-    Sigma_star_inv = Sigma + jnp.diag(1/v)
-    
-    M_star = jnp.linalg.solve(Sigma_star_inv, Psi.T).T
-    M_bar = M_star @ psi
-    
-    Lambda_star = Lambda_0 + Phi - M_star @ Psi.T
-    
-    temp = psi @ jnp.linalg.solve(Sigma_star_inv, psi)
-    Lambda_bar = temp * Lambda_star
-    Lambda_bar_chol = jnp.linalg.cholesky(Lambda_bar)
-    
-    w = jax.random.t(key, nu-n_x+1, (n_x,))
-    
-    return M_bar + Lambda_bar_chol @ w
-    
-
-
-################################################################################
-# Basis Function
-
-
-
-@jax.jit
 def gaussian_RBF(x, inducing_points, lengthscale=1):
     
     r = sq_dist(
@@ -266,6 +129,18 @@ def gaussian_RBF(x, inducing_points, lengthscale=1):
 
 
 
+@jax.jit
+def bump_RBF(x, inducing_points, lengthscale=1, radius=2):
+    
+    sq_d = sq_dist(
+        x/lengthscale, 
+        inducing_points/lengthscale
+        )
+    
+    return jnp.exp(-1 / (1 - jnp.minimum(1, sq_d/radius**2) + 1e-200))
+
+
+
 def generate_Hilbert_BasisFunction(M, L, l, sigma, j_start=1, j_step=1):
     
     # dimensionality of the input
@@ -274,7 +149,6 @@ def generate_Hilbert_BasisFunction(M, L, l, sigma, j_start=1, j_step=1):
     
     # center domain L
     L_center = (L[:,0] + L[:,1])/2
-    L_centedred  = L - L_center
     
     # set start index to 1 if value is negative
     if j_start < 1:
@@ -300,15 +174,27 @@ def generate_Hilbert_BasisFunction(M, L, l, sigma, j_start=1, j_step=1):
     idx = idx[:M]
     
     # create function for basis functions
-    eigen_fun = lambda x: functools.partial(_eigen_fnc, L=L_size/2, eigen_val=eig_val[idx])(x=x)
+    eigen_fun = lambda x: functools.partial(_eigen_fnc, L=L_size/2, eigen_val=eig_val[idx])(x=x-L_center)
     
     # calculate spectral density
-    sd = np.prod(sigma * (2*np.pi)**(3/2) * np.atleast_2d(l) * np.exp(-0.5 * np.sum(l**2 * eig_val[idx,:], axis=1, keepdims=True)), axis=1)
+    sd = _spectral_density_Gaussian(sigma, np.atleast_1d(l), np.sqrt(eig_val[idx]))
     
     return jax.jit(eigen_fun), sd
-    
-    
     
 def _eigen_fnc(x, eigen_val, L):
     
     return jnp.prod(jnp.sqrt(1/L) * jnp.sin(jnp.sqrt(eigen_val) * (x + L)), axis=1)
+
+def _spectral_density_Gaussian(alpha, l, omega):
+    
+    d = omega.shape[1]
+    r = omega*l
+    
+    if len(l) == 1:
+        l_d = l**d
+    else:
+        l_d = np.prod(l)
+    
+    s = alpha * np.sqrt(2*np.pi)**d * l_d * np.exp(-0.5 * np.sum(r**2, axis=1))
+    
+    return s
