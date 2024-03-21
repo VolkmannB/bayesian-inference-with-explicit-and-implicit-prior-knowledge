@@ -1,5 +1,6 @@
 import numpy as np
 from tqdm import tqdm
+import jax
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -38,7 +39,8 @@ def generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, mo
     time = time[0:-1:samples]
     
     # calculate predictions for spring damper force
-    F_GP = np.einsum('...n,mn->...m', H(points.reshape((points.shape[0]*points.shape[1],2))), W[0:-1:samples,...])
+    phi = jax.vmap(H)(points.reshape((points.shape[0]*points.shape[1],2)))
+    F_GP = np.einsum('...n,mn->...m', phi, W[0:-1:samples,...])
     F_GP = F_GP.reshape((points.shape[0], points.shape[1], len(time)))
     
     # error between mean of prediction and ground truth
