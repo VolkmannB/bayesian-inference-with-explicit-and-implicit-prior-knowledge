@@ -51,8 +51,8 @@ def f_x_sim(x, F, **para):
 
 # RBF for GP (the feature vector)
 N_ip = 11
-x_points = np.linspace(-5., 5., N_ip)
-dx_points = np.linspace(-5., 5., N_ip)
+x_points = np.linspace(-7., 7., N_ip)
+dx_points = np.linspace(-7., 7., N_ip)
 ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
 ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
 H = lambda x: bump_RBF(
