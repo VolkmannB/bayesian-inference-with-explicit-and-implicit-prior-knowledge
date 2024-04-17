@@ -19,7 +19,7 @@ from src.Plotting import generate_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 100
+N = 500
 t_end = 100.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
