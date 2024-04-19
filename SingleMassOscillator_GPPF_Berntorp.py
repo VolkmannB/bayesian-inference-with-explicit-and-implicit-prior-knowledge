@@ -56,7 +56,9 @@ GP_model_stats = [
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
 X0 = np.random.multivariate_normal(x0, P0, (N,))
+np.random.seed(357537)
 key = jax.random.key(np.random.randint(100, 1000))
+print(f"First jax key is {key}")
 
 # noise
 R = np.array([[1e-3]])
