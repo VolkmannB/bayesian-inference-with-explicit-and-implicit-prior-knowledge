@@ -7,9 +7,10 @@ import functools
 
 
 from src.SingleMassOscillator import F_spring, F_damper, f_x_sim, fx_KF, N_ip, ip, H
-from src.RGP import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, gaussian_RBF
+from src.RGP import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood
 from src.KalmanFilter import systematic_SISR, squared_error
 from src.Plotting import generate_Animation
+from src.Algorithms import algorithm_PF_GibbsSampling_GP
 
 
 
@@ -54,6 +55,7 @@ GP_model_stats = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
+X0 = np.random.multivariate_normal(x0, P0, (N,))
 key = jax.random.key(np.random.randint(100, 1000))
 
 # noise
@@ -61,6 +63,26 @@ R = np.array([[1e-3]])
 Q = np.diag([5e-6, 5e-7])
 w = lambda n=1: np.random.multivariate_normal(np.zeros((2,)), Q, n)
 e = lambda n=1: np.random.multivariate_normal(np.zeros((1,)), R, n)
+
+# function of the state space model
+ssm_fcn = lambda x, ctrl_input, xi: fx_KF(x=x, F=ctrl_input, F_sd=jnp.atleast_1d(xi)[0], **model_para)
+
+# measurment function
+measurment_fcn = lambda x, ctrl_input: x[0]
+
+# function of the likelihood
+likelihood_fcn = lambda x, y: squared_error(jnp.atleast_1d(x), y, cov=R)
+
+# basis function
+basis_fcn = lambda x, ctrl_input: H(x)
+
+# input signal
+# F = np.ones((steps,)) * -9.81*m + np.sin(2*np.pi*np.arange(0,t_end,dt)/10) * 9.81
+F = np.zeros((steps,)) 
+F[int(t_end/(5*dt)):] = -9.81*m
+F[int(2*t_end/(5*dt)):] = -9.81*m*2
+F[int(3*t_end/(5*dt)):] = -9.81*m
+F[int(4*t_end/(5*dt)):] = 0
 
 
 
@@ -73,23 +95,10 @@ X = np.zeros((steps,2)) # sim
 Y = np.zeros((steps,))
 F_sd = np.zeros((steps,))
 
-Sigma_X = np.zeros((steps,N,2)) # filter
-Sigma_F = np.zeros((steps,N))
-
-W = np.zeros((steps, N_ip)) # GP
 CW = np.zeros((steps, N_ip, N_ip))
 
-# input
-# F = np.ones((steps,)) * -9.81*m + np.sin(2*np.pi*np.arange(0,t_end,dt)/10) * 9.81
-F = np.zeros((steps,)) 
-F[int(t_end/(5*dt)):] = -9.81*m
-F[int(2*t_end/(5*dt)):] = -9.81*m*2
-F[int(3*t_end/(5*dt)):] = -9.81*m
-F[int(4*t_end/(5*dt)):] = 0
-
 # set initial values
-Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,)) # initial particles
-phi = jax.vmap(H)(Sigma_X[0,...])
+phi = jax.vmap(H)(X0)
 GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)( # initial value for GP
     *GP_model_stats,
     np.zeros((N,1)),
@@ -101,7 +110,7 @@ weights = np.ones((steps,N))/N
 
 
 # simulation loop
-for i in tqdm(range(1,steps), desc="Running simulation"):
+for i in tqdm(range(1,steps), desc="Simulate System"):
     
     ####### Model simulation
     
@@ -111,111 +120,29 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # generate measurment
     Y[i] = X[i,0] + e()[0,0]
-    
-    
-    ####### Filtering
-    
-    ## time update
-    
-    # evaluate basis function
-    phi = jax.vmap(H)(Sigma_X[i-1])
-    
-    # # determine supported basis functions
-    # sup_vec_idx = np.any(~np.isclose(phi, 0), axis=0)
-    # sup_mat_idx = np.ix_(sup_vec_idx, sup_vec_idx)
-    
-    # calculate parameters of GP from prior and sufficient statistics
-    GP_para = list(jax.vmap(prior_mniw_2naturalPara_inv)(
-        (GP_model_prior_eta[0] + GP_model_stats[0]),
-        (GP_model_prior_eta[1] + GP_model_stats[1]),
-        GP_model_prior_eta[2] + GP_model_stats[2],
-        GP_model_prior_eta[3] + GP_model_stats[3]
-    ))
-    
-    # create auxiliary variable
-    F_aux = jax.vmap(jnp.matmul)(GP_para[0], phi).flatten()
-    x_aux = jax.vmap(
-        functools.partial(fx_KF, F=F[i-1], **model_para)
-        )(
-            x=Sigma_X[i-1,...], 
-            F_sd=F_aux
-            )
-    
-    # calculate first stage weights
-    l = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x_aux[:,0,None])
-    p = weights[i-1] * l
-    p = p/np.sum(p)
-    
-    #abort
-    if np.any(np.isnan(p)):
-        print("Particle degeneration at auxiliary weights")
-        break
-    
-    # draw new indices
-    u = np.random.rand()
-    idx = systematic_SISR(u, p)
-    
-    # copy statistics
-    GP_model_stats[0] = GP_model_stats[0][idx,...]
-    GP_model_stats[1] = GP_model_stats[1][idx,...]
-    GP_model_stats[2] = GP_model_stats[2][idx,...]
-    GP_model_stats[3] = GP_model_stats[3][idx,...]
-    GP_para[0] = GP_para[0][idx,...]
-    GP_para[1] = GP_para[1][idx,...]
-    GP_para[2] = GP_para[2][idx,...]
-    GP_para[3] = GP_para[3][idx,...]
-    phi = phi[idx]
-    
-    # sample from proposal for F
-    key, *keys = jax.random.split(key, N+1)
-    Sigma_F[i-1] = jax.vmap(prior_mniw_sampleLikelihood)(
-        key=jnp.asarray(keys),
-        M=GP_para[0],
-        V=GP_para[1],
-        Psi=GP_para[2],
-        nu=GP_para[3],
-        phi=phi
-    ).flatten()
-    
-    # sample from proposal for x
-    w_x = w((N,))
-    Sigma_X[i] = jax.vmap(
-        functools.partial(fx_KF, F=F[i-1], **model_para)
-        )(
-            x=Sigma_X[i-1,idx,:], 
-            F_sd=Sigma_F[i-1]
-            ) + w_x
-    
-    # apply sampled noise on x
-    # Sigma_X[i] = Sigma_X[i] + w_x
-    # Sigma_F[i] = F_spring(Sigma_X[i,:,0], **model_para) + F_damper(Sigma_X[i,:,1], **model_para)
-    
-    # apply forgetting operator to statistics for t+1
-    GP_model_stats[0] *= 0.999
-    GP_model_stats[1] *= 0.999
-    GP_model_stats[2] *= 0.999
-    GP_model_stats[3] *= 0.999
-    
-    # update GP parameters
-    GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)(
-        *GP_model_stats,
-        Sigma_F[i-1],
-        phi
-    ))
-    
-    # calculate new weights (measurment update)
-    sigma_y = Sigma_X[i,:,0,None]
-    q = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(sigma_y)
-    weights[i] = q / p[idx]
-    weights[i] = weights[i]/np.sum(weights[i])
-    
-    # logging
-    W[i,...] = np.sum(weights[i,:,None,None] * GP_para[0], axis=0).flatten()
-    
-    #abort
-    if np.any(np.isnan(weights[i])):
-        print("Particle degeneration at new weights")
-        break
+
+
+Sigma_X, Sigma_F, W, weights, time = algorithm_PF_GibbsSampling_GP(
+    N_basis_fcn=N_ip,
+    N_xi=1,
+    t_end=t_end,
+    dt=dt,
+    ctrl_input=F,
+    Y=Y,
+    X0=X0,
+    GP_prior=[
+        GP_model_prior_eta[0]+GP_model_stats[0][0],
+        GP_model_prior_eta[1]+GP_model_stats[1][0],
+        GP_model_prior_eta[2]+GP_model_stats[2][0],
+        GP_model_prior_eta[3]+GP_model_stats[3][0]],
+    basis_fcn=basis_fcn,
+    ssm_fcn=ssm_fcn,
+    measurment_fcn=measurment_fcn,
+    likelihood_fcn=likelihood_fcn,
+    noise_fcn=w
+)
+Sigma_F = Sigma_F.squeeze()
+W = W.squeeze()
     
     
 
