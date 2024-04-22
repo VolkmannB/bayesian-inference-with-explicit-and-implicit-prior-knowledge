@@ -54,7 +54,9 @@ GP_model_stats = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
+np.random.seed(573573)
 key = jax.random.key(np.random.randint(100, 1000))
+print(f"Initial jax-key is: {key}")
 
 # noise
 R = np.array([[1e-3]])
@@ -153,7 +155,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # draw new indices
     u = np.random.rand()
-    idx = systematic_SISR(u, p)
+    idx = np.array(systematic_SISR(u, p))
+    idx[idx >= N] = N - 1 # correct out of bounds indices from numerical errors
     
     # copy statistics
     GP_model_stats[0] = GP_model_stats[0][idx,...]
