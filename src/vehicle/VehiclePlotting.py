@@ -12,11 +12,11 @@ from src.vehicle.Vehicle import H_vehicle, vehicle_RBF_ip, mu_y, f_alpha
 
 
 
-def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, W_f, CW_f, W_r, CW_r, time, model_para, dpi, width, fps, filne_name='vehicle_test.html'):
+def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_Y, W_f, CW_f, W_r, CW_r, time, model_para, dpi, width, fps, filne_name='vehicle_test.html'):
     
     # create figure
     width = 0.3937007874*width
-    fig = make_subplots(3, 2, subplot_titles=('MTF Front', 'MTF Rear', 'Steering Angle', 'Yaw Rate', 'Longitudinal Velocity', 'Lateral Velocity'))
+    fig = make_subplots(4, 2, subplot_titles=('MTF Front', 'MTF Rear', 'Steering Angle', 'Yaw Rate', 'Longitudinal Velocity', 'Lateral Velocity'))
        
     # create point grid
     alpha = np.arange(-20/180*np.pi, 20/180*np.pi, 40/180*np.pi/1000)
@@ -35,12 +35,14 @@ def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r
     W_r = W_r[0:-1:samples,...]
     CW_r = CW_r[0:-1:samples,...]
     Sigma_X = Sigma_X[0:-1:samples,...]
+    Sigma_Y = Sigma_Y[0:-1:samples,...]
     weights = weights[0:-1:samples,...]
     Sigma_mu_f = Sigma_mu_f[0:-1:samples,...]
     Sigma_mu_r = Sigma_mu_r[0:-1:samples,...]
     
     # state trajectory as gaussian
     X_pred = np.einsum('ti,tik->tk', weights, Sigma_X)
+    Y_pred = np.einsum('ti,tik->tk', weights, Sigma_Y)
     P_pred = np.var(Sigma_X, axis=1)
     mu_f_est = np.einsum('ti,ti->t', weights, Sigma_mu_f)
     mu_r_est = np.einsum('ti,ti->t', weights, Sigma_mu_r)
@@ -252,6 +254,58 @@ def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r
                 marker=dict(color='red', size=5)
             ),
             row=1,
+            col=2
+        )
+    
+    # Measurment Yaw Rate
+    fig.add_trace(
+        go.Scatter(
+                x=time,
+                y=Y[:,0],
+                mode='lines',
+                name='dpsi meas',
+                line=dict(color='blue', width=4)
+            ),
+            row=4,
+            col=1
+        )
+    
+    # predicted Yaw Rate
+    fig.add_trace(
+        go.Scatter(
+                x=time,
+                y=Y_pred[:,0],
+                mode='lines',
+                name='dpsi pred',
+                line=dict(color='orange', width=4, dash='dot')
+            ),
+            row=4,
+            col=1
+        )
+    
+    # Measurment a_y
+    fig.add_trace(
+        go.Scatter(
+                x=time,
+                y=Y[:,1],
+                mode='lines',
+                name='a_y meas',
+                line=dict(color='blue', width=4)
+            ),
+            row=4,
+            col=2
+        )
+    
+    # predicted a_y
+    fig.add_trace(
+        go.Scatter(
+                x=time,
+                y=Y_pred[:,1],
+                mode='lines',
+                name='a_y pred',
+                line=dict(color='orange', width=4, dash='dot')
+            ),
+            row=4,
             col=2
         )
     
