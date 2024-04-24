@@ -12,7 +12,7 @@ from src.vehicle.Vehicle import H_vehicle, vehicle_RBF_ip, mu_y, f_alpha
 
 
 
-def generate_Vehicle_Animation(X, Y, u, Sigma_X, W_f, CW_f, W_r, CW_r, time, model_para, dpi, width, fps, filne_name='vehicle_test.html'):
+def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, W_f, CW_f, W_r, CW_r, time, model_para, dpi, width, fps, filne_name='vehicle_test.html'):
     
     # create figure
     width = 0.3937007874*width
@@ -35,10 +35,15 @@ def generate_Vehicle_Animation(X, Y, u, Sigma_X, W_f, CW_f, W_r, CW_r, time, mod
     W_r = W_r[0:-1:samples,...]
     CW_r = CW_r[0:-1:samples,...]
     Sigma_X = Sigma_X[0:-1:samples,...]
+    weights = weights[0:-1:samples,...]
+    Sigma_mu_f = Sigma_mu_f[0:-1:samples,...]
+    Sigma_mu_r = Sigma_mu_r[0:-1:samples,...]
     
     # state trajectory as gaussian
-    X_pred = np.mean(Sigma_X, axis=1)
+    X_pred = np.einsum('ti,tik->tk', weights, Sigma_X)
     P_pred = np.var(Sigma_X, axis=1)
+    mu_f_est = np.einsum('ti,ti->t', weights, Sigma_mu_f)
+    mu_r_est = np.einsum('ti,ti->t', weights, Sigma_mu_r)
     
     # limits for axes
     scale = 1.2
@@ -230,7 +235,7 @@ def generate_Vehicle_Animation(X, Y, u, Sigma_X, W_f, CW_f, W_r, CW_r, time, mod
     fig.add_trace(
         go.Scatter(
                 x=alpha_f,
-                y=Sigma_X[0,:,2],
+                y=Sigma_mu_f[0,:],
                 mode='markers',
                 name='KF particles',
                 marker=dict(color='red', size=5)
@@ -241,7 +246,7 @@ def generate_Vehicle_Animation(X, Y, u, Sigma_X, W_f, CW_f, W_r, CW_r, time, mod
     fig.add_trace(
         go.Scatter(
                 x=alpha_r,
-                y=Sigma_X[0,:,3],
+                y=Sigma_mu_r[0,:],
                 mode='markers',
                 name='KF particles',
                 marker=dict(color='red', size=5)
@@ -286,13 +291,13 @@ def generate_Vehicle_Animation(X, Y, u, Sigma_X, W_f, CW_f, W_r, CW_r, time, mod
         alpha_f, alpha_r = jax.vmap(functools.partial(f_alpha, u=u[i_], **model_para))(x=Sigma_X[i,:,0:2])
         En_front = go.Scatter(
                     x=alpha_f,
-                    y=Sigma_X[i,:,2],
+                    y=Sigma_mu_f[i,:],
                     mode='markers',
                     marker=dict(color='red', size=5)
                 )
         En_rear = go.Scatter(
                     x=alpha_r,
-                    y=Sigma_X[i,:,3],
+                    y=Sigma_mu_r[i,:],
                     mode='markers',
                     marker=dict(color='red', size=5)
                 )
