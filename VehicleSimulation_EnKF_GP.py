@@ -22,7 +22,7 @@ from src.vehicle.VehiclePlotting import generate_Vehicle_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 200
+N = 500
 N_ip = vehicle_RBF_ip.shape[0]
 t_end = 100.0
 time = np.arange(0.0, t_end, default_para['dt'])
@@ -70,9 +70,9 @@ key = jax.random.key(np.random.randint(100, 1000))
 print(f"Initial jax-key is: {key}")
 
 # noise
-R = np.diag([0.01/180*np.pi, 1e-1])
+R = np.diag([0.01/180*np.pi, 1e-3])
 Q = np.diag([5e-4, 5e-4])
-R_y = 1e-1
+R_y = 1e1
 w = lambda n=1: np.random.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
 e = lambda n=1: np.random.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
@@ -86,6 +86,7 @@ X = np.zeros((steps,2)) # sim
 Y = np.zeros((steps,2))
 
 Sigma_X = np.zeros((steps,N,2))
+Sigma_Y = np.zeros((steps,N,2))
 Sigma_mu_f = np.zeros((steps,N))
 Sigma_mu_r = np.zeros((steps,N))
 
@@ -228,7 +229,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
             x=x_aux,
             mu_yf=mu_f_aux, 
             mu_yr=mu_r_aux)
-    l = jax.vmap(functools.partial(squared_error, y=np.hstack((Y[i],0)), cov=np.diag(np.hstack((np.diag(R),R_y)))))(x=y_aux)
+    l = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x=y_aux)
     p = weights[i-1] * l
     p = p/np.sum(p)
     
@@ -345,7 +346,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
             x=Sigma_X[i],
             mu_yf=Sigma_mu_f[i], 
             mu_yr=Sigma_mu_r[i])
-    q = jax.vmap(functools.partial(squared_error, y=np.hstack((Y[i],0)), cov=np.diag(np.hstack((np.diag(R),R_y)))))(sigma_y)
+    Sigma_Y[i] = sigma_y[:,:2]
+    q = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(sigma_y)
     weights[i] = q / p[idx]
     weights[i] = weights[i]/np.sum(weights[i])
     
@@ -360,5 +362,5 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     
 
-fig = generate_Vehicle_Animation(X, Y, ctrl_input, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, W_f, CW_f, W_r, CW_r, time, default_para, 200., 30., 30)
+fig = generate_Vehicle_Animation(X, Y, ctrl_input, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_Y, W_f, CW_f, W_r, CW_r, time, default_para, 200., 30., 30)
 fig.show()
