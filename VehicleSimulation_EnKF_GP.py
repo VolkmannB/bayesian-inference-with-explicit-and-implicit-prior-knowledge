@@ -8,7 +8,7 @@ import functools
 
 from src.vehicle.Vehicle import features_MTF_front, features_MTF_rear
 from src.vehicle.Vehicle import vehicle_RBF_ip, default_para, f_x_sim, f_y
-from src.vehicle.Vehicle import fx_filter, fy_filter, f_alpha, mu_y, H_vehicle
+from src.vehicle.Vehicle import fx_filter, fy_filter, f_alpha, mu_y, H_vehicle, N_ip
 from src.RGP import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
 from src.RGP import prior_mniw_updateStatistics, prior_mniw_sampleLikelihood
 from src.KalmanFilter import squared_error, systematic_SISR
@@ -22,8 +22,8 @@ from src.vehicle.VehiclePlotting import generate_Vehicle_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 500
-N_ip = vehicle_RBF_ip.shape[0]
+N = 100
+# N_ip = vehicle_RBF_ip.shape[0]
 t_end = 100.0
 time = np.arange(0.0, t_end, default_para['dt'])
 steps = len(time)
@@ -70,7 +70,7 @@ key = jax.random.key(np.random.randint(100, 1000))
 print(f"Initial jax-key is: {key}")
 
 # noise
-R = np.diag([0.01/180*np.pi, 1e-3])
+R = np.diag([0.01/180*np.pi, 1e-1, 1e-3])
 Q = np.diag([5e-4, 5e-4])
 R_y = 1e1
 w = lambda n=1: np.random.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
@@ -83,7 +83,7 @@ e = lambda n=1: np.random.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
 # time series for plot
 X = np.zeros((steps,2)) # sim
-Y = np.zeros((steps,2))
+Y = np.zeros((steps,3))
 
 Sigma_X = np.zeros((steps,N,2))
 Sigma_Y = np.zeros((steps,N,2))
