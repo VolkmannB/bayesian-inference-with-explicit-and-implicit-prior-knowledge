@@ -6,7 +6,7 @@ import functools
 from tqdm import tqdm
 
 
-from src.RGP import gaussian_RBF, bump_RBF
+from src.RGP import gaussian_RBF, bump_RBF, generate_Hilbert_BasisFunction
 
 
 # x = [dpsi, v_y]
@@ -114,16 +114,18 @@ def f_y(x, u, **para):
     
     dv_y = 1/para['m']*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*para['mu_x']*jnp.sin(u[0])) - u[1]*x[0]
     
-    return jnp.array([x[0], x[1]])
+    return jnp.array([x[0], dv_y, x[1]])
 
 
 
 ##### Filtering
 
 # features for front and rear tire
+N_ip = 8
 vehicle_RBF_ip = jnp.atleast_2d(jnp.linspace(-20/180*jnp.pi, 20/180*jnp.pi, 8)).T
 vehicle_lengthscale = vehicle_RBF_ip[1] - vehicle_RBF_ip[0]
-H_vehicle = lambda alpha: bump_RBF(alpha, vehicle_RBF_ip, vehicle_lengthscale)
+# H_vehicle = lambda alpha: bump_RBF(alpha, vehicle_RBF_ip, vehicle_lengthscale)
+H_vehicle, sd = generate_Hilbert_BasisFunction(N_ip, np.array([-0.5, 0.5]), 1/N_ip, 1, j_start=2, j_step=2)
 
 @jax.jit
 def features_MTF_front(x, u, **para):
@@ -164,4 +166,4 @@ def fy_filter(x, u, mu_yf, mu_yr, **para):
     
     dv_y = 1/para['m']*(F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*para['mu_x']*jnp.sin(u[0])) - u[1]*x[0]
     
-    return jnp.array([x[0], x[1]])
+    return jnp.array([x[0], dv_y, x[1]])
