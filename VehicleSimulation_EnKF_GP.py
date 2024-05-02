@@ -105,10 +105,12 @@ ctrl_input[:,1] = 11.0
 
 # initial values for states
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,))
+Sigma_mu_f[0,...] = np.random.normal(0, 1e-4, (N,))
+Sigma_mu_r[0,...] = np.random.normal(0, 1e-4, (N,))
 X[0,...] = x0
 weights = np.ones((steps,N))/N
 
-# initial training for GP
+# update GP
 phi_f = jax.vmap(
     functools.partial(features_MTF_front, u=ctrl_input[0], **default_para)
     )(Sigma_X[0])
@@ -117,12 +119,12 @@ phi_r = jax.vmap(
     )(Sigma_X[0])
 GP_stats_f = list(jax.vmap(prior_mniw_updateStatistics)(
     *GP_stats_f,
-    np.zeros((N,)),
+    Sigma_mu_f[0,...],
     phi_f
 ))
 GP_stats_r = list(jax.vmap(prior_mniw_updateStatistics)(
     *GP_stats_r,
-    np.zeros((N,)),
+    Sigma_mu_r[0,...],
     phi_r
 ))
 
@@ -139,27 +141,6 @@ GP_para_r = list(jax.vmap(prior_mniw_2naturalPara_inv)(
     GP_prior_r[2] + GP_stats_r[2],
     GP_prior_r[3] + GP_stats_r[3]
 ))
-
-# sample from initial values for mu
-key, *keys = jax.random.split(key, N+1)
-Sigma_mu_f[0] = jax.vmap(prior_mniw_sampleLikelihood)(
-    key=jnp.asarray(keys),
-    M=GP_para_f[0],
-    V=GP_para_f[1],
-    Psi=GP_para_f[2],
-    nu=GP_para_f[3],
-    phi=phi_f
-).flatten()
-
-key, *keys = jax.random.split(key, N+1)
-Sigma_mu_r[0] = jax.vmap(prior_mniw_sampleLikelihood)(
-    key=jnp.asarray(keys),
-    M=GP_para_r[0],
-    V=GP_para_r[1],
-    Psi=GP_para_r[2],
-    nu=GP_para_r[3],
-    phi=phi_r
-).flatten()
 
 
 # simulation loop
@@ -186,32 +167,16 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         functools.partial(features_MTF_rear, u=ctrl_input[i-1], **default_para)
         )(Sigma_X[i-1])
         
-    # calculate parameters of GP from prior and sufficient statistics
-    GP_para_f = list(jax.vmap(prior_mniw_2naturalPara_inv)(
-        GP_prior_f[0] + GP_stats_f[0],
-        GP_prior_f[1] + GP_stats_f[1],
-        GP_prior_f[2] + GP_stats_f[2],
-        GP_prior_f[3] + GP_stats_f[3]
-    ))
-    GP_para_r = list(jax.vmap(prior_mniw_2naturalPara_inv)(
-        GP_prior_r[0] + GP_stats_r[0],
-        GP_prior_r[1] + GP_stats_r[1],
-        GP_prior_r[2] + GP_stats_r[2],
-        GP_prior_r[3] + GP_stats_r[3]
-    ))
-        
         
         
     ### Step 2: According to the algorithm of the auxiliary PF, resample 
     # particles according to the first stage weights
     
     # create auxiliary variable
-    mu_f_aux = jax.vmap(jnp.matmul)(GP_para_f[0], phi_f).flatten()
-    mu_r_aux = jax.vmap(jnp.matmul)(GP_para_r[0], phi_r).flatten()
     x_aux = jax.vmap(functools.partial(fx_filter, u=ctrl_input[i-1], **default_para))(
         x=Sigma_X[i-1,...],
-        mu_yf=mu_f_aux, 
-        mu_yr=mu_r_aux
+        mu_yf=Sigma_mu_f[i-1], 
+        mu_yr=Sigma_mu_r[i-1]
     )
     
     # calculate first stage weights
@@ -276,13 +241,37 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     Sigma_X[i] = jax.vmap(
         functools.partial(fx_filter, u=ctrl_input[i-1], **default_para)
         )(
-            x=Sigma_X[i-1,:,...],
+            x=Sigma_X[i-1],
             mu_yf=Sigma_mu_f[i-1],
             mu_yr=Sigma_mu_r[i-1]
             ) + w_x
     
-    # sample from proposal for mu at time t
-    phi_f = jax.vmap(
+    # apply forgetting operator to statistics for t-1 -> t
+    GP_stats_f[0] *= 0.999
+    GP_stats_f[1] *= 0.999
+    GP_stats_f[2] *= 0.999
+    GP_stats_f[3] *= 0.999
+    GP_stats_r[0] *= 0.999
+    GP_stats_r[1] *= 0.999
+    GP_stats_r[2] *= 0.999
+    GP_stats_r[3] *= 0.999
+        
+    # calculate parameters of GP from prior and sufficient statistics
+    GP_para_f = list(jax.vmap(prior_mniw_2naturalPara_inv)(
+        GP_prior_f[0] + GP_stats_f[0],
+        GP_prior_f[1] + GP_stats_f[1],
+        GP_prior_f[2] + GP_stats_f[2],
+        GP_prior_f[3] + GP_stats_f[3]
+    ))
+    GP_para_r = list(jax.vmap(prior_mniw_2naturalPara_inv)(
+        GP_prior_r[0] + GP_stats_r[0],
+        GP_prior_r[1] + GP_stats_r[1],
+        GP_prior_r[2] + GP_stats_r[2],
+        GP_prior_r[3] + GP_stats_r[3]
+    ))
+    
+    # sample proposal for mu at time t
+    phi_f_ = jax.vmap(
         functools.partial(features_MTF_front, u=ctrl_input[i], **default_para)
         )(Sigma_X[i])
     key, *keys = jax.random.split(key, N+1)
@@ -292,10 +281,10 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         V=GP_para_f[1],
         Psi=GP_para_f[2],
         nu=GP_para_f[3],
-        phi=phi_f
+        phi=phi_f_
     ).flatten()
     
-    phi_r = jax.vmap(
+    phi_r_ = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i], **default_para)
         )(Sigma_X[i])
     key, *keys = jax.random.split(key, N+1)
@@ -305,34 +294,21 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         V=GP_para_r[1],
         Psi=GP_para_r[2],
         nu=GP_para_r[3],
-        phi=phi_r
+        phi=phi_r_
     ).flatten()
         
         
     
-    ### Step 4: Update the GP
-    
-    # apply forgetting operator to statistics for t+1
-    GP_stats_f[0] *= 0.999
-    GP_stats_f[1] *= 0.999
-    GP_stats_f[2] *= 0.999
-    GP_stats_f[3] *= 0.999
-    GP_stats_r[0] *= 0.999
-    GP_stats_r[1] *= 0.999
-    GP_stats_r[2] *= 0.999
-    GP_stats_r[3] *= 0.999
-    
-    # update GP parameters
+    ### Step 4: Update the sufficient statistics of GP with new proposal
     GP_stats_f = list(jax.vmap(prior_mniw_updateStatistics)(
         *GP_stats_f,
-        Sigma_mu_f[i-1],
-        phi_f
+        Sigma_mu_f[i],
+        phi_f_
     ))
-    
     GP_stats_r = list(jax.vmap(prior_mniw_updateStatistics)(
         *GP_stats_r,
-        Sigma_mu_r[i-1],
-        phi_r
+        Sigma_mu_r[i],
+        phi_r_
     ))
     
     
