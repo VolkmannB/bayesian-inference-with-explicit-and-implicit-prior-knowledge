@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 
 
 
-from src.vehicle.Vehicle import H_vehicle, vehicle_RBF_ip, mu_y, f_alpha
+from src.Vehicle import H_vehicle, vehicle_RBF_ip, mu_y, f_alpha
 
 
 
