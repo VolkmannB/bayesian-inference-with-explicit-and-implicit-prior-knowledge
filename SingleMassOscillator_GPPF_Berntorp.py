@@ -19,7 +19,7 @@ from src.Plotting import generate_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 500
+N = 150
 t_end = 100.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
@@ -54,7 +54,7 @@ GP_model_stats = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
-np.random.seed(573573)
+np.random.seed(5735)
 key = jax.random.key(np.random.randint(100, 1000))
 print(f"Initial jax-key is: {key}")
 
@@ -91,10 +91,11 @@ F[int(4*t_end/(5*dt)):] = 0
 
 # set initial values
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,)) # initial particles
+Sigma_F[0,...] = np.random.normal(0, 1e-6, (N,))
 phi = jax.vmap(H)(Sigma_X[0,...])
 GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)( # initial value for GP
     *GP_model_stats,
-    np.zeros((N,1)),
+    Sigma_F[0,...],
     phi
 ))
 X[0,...] = x0
@@ -117,14 +118,13 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     ####### Filtering
     
-    ## time update
+    ### Step 1: Propagate GP parameters in time
     
-    # evaluate basis function
-    phi = jax.vmap(H)(Sigma_X[i-1])
-    
-    # # determine supported basis functions
-    # sup_vec_idx = np.any(~np.isclose(phi, 0), axis=0)
-    # sup_mat_idx = np.ix_(sup_vec_idx, sup_vec_idx)
+    # apply forgetting operator to statistics for t-1 -> t
+    GP_model_stats[0] *= 0.999
+    GP_model_stats[1] *= 0.999
+    GP_model_stats[2] *= 0.999
+    GP_model_stats[3] *= 0.999
     
     # calculate parameters of GP from prior and sufficient statistics
     GP_para = list(jax.vmap(prior_mniw_2naturalPara_inv)(
@@ -133,14 +133,18 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         GP_model_prior_eta[2] + GP_model_stats[2],
         GP_model_prior_eta[3] + GP_model_stats[3]
     ))
+        
+        
+        
+    ### Step 2: According to the algorithm of the auxiliary PF, resample 
+    # particles according to the first stage weights
     
     # create auxiliary variable
-    F_aux = jax.vmap(jnp.matmul)(GP_para[0], phi).flatten()
     x_aux = jax.vmap(
         functools.partial(fx_KF, F=F[i-1], **model_para)
         )(
             x=Sigma_X[i-1,...], 
-            F_sd=F_aux
+            F_sd=Sigma_F[i-1,...]
             )
     
     # calculate first stage weights
@@ -167,11 +171,25 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     GP_para[1] = GP_para[1][idx,...]
     GP_para[2] = GP_para[2][idx,...]
     GP_para[3] = GP_para[3][idx,...]
-    phi = phi[idx]
     
-    # sample from proposal for F
+    
+    
+    ### Step 3: Make a proposal by generating samples from the hirachical 
+    # model
+    
+    # sample from proposal for x at time t
+    w_x = w((N,))
+    Sigma_X[i] = jax.vmap(
+        functools.partial(fx_KF, F=F[i-1], **model_para)
+        )(
+            x=Sigma_X[i-1,idx,:], 
+            F_sd=Sigma_F[i-1,idx]
+            ) + w_x
+    
+    # sample from proposal for F at time t
+    phi = jax.vmap(H)(Sigma_X[i])
     key, *keys = jax.random.split(key, N+1)
-    Sigma_F[i-1] = jax.vmap(prior_mniw_sampleLikelihood)(
+    Sigma_F[i] = jax.vmap(prior_mniw_sampleLikelihood)(
         key=jnp.asarray(keys),
         M=GP_para[0],
         V=GP_para[1],
@@ -180,29 +198,10 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         phi=phi
     ).flatten()
     
-    # sample from proposal for x
-    w_x = w((N,))
-    Sigma_X[i] = jax.vmap(
-        functools.partial(fx_KF, F=F[i-1], **model_para)
-        )(
-            x=Sigma_X[i-1,idx,:], 
-            F_sd=Sigma_F[i-1]
-            ) + w_x
-    
-    # apply sampled noise on x
-    # Sigma_X[i] = Sigma_X[i] + w_x
-    # Sigma_F[i] = F_spring(Sigma_X[i,:,0], **model_para) + F_damper(Sigma_X[i,:,1], **model_para)
-    
-    # apply forgetting operator to statistics for t+1
-    GP_model_stats[0] *= 0.999
-    GP_model_stats[1] *= 0.999
-    GP_model_stats[2] *= 0.999
-    GP_model_stats[3] *= 0.999
-    
-    # update GP parameters
+    # Update the sufficient statistics of GP with new proposal
     GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)(
         *GP_model_stats,
-        Sigma_F[i-1],
+        Sigma_F[i],
         phi
     ))
     
@@ -211,6 +210,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     q = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(sigma_y)
     weights[i] = q / p[idx]
     weights[i] = weights[i]/np.sum(weights[i])
+    
+    
     
     # logging
     W[i,...] = np.sum(weights[i,:,None,None] * GP_para[0], axis=0).flatten()
