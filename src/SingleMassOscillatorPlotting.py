@@ -14,7 +14,7 @@ def cm2in(cm):
 
 
 
-def generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, model_para, dpi, width, fps, filne_name='test.html'):
+def generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, dpi, width, fps, filne_name='test.html'):
     
     # create figure
     width = cm2in(width)
@@ -32,7 +32,7 @@ def generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, mo
     F_pred = np.sum(Sigma_F * weights, axis=1)
 
     # calculate ground truth for spring damper force
-    grid_F = F_spring(grid_x, **model_para) + F_damper(grid_y, **model_para)
+    grid_F = F_spring(grid_x) + F_damper(grid_y)
     
     # resample time
     samples = 10
