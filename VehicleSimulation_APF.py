@@ -9,9 +9,9 @@ import functools
 from src.Vehicle import features_MTF_front, features_MTF_rear
 from src.Vehicle import vehicle_RBF_ip, default_para, f_x_sim, f_y
 from src.Vehicle import fx_filter, fy_filter, f_alpha, mu_y, H_vehicle, N_ip
-from src.RGP import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
-from src.RGP import prior_mniw_updateStatistics, prior_mniw_sampleLikelihood
-from src.KalmanFilter import squared_error, systematic_SISR
+from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
+from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_sampleLikelihood
+from src.Filtering import squared_error, systematic_SISR
 from src.VehiclePlotting import generate_Vehicle_Animation
 
 

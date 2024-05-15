@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-from src.vehicle.Vehicle import f_x_sim, default_para
+from src.Vehicle import f_x_sim, default_para
 
 
 

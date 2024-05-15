@@ -7,9 +7,9 @@ import functools
 
 
 from src.SingleMassOscillator import F_spring, F_damper, f_x_sim, fx_KF, N_ip, ip, H
-from src.RGP import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, gaussian_RBF
-from src.KalmanFilter import systematic_SISR, squared_error
-from src.Plotting import generate_Animation
+from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, gaussian_RBF
+from src.Filtering import systematic_SISR, squared_error
+from src.SingleMassOscillatorPlotting import generate_Animation
 
 
 

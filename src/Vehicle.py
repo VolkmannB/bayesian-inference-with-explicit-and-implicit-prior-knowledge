@@ -6,7 +6,7 @@ import functools
 from tqdm import tqdm
 
 
-from src.RGP import gaussian_RBF, bump_RBF, generate_Hilbert_BasisFunction
+from src.BayesianInferrence import gaussian_RBF, bump_RBF, generate_Hilbert_BasisFunction
 
 
 # x = [dpsi, v_y]
