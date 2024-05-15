@@ -2,7 +2,7 @@ import numpy as np
 import jax.numpy as jnp
 import jax
 
-from src.RGP import gaussian_RBF, bump_RBF, generate_Hilbert_BasisFunction
+from src.BayesianInferrence import gaussian_RBF, bump_RBF, generate_Hilbert_BasisFunction
 
 
 #### This section defines the simulated single mass oscillator
