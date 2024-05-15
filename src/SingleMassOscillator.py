@@ -7,41 +7,40 @@ from src.BayesianInferrence import gaussian_RBF, bump_RBF, generate_Hilbert_Basi
 
 #### This section defines the simulated single mass oscillator
 
-def F_spring(x, **para):
-    return para['c1'] * x + para['c2'] * x**3
+
+m=2.0
+c1=10.0
+c2=2.0
+d1=0.7
+d2=0.4
+
+
+def F_spring(x):
+    return c1 * x + c2 * x**3
 
 
 
-def F_damper(dx, **para):
-    return para['d1']*dx * (1/(1+para['d2']*dx*jnp.tanh(dx)))
+def F_damper(dx):
+    return d1*dx * (1/(1+d2*dx*jnp.tanh(dx)))
 
 
 
-def dx(x, F, F_sd, **para):
+def dx(x, F, F_sd):
     return jnp.array(
-        [x[1], -F_sd/para['m'] + F/para['m'] + 9.81]
+        [x[1], -F_sd/m + F/m + 9.81]
     )
 
 
 
-def dx_sim(x, F, **para):
-    
-    F_s = F_spring(x[0], **para)
-    F_d= F_damper(x[1], **para)
-    
-    return dx(x, F, F_s+F_d, **para)
-
-
-
 @jax.jit
-def f_x_sim(x, F, **para):
+def f_x(x, F, F_sd, dt):
     
     # Runge-Kutta 4
-    k1 = dx_sim(x, F, **para)
-    k2 = dx_sim(x+para['dt']/2.0*k1, F, **para)
-    k3 = dx_sim(x+para['dt']/2.0*k2, F, **para)
-    k4 = dx_sim(x+para['dt']*k3, F, **para)
-    x = x + para['dt']/6.0*(k1+2*k2+2*k3+k4) 
+    k1 = dx(x, F, F_sd)
+    k2 = dx(x+dt/2.0*k1, F, F_sd)
+    k3 = dx(x+dt/2.0*k2, F, F_sd)
+    k4 = dx(x+dt*k3, F, F_sd)
+    x = x + dt/6.0*(k1+2*k2+2*k3+k4) 
     
     return x
     
@@ -64,27 +63,3 @@ N_ip = ip.shape[0]
 
 # N_ip = 41
 # H, sd = generate_Hilbert_BasisFunction(N_ip, np.array([[-5, 5],[-5, 5]]), 1, 10**2)
-
-
-
-# the ode for the KF
-def dx_KF(x, F, F_sd, **para):
-    
-    x_dot = dx(x, F, F_sd, **para)
-    
-    # dH_dt = jax.jvp(H, (x[:2],), (x_dot,))[1]
-    
-    return x_dot
-    
-    
-
-# time discrete state space model for the filter with Runge-Kutta 4 integration
-@jax.jit
-def fx_KF(x, F, F_sd, **para):
-    
-    k1 = dx_KF(x, F, F_sd, **para)
-    k2 = dx_KF(x+para['dt']*k1/2, F, F_sd, **para)
-    k3 = dx_KF(x+para['dt']*k2/2, F, F_sd, **para)
-    k4 = dx_KF(x+para['dt']*k3, F, F_sd, **para)
-    
-    return x + para['dt']/6*(k1 + 2*k2 + 2*k3 + k4)

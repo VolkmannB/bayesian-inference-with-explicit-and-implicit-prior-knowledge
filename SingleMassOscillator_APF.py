@@ -6,7 +6,7 @@ import functools
 
 
 
-from src.SingleMassOscillator import F_spring, F_damper, f_x_sim, fx_KF, N_ip, ip, H
+from src.SingleMassOscillator import F_spring, F_damper, f_x, N_ip, ip, H, m
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, gaussian_RBF
 from src.Filtering import systematic_SISR, squared_error
 from src.SingleMassOscillatorPlotting import generate_Animation
@@ -19,19 +19,11 @@ from src.SingleMassOscillatorPlotting import generate_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 150
+N = 500
 t_end = 100.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
 steps = len(time)
-
-# model para
-m=2.0
-c1=10.0
-c2=2.0
-d1=0.7
-d2=0.4
-model_para = {'dt':dt, 'm':m, 'c1':c1, 'c2':c2, 'd1':d1, 'd2':d2}
 
 # model of the spring damper system
 # parameters of the prior
@@ -54,7 +46,9 @@ GP_model_stats = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
-np.random.seed(5735)
+seed = np.random.randint(100, 1000000)
+print(f"Seed is: {seed}")
+np.random.seed(seed)
 key = jax.random.key(np.random.randint(100, 1000))
 print(f"Initial jax-key is: {key}")
 
@@ -109,8 +103,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     ####### Model simulation
     
     # update system state
-    X[i] = f_x_sim(X[i-1], F[i-1], **model_para)
-    F_sd[i] = F_spring(X[i,0], **model_para) + F_damper(X[i,1], **model_para)
+    F_sd[i-1] = F_spring(X[i-1,0]) + F_damper(X[i-1,1])
+    X[i] = f_x(X[i-1], F[i-1], F_sd[i-1], dt=dt)
     
     # generate measurment
     Y[i] = X[i,0] + e()[0,0]
@@ -141,7 +135,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # create auxiliary variable
     x_aux = jax.vmap(
-        functools.partial(fx_KF, F=F[i-1], **model_para)
+        functools.partial(f_x, F=F[i-1], dt=dt)
         )(
             x=Sigma_X[i-1,...], 
             F_sd=Sigma_F[i-1,...]
@@ -180,7 +174,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     # sample from proposal for x at time t
     w_x = w((N,))
     Sigma_X[i] = jax.vmap(
-        functools.partial(fx_KF, F=F[i-1], **model_para)
+        functools.partial(f_x, F=F[i-1], dt=dt)
         )(
             x=Sigma_X[i-1,idx,:], 
             F_sd=Sigma_F[i-1,idx]
@@ -226,8 +220,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
 ################################################################################
 # Plots
 
-fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, model_para, 200., 30., 30)
+fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, 200., 30., 30)
 
 # print('RMSE for spring-damper force is {0}'.format(np.std(F_sd-Sigma_F)))
 
-fig.show()
+# fig.show()
