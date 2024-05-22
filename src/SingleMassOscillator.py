@@ -49,7 +49,7 @@ def f_x(x, F, F_sd, dt):
 #### this section defines functions related to the state space model of the filtering problem
 
 # RBF for GP (the feature vector)
-N_ip = 11
+N_ip = 5
 x_points = np.linspace(-7., 7., N_ip)
 dx_points = np.linspace(-7., 7., N_ip)
 ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
