@@ -19,7 +19,7 @@ from src.SingleMassOscillatorPlotting import generate_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 500
+N = 1500
 t_end = 100.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
@@ -46,7 +46,7 @@ GP_model_stats = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
-seed = np.random.randint(100, 1000000)
+seed = 275513 #np.random.randint(100, 1000000)
 print(f"Seed is: {seed}")
 np.random.seed(seed)
 key = jax.random.key(np.random.randint(100, 1000))
