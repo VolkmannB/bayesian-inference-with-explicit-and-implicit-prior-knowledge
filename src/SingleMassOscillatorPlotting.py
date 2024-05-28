@@ -1,6 +1,7 @@
 import numpy as np
 from tqdm import tqdm
 import jax
+import jax.numpy as jnp
 
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -28,8 +29,8 @@ def generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, dp
     points = np.dstack([grid_x, grid_y])
     
     # state trajectory as gaussian
-    X_pred = np.sum(Sigma_X * weights[...,None], axis=1)
-    F_pred = np.sum(Sigma_F * weights, axis=1)
+    X_pred = np.einsum('tn...,tn->t...', Sigma_X, weights)
+    F_pred = np.einsum('tn...,tn->t...', Sigma_F, weights)
 
     # calculate ground truth for spring damper force
     grid_F = F_spring(grid_x) + F_damper(grid_y)
