@@ -72,11 +72,9 @@ F_sd = np.zeros((steps,))
 Sigma_X = np.zeros((steps,N,2)) # filter
 Sigma_F = np.zeros((steps,N))
 
-W = np.zeros((steps, N_ip)) # GP
-CW = np.zeros((steps, N_ip, N_ip))
+A_Pred = np.zeros((steps, N_ip)) # GP
 
 # input
-# F = np.ones((steps,)) * -9.81*m + np.sin(2*np.pi*np.arange(0,t_end,dt)/10) * 9.81
 F = np.zeros((steps,)) 
 F[int(t_end/(5*dt)):] = -9.81*m
 F[int(2*t_end/(5*dt)):] = -9.81*m*2
@@ -122,8 +120,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # calculate parameters of GP from prior and sufficient statistics
     GP_para = list(jax.vmap(prior_mniw_2naturalPara_inv)(
-        (GP_model_prior_eta[0] + GP_model_stats[0]),
-        (GP_model_prior_eta[1] + GP_model_stats[1]),
+        GP_model_prior_eta[0] + GP_model_stats[0],
+        GP_model_prior_eta[1] + GP_model_stats[1],
         GP_model_prior_eta[2] + GP_model_stats[2],
         GP_model_prior_eta[3] + GP_model_stats[3]
     ))
@@ -187,11 +185,11 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     dphi = phi_x1 - phi_x0
     dxi = jax.vmap(prior_mniw_sampleLikelihood)(
         key=jnp.asarray(keys),
-        M=GP_para[0],
-        V=GP_para[1],
-        Psi=GP_para[2],
-        nu=GP_para[3],
-        phi=dphi
+        mean=GP_para[0],
+        col_cov=GP_para[1],
+        row_scale=GP_para[2],
+        df=GP_para[3],
+        basis=dphi
     ).flatten()
     Sigma_F[i] = Sigma_F[i-1,idx] + dxi
     
@@ -217,7 +215,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         GP_model_prior_eta[2] + np.einsum('n...,n->...', GP_model_stats[2], weights[i]),
         GP_model_prior_eta[3] + np.einsum('n...,n->...', GP_model_stats[3], weights[i])
     )
-    W[i,...] = GP_para_logging[0]
+    A_Pred[i,...] = GP_para_logging[0]
     
     #abort
     if np.any(np.isnan(weights[i])):
@@ -229,8 +227,6 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
 ################################################################################
 # Plots
 
-fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, 200., 30., 30)
-
-# print('RMSE for spring-damper force is {0}'.format(np.std(F_sd-Sigma_F)))
+fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, A_Pred, time, 200., 30., 30)
 
 fig.show()

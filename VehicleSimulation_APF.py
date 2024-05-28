@@ -90,10 +90,8 @@ Sigma_Y = np.zeros((steps,N,2))
 Sigma_mu_f = np.zeros((steps,N))
 Sigma_mu_r = np.zeros((steps,N))
 
-W_f = np.zeros((steps, vehicle_RBF_ip.shape[0]))
-CW_f = np.zeros((steps, vehicle_RBF_ip.shape[0], vehicle_RBF_ip.shape[0]))
-W_r = np.zeros((steps, vehicle_RBF_ip.shape[0]))
-CW_r = np.zeros((steps, vehicle_RBF_ip.shape[0], vehicle_RBF_ip.shape[0]))
+A_f_Pred = np.zeros((steps, vehicle_RBF_ip.shape[0]))
+A_r_Pred = np.zeros((steps, vehicle_RBF_ip.shape[0]))
 
 # input
 ctrl_input = np.zeros((steps,2))
@@ -264,11 +262,11 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     key, *keys = jax.random.split(key, N+1)
     dmu_f = jax.vmap(prior_mniw_sampleLikelihood)(
         key=jnp.asarray(keys),
-        M=GP_para_f[0],
-        V=GP_para_f[1],
-        Psi=GP_para_f[2],
-        nu=GP_para_f[3],
-        phi=dphi_f
+        mean=GP_para_f[0],
+        col_cov=GP_para_f[1],
+        row_scale=GP_para_f[2],
+        df=GP_para_f[3],
+        basis=dphi_f
     ).flatten()
     Sigma_mu_f[i] = Sigma_mu_f[i-1] + dmu_f
     
@@ -282,11 +280,11 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     key, *keys = jax.random.split(key, N+1)
     dmu_r = jax.vmap(prior_mniw_sampleLikelihood)(
         key=jnp.asarray(keys),
-        M=GP_para_r[0],
-        V=GP_para_r[1],
-        Psi=GP_para_r[2],
-        nu=GP_para_r[3],
-        phi=dphi_r
+        mean=GP_para_r[0],
+        col_cov=GP_para_r[1],
+        row_scale=GP_para_r[2],
+        df=GP_para_r[3],
+        basis=dphi_r
     ).flatten()
     Sigma_mu_r[i] = Sigma_mu_r[i-1] + dmu_r
         
@@ -319,8 +317,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     
     # logging
-    W_f[i,...] = np.sum(weights[i,:,None,None] * GP_para_f[0], axis=0).flatten()
-    W_r[i,...] = np.sum(weights[i,:,None,None] * GP_para_r[0], axis=0).flatten()
+    A_f_Pred[i,...] = np.sum(weights[i,:,None,None] * GP_para_f[0], axis=0).flatten()
+    A_r_Pred[i,...] = np.sum(weights[i,:,None,None] * GP_para_r[0], axis=0).flatten()
     
     #abort
     if np.any(np.isnan(weights[i])):
@@ -329,5 +327,5 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     
 
-fig = generate_Vehicle_Animation(X, Y, ctrl_input, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_Y, W_f, CW_f, W_r, CW_r, time, default_para, 200., 30., 30)
+fig = generate_Vehicle_Animation(X, Y, ctrl_input, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_Y, A_f_Pred, A_r_Pred, time, default_para, 200., 30., 30)
 fig.show()
