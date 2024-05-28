@@ -12,7 +12,7 @@ from src.Vehicle import H_vehicle, vehicle_RBF_ip, mu_y, f_alpha
 
 
 
-def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_Y, W_f, CW_f, W_r, CW_r, time, model_para, dpi, width, fps, filne_name='vehicle_test.html'):
+def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_Y, W_f, W_r, time, model_para, dpi, width, fps, filne_name='vehicle_test.html'):
     
     # create figure
     width = 0.3937007874*width
@@ -31,9 +31,7 @@ def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r
     Y = Y[0:-1:samples]
     u = u[0:-1:samples,...]
     W_f = W_f[0:-1:samples,...]
-    CW_f = CW_f[0:-1:samples,...]
     W_r = W_r[0:-1:samples,...]
-    CW_r = CW_r[0:-1:samples,...]
     Sigma_X = Sigma_X[0:-1:samples,...]
     Sigma_Y = Sigma_Y[0:-1:samples,...]
     weights = weights[0:-1:samples,...]

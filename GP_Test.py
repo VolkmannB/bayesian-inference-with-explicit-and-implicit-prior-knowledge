@@ -9,7 +9,7 @@ import functools
 
 
 
-from src.RGP import gaussian_RBF, prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, generate_Hilbert_BasisFunction, bump_RBF
+from src.BayesianInferrence import gaussian_RBF, prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, generate_Hilbert_BasisFunction, bump_RBF
 
 
 

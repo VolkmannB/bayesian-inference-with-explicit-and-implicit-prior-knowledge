@@ -16,53 +16,60 @@ import itertools
 # Matrix Normal Inverse Wishart
 # For a multivariate Gaussian likelihood with unknown mean and covariance
 @jax.jit
-def prior_mniw_2naturalPara(M, V, Psi, nu):
+def prior_mniw_2naturalPara(mean, col_cov, row_scale, df):
     
-    M = jnp.atleast_2d(M)
-    Psi = jnp.atleast_2d(Psi)
+    mean = jnp.atleast_2d(mean)
+    row_scale = jnp.atleast_2d(row_scale)
 
-    V_chol = jnp.linalg.cholesky(V)
-    temp = jsc.linalg.cho_solve((V_chol, True), jnp.hstack([M.T, jnp.eye(V.shape[0])]))
-    eta_0 = temp[:,:M.shape[0]]
-    eta_1 = temp[:,M.shape[0]:]
-    eta_2 = M @ eta_0 + Psi
+    col_cov_chol = jnp.linalg.cholesky(col_cov)
+    temp = jsc.linalg.cho_solve(
+        (col_cov_chol, True), 
+        jnp.hstack([mean.T, jnp.eye(col_cov.shape[0])])
+        )
     
-    return eta_0, eta_1, eta_2, nu
+    eta_0 = temp[:,:mean.shape[0]]
+    eta_1 = temp[:,mean.shape[0]:]
+    eta_2 = mean @ eta_0 + row_scale
+    
+    return eta_0, eta_1, eta_2, df
 
 @jax.jit
 def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
     
     eta_1_chol = jnp.linalg.cholesky(eta_1)
-    temp = jsc.linalg.cho_solve((eta_1_chol, True), jnp.hstack([eta_0, jnp.eye(eta_1.shape[0])]))
+    temp = jsc.linalg.cho_solve(
+        (eta_1_chol, True), 
+        jnp.hstack([eta_0, jnp.eye(eta_1.shape[0])])
+        )
     
-    M = temp[:,:eta_0.shape[1]].T
-    V = temp[:,eta_0.shape[1]:]
-    Psi = eta_2 - M @ eta_0
+    mean = temp[:,:eta_0.shape[1]].T
+    col_cov = temp[:,eta_0.shape[1]:]
+    row_scale = eta_2 - mean @ eta_0
     
-    return jnp.atleast_2d(M), V, jnp.atleast_2d(Psi), eta_3
+    return jnp.atleast_2d(mean), col_cov, jnp.atleast_2d(row_scale), eta_3
 
 @jax.jit
-def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, phi):
+def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, basis):
     
-    T_0 = T_0 + jnp.outer(phi,y) 
-    T_1 = T_1 + jnp.outer(phi,phi)
+    T_0 = T_0 + jnp.outer(basis,y) 
+    T_1 = T_1 + jnp.outer(basis,basis)
     T_2 = T_2 + jnp.outer(y,y)
     T_3 = T_3 + 1
     
     return T_0, T_1, T_2, T_3
 
 @jax.jit
-def prior_mniw_sampleLikelihood(key, M, V, Psi, nu, phi):
+def prior_mniw_sampleLikelihood(key, mean, col_cov, row_scale, df, basis):
     
     # Calculate parameters of the NIW predictive distribution
-    df = nu + 1
-    l = 1/(phi @ V @ phi)
-    Scale = Psi * (l + 1)/(l * df)
+    df = df + 1
+    l = 1/(basis @ col_cov @ basis)
+    Scale = row_scale * (l + 1)/(l * df)
     Scale_chol = jnp.linalg.cholesky(Scale)
-    Mean = M @ phi
+    Mean = mean @ basis
     
     # generate a sample of the carrier measure wich is a t distribution
-    sample = jax.random.t(key, df, (M.shape[0],))
+    sample = jax.random.t(key, df, (mean.shape[0],))
     
     return Mean + Scale_chol @ sample
     

@@ -15,7 +15,7 @@ def cm2in(cm):
 
 
 
-def generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, dpi, width, fps, filne_name='test.html'):
+def generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, time, dpi, width, fps, filne_name='test.html'):
     
     # create figure
     width = cm2in(width)
