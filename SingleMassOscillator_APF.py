@@ -19,7 +19,7 @@ from src.SingleMassOscillatorPlotting import generate_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 1500
+N = 200
 t_end = 100.0
 dt = 0.01
 time = np.arange(0.0,t_end,dt)
@@ -46,7 +46,7 @@ GP_model_stats = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
-seed = 275513 #np.random.randint(100, 1000000)
+seed = np.random.randint(100, 1000000)
 print(f"Seed is: {seed}")
 np.random.seed(seed)
 key = jax.random.key(np.random.randint(100, 1000))
@@ -181,22 +181,25 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
             ) + w_x
     
     # sample from proposal for F at time t
-    phi = jax.vmap(H)(Sigma_X[i])
+    phi_x0 = jax.vmap(H)(Sigma_X[i-1,idx,:])
+    phi_x1 = jax.vmap(H)(Sigma_X[i])
     key, *keys = jax.random.split(key, N+1)
-    Sigma_F[i] = jax.vmap(prior_mniw_sampleLikelihood)(
+    dphi = phi_x1 - phi_x0
+    dxi = jax.vmap(prior_mniw_sampleLikelihood)(
         key=jnp.asarray(keys),
         M=GP_para[0],
         V=GP_para[1],
         Psi=GP_para[2],
         nu=GP_para[3],
-        phi=phi
+        phi=dphi
     ).flatten()
+    Sigma_F[i] = Sigma_F[i-1,idx] + dxi
     
     # Update the sufficient statistics of GP with new proposal
     GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)(
         *GP_model_stats,
         Sigma_F[i],
-        phi
+        phi_x1
     ))
     
     # calculate new weights (measurment update)
@@ -208,7 +211,13 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     
     # logging
-    W[i,...] = np.sum(weights[i,:,None,None] * GP_para[0], axis=0).flatten()
+    GP_para_logging = prior_mniw_2naturalPara_inv(
+        GP_model_prior_eta[0] + np.einsum('n...,n->...', GP_model_stats[0], weights[i]),
+        GP_model_prior_eta[1] + np.einsum('n...,n->...', GP_model_stats[1], weights[i]),
+        GP_model_prior_eta[2] + np.einsum('n...,n->...', GP_model_stats[2], weights[i]),
+        GP_model_prior_eta[3] + np.einsum('n...,n->...', GP_model_stats[3], weights[i])
+    )
+    W[i,...] = GP_para_logging[0]
     
     #abort
     if np.any(np.isnan(weights[i])):
@@ -224,4 +233,4 @@ fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, 
 
 # print('RMSE for spring-damper force is {0}'.format(np.std(F_sd-Sigma_F)))
 
-# fig.show()
+fig.show()

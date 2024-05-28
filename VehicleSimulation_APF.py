@@ -22,7 +22,7 @@ from src.VehiclePlotting import generate_Vehicle_Animation
 rng = np.random.default_rng()
 
 # sim para
-N = 100
+N = 200
 # N_ip = vehicle_RBF_ip.shape[0]
 t_end = 100.0
 time = np.arange(0.0, t_end, default_para['dt'])
@@ -65,7 +65,7 @@ GP_stats_r = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
-np.random.seed(573573)
+# np.random.seed(573573)
 key = jax.random.key(np.random.randint(100, 1000))
 print(f"Initial jax-key is: {key}")
 
@@ -105,8 +105,8 @@ ctrl_input[:,1] = 11.0
 
 # initial values for states
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,))
-Sigma_mu_f[0,...] = np.random.normal(0, 1e-4, (N,))
-Sigma_mu_r[0,...] = np.random.normal(0, 1e-4, (N,))
+Sigma_mu_f[0,...] = np.random.normal(0, 1e-2, (N,))
+Sigma_mu_r[0,...] = np.random.normal(0, 1e-2, (N,))
 X[0,...] = x0
 weights = np.ones((steps,N))/N
 
@@ -179,14 +179,20 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         mu_yf=Sigma_mu_f[i-1], 
         mu_yr=Sigma_mu_r[i-1]
     )
-    phi_f = jax.vmap(
+    phi_f0 = jax.vmap(
+        functools.partial(features_MTF_front, u=ctrl_input[i-1], **default_para)
+        )(Sigma_X[i-1])
+    phi_f1 = jax.vmap(
         functools.partial(features_MTF_front, u=ctrl_input[i], **default_para)
         )(x_aux)
-    phi_r = jax.vmap(
+    phi_r0 = jax.vmap(
+        functools.partial(features_MTF_rear, u=ctrl_input[i-1], **default_para)
+        )(Sigma_X[i-1])
+    phi_r1 = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i], **default_para)
         )(x_aux)
-    mu_f_aux = jax.vmap(jnp.matmul)(GP_para_f[0], phi_f).flatten()
-    mu_r_aux = jax.vmap(jnp.matmul)(GP_para_r[0], phi_r).flatten()
+    mu_f_aux = jax.vmap(jnp.matmul)(GP_para_f[0], phi_f1-phi_f0).flatten() + Sigma_mu_f[i-1]
+    mu_r_aux = jax.vmap(jnp.matmul)(GP_para_r[0], phi_r1-phi_r0).flatten() + Sigma_mu_r[i-1]
     
     # calculate first stage weights
     y_aux = jax.vmap(
@@ -248,31 +254,41 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
             ) + w_x
     
     # sample proposal for mu at time t
-    phi_f = jax.vmap(
+    phi_f0 = jax.vmap(
+        functools.partial(features_MTF_front, u=ctrl_input[i-1], **default_para)
+        )(Sigma_X[i-1])
+    phi_f1 = jax.vmap(
         functools.partial(features_MTF_front, u=ctrl_input[i], **default_para)
         )(Sigma_X[i])
+    dphi_f = phi_f1 - phi_f0
     key, *keys = jax.random.split(key, N+1)
-    Sigma_mu_f[i] = jax.vmap(prior_mniw_sampleLikelihood)(
+    dmu_f = jax.vmap(prior_mniw_sampleLikelihood)(
         key=jnp.asarray(keys),
         M=GP_para_f[0],
         V=GP_para_f[1],
         Psi=GP_para_f[2],
         nu=GP_para_f[3],
-        phi=phi_f
+        phi=dphi_f
     ).flatten()
+    Sigma_mu_f[i] = Sigma_mu_f[i-1] + dmu_f
     
-    phi_r = jax.vmap(
+    phi_r0 = jax.vmap(
+        functools.partial(features_MTF_rear, u=ctrl_input[i-1], **default_para)
+        )(Sigma_X[i-1])
+    phi_r1 = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i], **default_para)
         )(Sigma_X[i])
+    dphi_r = phi_r1 - phi_r0
     key, *keys = jax.random.split(key, N+1)
-    Sigma_mu_r[i] = jax.vmap(prior_mniw_sampleLikelihood)(
+    dmu_r = jax.vmap(prior_mniw_sampleLikelihood)(
         key=jnp.asarray(keys),
         M=GP_para_r[0],
         V=GP_para_r[1],
         Psi=GP_para_r[2],
         nu=GP_para_r[3],
-        phi=phi_r
+        phi=dphi_r
     ).flatten()
+    Sigma_mu_r[i] = Sigma_mu_r[i-1] + dmu_r
         
         
     
@@ -280,12 +296,12 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     GP_stats_f = list(jax.vmap(prior_mniw_updateStatistics)(
         *GP_stats_f,
         Sigma_mu_f[i],
-        phi_f
+        phi_f1
     ))
     GP_stats_r = list(jax.vmap(prior_mniw_updateStatistics)(
         *GP_stats_r,
         Sigma_mu_r[i],
-        phi_r
+        phi_r1
     ))
     
     # calculate new weights
