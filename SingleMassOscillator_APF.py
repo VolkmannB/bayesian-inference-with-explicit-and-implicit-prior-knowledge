@@ -4,10 +4,14 @@ import jax
 import jax.numpy as jnp
 import functools
 
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
 
 
 from src.SingleMassOscillator import F_spring, F_damper, f_x, N_ip, ip, H, m
-from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, gaussian_RBF
+from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
+from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_sampleCondPredictive
 from src.Filtering import systematic_SISR, squared_error
 from src.SingleMassOscillatorPlotting import generate_Animation
 
@@ -30,7 +34,7 @@ steps = len(time)
 phi = jax.vmap(H)(ip)
 GP_model_prior_eta = list(prior_mniw_2naturalPara(
     np.zeros((1, N_ip)),
-    phi@phi.T*40,
+    np.eye(N_ip)*40,
     np.eye(1),
     0
 ))
@@ -73,6 +77,8 @@ Sigma_X = np.zeros((steps,N,2)) # filter
 Sigma_F = np.zeros((steps,N))
 
 A_Pred = np.zeros((steps, N_ip)) # GP
+
+N_eff = np.zeros((steps,)) # effective sample size
 
 # input
 F = np.zeros((steps,)) 
@@ -182,16 +188,16 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     phi_x0 = jax.vmap(H)(Sigma_X[i-1,idx,:])
     phi_x1 = jax.vmap(H)(Sigma_X[i])
     key, *keys = jax.random.split(key, N+1)
-    dphi = phi_x1 - phi_x0
-    dxi = jax.vmap(prior_mniw_sampleLikelihood)(
+    Sigma_F[i] = jax.vmap(prior_mniw_sampleCondPredictive)(
         key=jnp.asarray(keys),
         mean=GP_para[0],
         col_cov=GP_para[1],
         row_scale=GP_para[2],
         df=GP_para[3],
-        basis=dphi
+        y1=Sigma_F[i-1,idx],
+        basis1=phi_x0,
+        basis2=phi_x1
     ).flatten()
-    Sigma_F[i] = Sigma_F[i-1,idx] + dxi
     
     # Update the sufficient statistics of GP with new proposal
     GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)(
@@ -205,6 +211,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     q = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(sigma_y)
     weights[i] = q / p[idx]
     weights[i] = weights[i]/np.sum(weights[i])
+    N_eff[i] = 1/np.sum(weights[i]**2)/N
     
     
     
@@ -227,6 +234,61 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
 ################################################################################
 # Plots
 
+# genearte animation
 fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, A_Pred, time, 200., 30., 30)
+fig.show()
 
+# plot distribution of F_sd
+fig = make_subplots()
+time = time[0:-1:5]
+N_eff = N_eff[0:-1:5]
+Sigma_F = Sigma_F[0:-1:5,0:-1:5]
+weights = weights[0:-1:5,0:-1:5]
+weights = weights/np.sum(weights, axis=-1, keepdims=True)
+for i in range(weights.shape[-1]):
+    fig.add_trace(
+        go.Scatter(
+            x=time,
+            y=Sigma_F[:,i],
+            mode='markers',
+            marker={
+                'color': 'blue', 
+                'size':8,
+                'opacity': weights[:,i]
+            }
+        )
+    )
+fig.update_layout(showlegend=False)
+fig.show()
+
+# plot a single sample of F_sd over time
+fig = make_subplots()
+fig.add_trace(
+    go.Scatter(
+        x=time,
+        y=Sigma_F[:,0],
+        mode='lines',
+        line={
+            'color': 'blue', 
+            'width':3
+        }
+    )
+)
+fig.update_layout(showlegend=False)
+fig.show()
+
+# plot effective sample size over time
+fig = make_subplots()
+fig.add_trace(
+    go.Scatter(
+        x=time,
+        y=N_eff,
+        mode='lines',
+        line={
+            'color': 'blue', 
+            'width':3
+        }
+    )
+)
+fig.update_layout(showlegend=False)
 fig.show()

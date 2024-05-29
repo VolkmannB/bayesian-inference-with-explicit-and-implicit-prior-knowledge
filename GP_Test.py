@@ -9,7 +9,7 @@ import functools
 
 
 
-from src.BayesianInferrence import gaussian_RBF, prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_sampleLikelihood, generate_Hilbert_BasisFunction, bump_RBF
+from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_samplePredictive, generate_Hilbert_BasisFunction, bump_RBF
 
 
 
@@ -45,7 +45,7 @@ MNIW_stats = [
 
 
 rng = np.random.default_rng()
-for i in tqdm(range(10000)):
+for i in tqdm(range(100)):
     x = rng.uniform(-10,10,1).flatten()
     y1 = test_function1(x) + rng.normal(0, 1, x.shape)
     y2 = test_function2(x) + rng.normal(0, 1, x.shape)
@@ -70,11 +70,15 @@ MNIW_model = prior_mniw_2naturalPara_inv(
 ################################################################################
 # sampling a matrix t distribution
 
-V_chol = np.linalg.cholesky(MNIW_model[1])
+Xnew = np.linspace(-10.0, 10., 2000)
+Phi = jax.vmap(H)(Xnew)
+
+V_chol = np.linalg.cholesky(Phi @ MNIW_model[1] @ Phi.T + np.eye(Phi.shape[0]))
 Psi_chol = np.linalg.cholesky(MNIW_model[2]/(MNIW_model[3]+1))
 
-N_sample = 100
-Theta_samples = MNIW_model[0] + np.einsum('nm,...mk,ki->...ni', Psi_chol, scipy.stats.t.rvs(df=MNIW_model[3]+1, size=(N_sample,2,N_phi)), V_chol.T)
+N_sample = 1
+samples = scipy.stats.t.rvs(df=MNIW_model[3]+1, size=(N_sample, 2, Phi.shape[0]))
+f_samples = (MNIW_model[0] @ Phi.T)[None,...] + Psi_chol @ samples @ V_chol.T
 
 
 ################################################################################
@@ -82,13 +86,10 @@ Theta_samples = MNIW_model[0] + np.einsum('nm,...mk,ki->...ni', Psi_chol, scipy.
 
 fig1, ax1 = plt.subplots(2,1,layout='tight')
 
-Xnew = np.linspace(-10.0, 10., 2000)
 F1 = test_function1(Xnew)
 F2 = test_function2(Xnew)
-Phi = jax.vmap(H)(Xnew)
 
 m_BLR = Phi @ MNIW_model[0].T
-f_samples = Theta_samples @ Phi.T
 
 ax1[0].plot(np.repeat(Xnew[:,None], N_sample, axis=-1), f_samples[:,0,:].T, alpha=0.1, color='red')
 ax1[0].plot(Xnew, F1, label='True Function', color='blue')

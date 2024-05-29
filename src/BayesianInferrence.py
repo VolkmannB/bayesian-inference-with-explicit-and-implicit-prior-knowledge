@@ -59,12 +59,12 @@ def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, basis):
     return T_0, T_1, T_2, T_3
 
 @jax.jit
-def prior_mniw_sampleLikelihood(key, mean, col_cov, row_scale, df, basis):
+def prior_mniw_samplePredictive(key, mean, col_cov, row_scale, df, basis):
     
     # Calculate parameters of the NIW predictive distribution
     df = df + 1
-    l = 1/(basis @ col_cov @ basis)
-    Scale = row_scale * (l + 1)/(l * df)
+    l = basis @ col_cov @ basis
+    Scale = row_scale * (l + 1)/df
     Scale_chol = jnp.linalg.cholesky(Scale)
     Mean = mean @ basis
     
@@ -72,6 +72,37 @@ def prior_mniw_sampleLikelihood(key, mean, col_cov, row_scale, df, basis):
     sample = jax.random.t(key, df, (mean.shape[0],))
     
     return Mean + Scale_chol @ sample
+
+@jax.jit
+def prior_mniw_sampleCondPredictive(key, mean, col_cov, row_scale, df, y1, basis1, basis2):
+    
+    # degrees of freedom
+    df = df + 1
+    
+    # entries of col covariance in function space
+    S11 = basis1 @ col_cov @ basis1 + 1e-2
+    S22 = basis2 @ col_cov @ basis2 + 1
+    S12 = basis1 @ col_cov @ basis2
+    
+    e = y1 - mean @ basis1
+    
+    # gain
+    k = S12/S11
+    
+    # conditional mean
+    c_mean = mean @ basis2 + e*k
+    
+    # conditional column variance
+    c_col_cov = S22 - S12*k
+    
+    # conditional scale matrix of predictive distribution
+    Scale = c_col_cov * row_scale / df
+    Scale_chol = jnp.linalg.cholesky(Scale)
+    
+    # generate a sample of the carrier measure wich is a t distribution
+    sample = jax.random.t(key, df, (mean.shape[0],))
+    
+    return c_mean + Scale_chol @ sample
     
 
 
