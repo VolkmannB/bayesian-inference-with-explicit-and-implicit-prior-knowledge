@@ -10,7 +10,7 @@ from src.Vehicle import features_MTF_front, features_MTF_rear
 from src.Vehicle import vehicle_RBF_ip, default_para, f_x_sim, f_y
 from src.Vehicle import fx_filter, fy_filter, f_alpha, mu_y, H_vehicle, N_ip
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
-from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_sampleLikelihood
+from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_sampleCondPredictive
 from src.Filtering import squared_error, systematic_SISR
 from src.VehiclePlotting import generate_Vehicle_Animation
 
@@ -258,17 +258,17 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     phi_f1 = jax.vmap(
         functools.partial(features_MTF_front, u=ctrl_input[i], **default_para)
         )(Sigma_X[i])
-    dphi_f = phi_f1 - phi_f0
     key, *keys = jax.random.split(key, N+1)
-    dmu_f = jax.vmap(prior_mniw_sampleLikelihood)(
+    Sigma_mu_f[i] = jax.vmap(prior_mniw_sampleCondPredictive)(
         key=jnp.asarray(keys),
         mean=GP_para_f[0],
         col_cov=GP_para_f[1],
         row_scale=GP_para_f[2],
         df=GP_para_f[3],
-        basis=dphi_f
+        y1=Sigma_mu_f[i-1],
+        basis1=phi_f0,
+        basis2=phi_f1
     ).flatten()
-    Sigma_mu_f[i] = Sigma_mu_f[i-1] + dmu_f
     
     phi_r0 = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i-1], **default_para)
@@ -276,17 +276,17 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     phi_r1 = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i], **default_para)
         )(Sigma_X[i])
-    dphi_r = phi_r1 - phi_r0
     key, *keys = jax.random.split(key, N+1)
-    dmu_r = jax.vmap(prior_mniw_sampleLikelihood)(
+    Sigma_mu_r[i] = jax.vmap(prior_mniw_sampleCondPredictive)(
         key=jnp.asarray(keys),
         mean=GP_para_r[0],
         col_cov=GP_para_r[1],
         row_scale=GP_para_r[2],
         df=GP_para_r[3],
-        basis=dphi_r
+        y1=Sigma_mu_r[i-1],
+        basis1=phi_r0,
+        basis2=phi_r1
     ).flatten()
-    Sigma_mu_r[i] = Sigma_mu_r[i-1] + dmu_r
         
         
     
