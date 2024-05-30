@@ -9,7 +9,7 @@ import functools
 
 
 
-from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_samplePredictive, generate_Hilbert_BasisFunction, bump_RBF
+from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_updateStatistics, prior_mniw_Predictive, generate_Hilbert_BasisFunction, bump_RBF
 
 
 

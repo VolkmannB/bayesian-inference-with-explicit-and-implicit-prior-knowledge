@@ -59,7 +59,7 @@ def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, basis):
     return T_0, T_1, T_2, T_3
 
 @jax.jit
-def prior_mniw_samplePredictive(key, mean, col_cov, row_scale, df, basis):
+def prior_mniw_Predictive(key, mean, col_cov, row_scale, df, basis):
     
     # Calculate parameters of the NIW predictive distribution
     df = df + 1
@@ -74,35 +74,41 @@ def prior_mniw_samplePredictive(key, mean, col_cov, row_scale, df, basis):
     return Mean + Scale_chol @ sample
 
 @jax.jit
-def prior_mniw_sampleCondPredictive(key, mean, col_cov, row_scale, df, y1, basis1, basis2):
+def prior_mniw_CondPredictive(mean, col_cov, row_scale, df, y1, y1_var, basis1, basis2):
+    
+    basis1 = jnp.atleast_2d(basis1)
+    basis2 = jnp.atleast_2d(basis2)
+    col_cov = jnp.atleast_2d(col_cov)
+    row_scale = jnp.atleast_2d(row_scale)
+    
+    n_b1 = basis1.shape[0]
+    n_b2 = basis2.shape[0]
     
     # degrees of freedom
     df = df + 1
     
     # entries of col covariance in function space
-    S11 = basis1 @ col_cov @ basis1 + 1e-2
-    S22 = basis2 @ col_cov @ basis2 + 1
-    S12 = basis1 @ col_cov @ basis2
+    col_cov_11 = basis1 @ col_cov @ basis1.T + jnp.eye(n_b1)*y1_var
+    col_cov_22 = basis2 @ col_cov @ basis2.T + jnp.eye(n_b2)
+    col_cov_12 = basis1 @ col_cov @ basis2.T
     
-    e = y1 - mean @ basis1
+    # prediction error
+    err = y1 - basis1 @ mean.T
     
     # gain
-    k = S12/S11
+    col_cov_11_chol = jnp.linalg.cholesky(col_cov_11)
+    G = jsc.linalg.cho_solve((col_cov_11_chol, True), col_cov_12)
     
     # conditional mean
-    c_mean = mean @ basis2 + e*k
+    c_mean = jnp.squeeze(basis2 @ mean.T + err*G)
     
     # conditional column variance
-    c_col_cov = S22 - S12*k
+    c_col_scale = col_cov_22 - col_cov_12.T*G
     
     # conditional scale matrix of predictive distribution
-    Scale = c_col_cov * row_scale / df
-    Scale_chol = jnp.linalg.cholesky(Scale)
+    c_row_scale = row_scale / df
     
-    # generate a sample of the carrier measure wich is a t distribution
-    sample = jax.random.t(key, df, (mean.shape[0],))
-    
-    return c_mean + Scale_chol @ sample
+    return c_mean, c_col_scale, c_row_scale, df
     
 
 
