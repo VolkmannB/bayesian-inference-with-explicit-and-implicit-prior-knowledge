@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
 
-from src.Battery import model, features_R, features_V, default_para, z_ip, zI_ip
+from src.Battery import BatterySSM, features_R, features_V, default_para, z_ip, zI_ip
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_CondPredictive
 from src.Filtering import squared_error, systematic_SISR
@@ -31,18 +31,18 @@ Q_cap = 3.4
 # model prior alpha, beta
 N_z = z_ip.shape[0]
 GP_prior_V = list(prior_mniw_2naturalPara(
-    np.zeros((2, N_z)),
-    np.eye(N_z),
-    np.diag([0.06, 0.00074]),
+    np.diag([5e-2, 2e-3]) @ np.ones((2, N_z)),
+    np.eye(N_z)*1e-3,
+    np.diag([1e-8, 1e-8]),
     0
 ))
 
 # model prior resistor
 N_zI = zI_ip.shape[0]
 GP_prior_R = list(prior_mniw_2naturalPara(
-    np.zeros((1, N_zI)),
-    np.eye(N_zI),
-    np.eye(1)*0.088,
+    np.ones((1, N_zI))*33e-3,
+    np.eye(N_zI)*1e-3,
+    np.eye(1)*1e-8,
     0
 ))
 
@@ -63,11 +63,22 @@ GP_stats_R = [
 
 
 ### Load data
-data = pd.read_csv("./src/Measurements/Everlast_35E_009.csv", sep=",")
+data = pd.read_csv("./src/Measurements/Everlast_35E_002.csv", sep=",")
 data["Time"] = pd.to_datetime(data["Time"])
 data = data.set_index("Time")
-dt = (data.index[1] - data.index[0]).seconds
+# dt = (data.index[1] - data.index[0]).seconds
+# data = data.resample(rule=dt, origin='start').asfreq()#.interpolate(method='cubicspline')
 steps = 10000#data.shape[0]
+data = data.iloc[:steps]
+
+# init model
+default_para = {
+    'R_c': 0.407, # from literature
+    'C_c': 43.5, # from literature
+    'T_amb': 27, # given
+    'V_0': 2.56
+}
+model = BatterySSM(**default_para)
 
 
 
@@ -75,12 +86,12 @@ steps = 10000#data.shape[0]
 data_fig = make_subplots(3,1)
 data_fig.add_trace(
     go.Scatter(
-        x=data.index[:steps],
-        y=data["Voltage"][:steps],
+        x=data.index,
+        y=data["Voltage"],
         mode='markers',
         marker=dict(
             color='blue',
-            size=2
+            size=4
         )
     ),
     row=1,
@@ -88,12 +99,12 @@ data_fig.add_trace(
 )
 data_fig.add_trace(
     go.Scatter(
-        x=data.index[:steps],
-        y=data["Current"][:steps],
+        x=data.index,
+        y=data["Current"],
         mode='markers',
         marker=dict(
             color='blue',
-            size=2
+            size=4
         )
     ),
     row=2,
@@ -101,31 +112,30 @@ data_fig.add_trace(
 )
 data_fig.add_trace(
     go.Scatter(
-        x=data.index[:steps],
-        y=data["Temperature"][:steps],
+        x=data.index,
+        y=data["Temperature"],
         mode='markers',
         marker=dict(
             color='blue',
-            size=2
+            size=4
         )
     ),
     row=3,
     col=1
 )
 data_fig.update_layout(showlegend=False)
+data_fig.update_yaxes(title_text='Voltage in [V]', row=1, col=1)
+data_fig.update_yaxes(title_text='Curren in [A]', row=2, col=1)
+data_fig.update_yaxes(title_text='Temperature in [C]', row=3, col=1)
+data_fig.update_xaxes(title_text='Time', row=3, col=1)
 data_fig.update_layout(font_size=24)
-data_fig.update_yaxes(title_text='Voltage in [V]', title_font_size=24, row=1, col=1)
-data_fig.update_yaxes(title_text='Curren in [A]', title_font_size=24, row=2, col=1)
-data_fig.update_yaxes(title_text='Temperature in [C]', title_font_size=24, row=3, col=1)
-data_fig.update_xaxes(title_text='Time', title_font_size=24, row=3, col=1)
-data_fig.show()
 
 
 
 # initial system state
-x0 = np.array([0.9, data["Voltage"][0]-default_para["V_0"], 25])
-P0 = np.diag([1e-3, 1e-2, 1e-3])
-# np.random.seed(573573)
+x0 = np.array([0.9, data["Voltage"][0]-default_para["V_0"], data["Temperature"][0]])
+P0 = np.diag([1e-2, 1e-2, 1e-2])
+np.random.seed(573573)
 
 # process and measurement noise
 R = np.diag([0.001, 0.25])
@@ -158,9 +168,11 @@ Y = data[["Voltage", "Temperature"]].to_numpy()
 ### Set all initial values
 
 # initial values for states
+l_V, u_V = np.array([2e-2, 0.5e-3]), np.array([8e-2, 3.5e-3])
+l_R, u_R = 25e-3, 50e-3
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,))
-Sigma_V[0,...] = np.random.multivariate_normal([0.01, 0.0007], np.diag([0.06**2, 0.00074**2]), (N,))
-Sigma_R[0,...] = np.random.normal(0.04, 0.088**2, (N,))
+Sigma_V[0,...] = np.random.uniform(l_V, u_V, (N,2))#np.random.multivariate_normal([0.01, 0.0007], np.diag([0.06**2, 0.00074**2]), (N,))
+Sigma_R[0,...] = np.random.uniform(l_R, u_R, (N,))#np.random.normal(0.04, 0.088**2, (N,))
 weights = np.ones((steps,N))/N
 
 # update GP
@@ -186,6 +198,7 @@ GP_stats_R = list(jax.vmap(prior_mniw_updateStatistics)(
 for i in tqdm(range(1, steps), desc="Running simulation"):
     
     ### Step 1: Propagate GP parameters in time
+    dt = (data.index[i] - data.index[i-1]).seconds
     
     # apply forgetting operator to statistics for t-1 -> t
     GP_stats_V[0] *= 0.999
@@ -216,7 +229,7 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     ### Step 2: According to the algorithm of the auxiliary PF, resample 
     # particles according to the first stage weights
     
-    # create 
+    # create auxiliary variable for state x
     x_aux = jax.vmap(
         functools.partial(model, I=ctrl_input[i-1], Q=Q_cap, dt=dt))(
             x=Sigma_X[i-1],
@@ -225,8 +238,35 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
             R_0=Sigma_R[i-1]
         )
     
-    phi_R = jax.vmap(functools.partial(features_R, I=ctrl_input[1]))(x_aux)
-    R_aux = jax.vmap(jnp.matmul)(GP_para_R[0], phi_R)
+    # create auxiliary variable for resistance R
+    phi_R0 = jax.vmap(functools.partial(features_R, I=ctrl_input[i-1]))(Sigma_X[i-1])
+    phi_R1 = jax.vmap(functools.partial(features_R, I=ctrl_input[i]))(x_aux)
+    R_aux = jax.vmap(
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-1)
+        )(
+            mean=GP_para_R[0],
+            col_cov=GP_para_R[1],
+            row_scale=GP_para_R[2],
+            df=GP_para_R[3],
+            y1=Sigma_R[i-1,...],
+            basis1=phi_R0,
+            basis2=phi_R1
+    )[0]
+    
+    # create auxiliary variable for alpha and beta
+    phi_V0 = jax.vmap(functools.partial(features_V))(Sigma_X[i-1])
+    phi_V1 = jax.vmap(functools.partial(features_V))(x_aux)
+    V_aux = jax.vmap(
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-1)
+        )(
+            mean=GP_para_V[0],
+            col_cov=GP_para_V[1],
+            row_scale=GP_para_V[2],
+            df=GP_para_V[3],
+            y1=Sigma_V[i-1,...],
+            basis1=phi_V0,
+            basis2=phi_V1
+    )[0]
     
     # calculate first stage weights
     y_aux = jax.vmap(
@@ -234,8 +274,10 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
         )(
             x=x_aux,
             R_0=R_aux)
-    l = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x=y_aux)
-    p = weights[i-1] * l
+    l_fy = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x=y_aux)
+    l_clipR = np.all([0 <= R_aux, R_aux <= 1e-1], axis=0)
+    l_clipV = np.all(np.hstack([0 <= V_aux, V_aux <= 1e-1]), axis=1)
+    p = weights[i-1] * l_fy * l_clipR * l_clipV
     p = p/np.sum(p)
     
     #abort
@@ -293,7 +335,7 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     
     # calculate conditional predictive distribution
     c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-        functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-1)
         )(
             mean=GP_para_V[0],
             col_cov=GP_para_V[1],
@@ -317,12 +359,12 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     
     ## sample proposal for R at time t
     # evaluate basis functions
-    phi_R0 = jax.vmap(functools.partial(features_R, I=ctrl_input[i]))(Sigma_X[i])
+    phi_R0 = jax.vmap(functools.partial(features_R, I=ctrl_input[i]))(Sigma_X[i-1])
     phi_R1 = jax.vmap(functools.partial(features_R, I=ctrl_input[i]))(Sigma_X[i])
     
     # calculate conditional predictive distribution
     c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-        functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-1)
         )(
             mean=GP_para_R[0],
             col_cov=GP_para_R[1],
@@ -359,8 +401,10 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
         )(
             x=Sigma_X[i],
             R_0=Sigma_R[i])
-    q = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(Sigma_Y[i])
-    weights[i] = q / p[idx]
+    q_fy = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(Sigma_Y[i])
+    q_clipR = np.all([l_R <= Sigma_R[i], Sigma_R[i] <= u_R], axis=0)
+    q_clipV = np.all(np.hstack([l_V <= Sigma_V[i], Sigma_V[i] <= u_V]), axis=1)
+    weights[i] = q_fy * q_clipR * q_clipV / p[idx]
     weights[i] = weights[i]/np.sum(weights[i])
     
     
@@ -392,4 +436,32 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
 # Plotting
 
 
-
+X_pred = np.einsum('...ni,...n->...i', Sigma_X, weights)
+Y_pred = np.einsum('...ni,...n->...i', Sigma_Y, weights)
+data_fig.add_trace(
+    go.Scatter(
+        x=data.index[1:],
+        y=Y_pred[1:,0],
+        mode='lines',
+        line=dict(
+            color='orange',
+            width=2
+        )
+    ),
+    row=1,
+    col=1
+)
+data_fig.add_trace(
+    go.Scatter(
+        x=data.index[1:],
+        y=Y_pred[1:,1],
+        mode='lines',
+        line=dict(
+            color='orange',
+            width=2
+        )
+    ),
+    row=3,
+    col=1
+)
+data_fig.show()

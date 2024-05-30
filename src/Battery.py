@@ -48,8 +48,6 @@ class BatterySSM(eqx.Module):
     
     def fy(self, x, I, R_0):
         return jnp.hstack([self.V_0 + x[1] + R_0*I, x[3]])
-    
-model = BatterySSM(**default_para)
 
 
 
