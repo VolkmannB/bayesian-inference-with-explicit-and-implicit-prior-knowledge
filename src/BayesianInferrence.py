@@ -59,19 +59,27 @@ def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, basis):
     return T_0, T_1, T_2, T_3
 
 @jax.jit
-def prior_mniw_Predictive(key, mean, col_cov, row_scale, df, basis):
+def prior_mniw_Predictive(mean, col_cov, row_scale, df, basis):
     
-    # Calculate parameters of the NIW predictive distribution
+    basis = jnp.atleast_2d(basis)
+    col_cov = jnp.atleast_2d(col_cov)
+    row_scale = jnp.atleast_2d(row_scale)
+    
+    n_b = basis.shape[0]
+    
+    # degrees of freedom
     df = df + 1
-    l = basis @ col_cov @ basis
-    Scale = row_scale * (l + 1)/df
-    Scale_chol = jnp.linalg.cholesky(Scale)
-    Mean = mean @ basis
     
-    # generate a sample of the carrier measure wich is a t distribution
-    sample = jax.random.t(key, df, (mean.shape[0],))
+    # mean
+    mean = jnp.squeeze(basis @ mean.T)
     
-    return Mean + Scale_chol @ sample
+    # column variance
+    col_scale = basis @ col_cov @ basis.T + jnp.eye(n_b)
+    
+    # conditional scale matrix of predictive distribution
+    row_scale = row_scale / df
+    
+    return mean, col_scale, row_scale, df
 
 @jax.jit
 def prior_mniw_CondPredictive(mean, col_cov, row_scale, df, y1, y1_var, basis1, basis2):
