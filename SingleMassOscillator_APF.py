@@ -11,7 +11,7 @@ from plotly.subplots import make_subplots
 
 from src.SingleMassOscillator import F_spring, F_damper, f_x, N_ip, ip, H, m
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
-from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_sampleCondPredictive
+from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_CondPredictive
 from src.Filtering import systematic_SISR, squared_error
 from src.SingleMassOscillatorPlotting import generate_Animation
 
@@ -50,11 +50,7 @@ GP_model_stats = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
-seed = np.random.randint(100, 1000000)
-print(f"Seed is: {seed}")
-np.random.seed(seed)
-key = jax.random.key(np.random.randint(100, 1000))
-print(f"Initial jax-key is: {key}")
+# np.random.seed(573573)
 
 # noise
 R = np.array([[1e-3]])
@@ -182,22 +178,31 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
         )(
             x=Sigma_X[i-1,idx,:], 
             F_sd=Sigma_F[i-1,idx]
-            ) + w_x
+    ) + w_x
     
-    # sample from proposal for F at time t
+    ## sample from proposal for F at time t
+    # evaluate basis functions for all particles
     phi_x0 = jax.vmap(H)(Sigma_X[i-1,idx,:])
     phi_x1 = jax.vmap(H)(Sigma_X[i])
-    key, *keys = jax.random.split(key, N+1)
-    Sigma_F[i] = jax.vmap(prior_mniw_sampleCondPredictive)(
-        key=jnp.asarray(keys),
-        mean=GP_para[0],
-        col_cov=GP_para[1],
-        row_scale=GP_para[2],
-        df=GP_para[3],
-        y1=Sigma_F[i-1,idx],
-        basis1=phi_x0,
-        basis2=phi_x1
-    ).flatten()
+    
+    # calculate conditional predictive distribution
+    c_mean, c_col_scale, c_row_scale, df = jax.vmap(
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+        )(
+            mean=GP_para[0],
+            col_cov=GP_para[1],
+            row_scale=GP_para[2],
+            df=GP_para[3],
+            y1=Sigma_F[i-1,idx],
+            basis1=phi_x0,
+            basis2=phi_x1
+    )
+    
+    # generate samples
+    c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
+    c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
+    t_samples = np.random.standard_t(df=df)
+    Sigma_F[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
     
     # Update the sufficient statistics of GP with new proposal
     GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)(

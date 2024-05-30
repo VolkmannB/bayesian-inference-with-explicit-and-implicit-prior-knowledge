@@ -10,7 +10,7 @@ from src.Vehicle import features_MTF_front, features_MTF_rear
 from src.Vehicle import vehicle_RBF_ip, default_para, f_x_sim, f_y
 from src.Vehicle import fx_filter, fy_filter, f_alpha, mu_y, H_vehicle, N_ip
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
-from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_sampleCondPredictive
+from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_CondPredictive
 from src.Filtering import squared_error, systematic_SISR
 from src.VehiclePlotting import generate_Vehicle_Animation
 
@@ -66,8 +66,6 @@ GP_stats_r = [
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
 # np.random.seed(573573)
-key = jax.random.key(np.random.randint(100, 1000))
-print(f"Initial jax-key is: {key}")
 
 # noise
 R = np.diag([0.01/180*np.pi, 1e-1, 1e-3])
@@ -251,42 +249,61 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
             mu_yr=Sigma_mu_r[i-1]
             ) + w_x
     
-    # sample proposal for mu at time t
+    ## sample proposal for mu front at time t
+    # evaluate basis functions
     phi_f0 = jax.vmap(
         functools.partial(features_MTF_front, u=ctrl_input[i-1], **default_para)
         )(Sigma_X[i-1])
     phi_f1 = jax.vmap(
         functools.partial(features_MTF_front, u=ctrl_input[i], **default_para)
         )(Sigma_X[i])
-    key, *keys = jax.random.split(key, N+1)
-    Sigma_mu_f[i] = jax.vmap(prior_mniw_sampleCondPredictive)(
-        key=jnp.asarray(keys),
-        mean=GP_para_f[0],
-        col_cov=GP_para_f[1],
-        row_scale=GP_para_f[2],
-        df=GP_para_f[3],
-        y1=Sigma_mu_f[i-1],
-        basis1=phi_f0,
-        basis2=phi_f1
-    ).flatten()
     
+    # calculate conditional predictive distribution
+    c_mean, c_col_scale, c_row_scale, df = jax.vmap(
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+        )(
+            mean=GP_para_f[0],
+            col_cov=GP_para_f[1],
+            row_scale=GP_para_f[2],
+            df=GP_para_f[3],
+            y1=Sigma_mu_f[i-1],
+            basis1=phi_f0,
+            basis2=phi_f1
+    )
+        
+    # generate samples
+    c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
+    c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
+    t_samples = np.random.standard_t(df=df)
+    Sigma_mu_f[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
+    
+    ## sample proposal for mu rear at time t
+    # evaluate basis fucntions
     phi_r0 = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i-1], **default_para)
         )(Sigma_X[i-1])
     phi_r1 = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i], **default_para)
         )(Sigma_X[i])
-    key, *keys = jax.random.split(key, N+1)
-    Sigma_mu_r[i] = jax.vmap(prior_mniw_sampleCondPredictive)(
-        key=jnp.asarray(keys),
-        mean=GP_para_r[0],
-        col_cov=GP_para_r[1],
-        row_scale=GP_para_r[2],
-        df=GP_para_r[3],
-        y1=Sigma_mu_r[i-1],
-        basis1=phi_r0,
-        basis2=phi_r1
-    ).flatten()
+    
+    # calculate conditional 
+    c_mean, c_col_scale, c_row_scale, df = jax.vmap(
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+        )(
+            mean=GP_para_r[0],
+            col_cov=GP_para_r[1],
+            row_scale=GP_para_r[2],
+            df=GP_para_r[3],
+            y1=Sigma_mu_r[i-1],
+            basis1=phi_r0,
+            basis2=phi_r1
+    )
+        
+    # generate samples
+    c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
+    c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
+    t_samples = np.random.standard_t(df=df)
+    Sigma_mu_r[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
         
         
     
