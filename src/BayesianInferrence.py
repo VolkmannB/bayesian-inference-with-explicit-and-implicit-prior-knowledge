@@ -170,26 +170,31 @@ def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
 
 
 @jax.jit
-def gaussian_RBF(x, inducing_points, lengthscale=1):
+def gaussian_RBF(x, loc, lengthscale=1):
     
-    r = sq_dist(
-        x/lengthscale, 
-        inducing_points/lengthscale
-        )
+    sq_r = sq_dist(x/lengthscale, loc/lengthscale)
         
-    return jnp.exp(-0.5*r)
+    return jnp.exp(-0.5*sq_r)
 
 
 
 @jax.jit
-def bump_RBF(x, inducing_points, lengthscale=1, radius=2):
+def bump_RBF(x, loc, lengthscale=1, radius=2):
     
-    sq_d = sq_dist(
-        x/lengthscale, 
-        inducing_points/lengthscale
-        )
+    sq_r = sq_dist(x/lengthscale, loc/lengthscale)
+    sq_r = jnp.minimum(1, sq_r/radius**2)
     
-    return jnp.exp(-1 / (1 - jnp.minimum(1, sq_d/radius**2) + 1e-200))
+    return jnp.exp(-1 / (1 - sq_r + 1e-200))
+
+
+
+@jax.jit
+def C2_InversePoly_RBF(x, loc, lengthscale=1, radius=2):
+    
+    r = jnp.sqrt(sq_dist(x/lengthscale, loc/lengthscale))
+    r = jnp.minimum(1, r/radius)
+    
+    return 1 + 8/(1+r)**3 - 6/(1+r)**4
 
 
 

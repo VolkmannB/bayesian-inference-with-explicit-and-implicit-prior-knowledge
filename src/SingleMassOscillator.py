@@ -56,7 +56,7 @@ ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
 ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
 H = lambda x: bump_RBF(
     jnp.atleast_2d(x),
-    inducing_points=jnp.asarray(ip),
+    loc=jnp.asarray(ip),
     lengthscale=x_points[1]-x_points[0]
 )
 N_ip = ip.shape[0]
