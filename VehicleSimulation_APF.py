@@ -8,7 +8,7 @@ import functools
 
 from src.Vehicle import features_MTF_front, features_MTF_rear
 from src.Vehicle import vehicle_RBF_ip, default_para, f_x_sim, f_y
-from src.Vehicle import fx_filter, fy_filter, f_alpha, mu_y, H_vehicle, N_ip
+from src.Vehicle import fx_filter, fy_filter, N_ip
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_CondPredictive
 from src.Filtering import squared_error, systematic_SISR
@@ -23,14 +23,12 @@ rng = np.random.default_rng()
 
 # sim para
 N = 200
-# N_ip = vehicle_RBF_ip.shape[0]
 t_end = 100.0
 time = np.arange(0.0, t_end, default_para['dt'])
 steps = len(time)
 
 
 # model prior front tire
-phi = jax.vmap(H_vehicle)(vehicle_RBF_ip)
 GP_prior_f = list(prior_mniw_2naturalPara(
     np.zeros((1, N_ip)),
     np.eye(N_ip),
@@ -136,7 +134,6 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     ####### Filtering
     
-    # time update
     
     ### Step 1: Propagate GP parameters in time
     
@@ -169,26 +166,50 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     ### Step 2: According to the algorithm of the auxiliary PF, resample 
     # particles according to the first stage weights
     
-    # create auxiliary variable
+    # create auxiliary variable for state x
     x_aux = jax.vmap(functools.partial(fx_filter, u=ctrl_input[i-1], **default_para))(
         x=Sigma_X[i-1,...],
         mu_yf=Sigma_mu_f[i-1], 
         mu_yr=Sigma_mu_r[i-1]
     )
+    
+    # create auxiliary variable for mu front
     phi_f0 = jax.vmap(
         functools.partial(features_MTF_front, u=ctrl_input[i-1], **default_para)
         )(Sigma_X[i-1])
     phi_f1 = jax.vmap(
         functools.partial(features_MTF_front, u=ctrl_input[i], **default_para)
         )(x_aux)
+    mu_f_aux = jax.vmap(
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+        )(
+            mean=GP_para_f[0],
+            col_cov=GP_para_f[1],
+            row_scale=GP_para_f[2],
+            df=GP_para_f[3],
+            y1=Sigma_mu_f[i-1],
+            basis1=phi_f0,
+            basis2=phi_f1
+    )[0]
+    
+    # create auxiliary variable for mu rear
     phi_r0 = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i-1], **default_para)
         )(Sigma_X[i-1])
     phi_r1 = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[i], **default_para)
         )(x_aux)
-    mu_f_aux = jax.vmap(jnp.matmul)(GP_para_f[0], phi_f1-phi_f0).flatten() + Sigma_mu_f[i-1]
-    mu_r_aux = jax.vmap(jnp.matmul)(GP_para_r[0], phi_r1-phi_r0).flatten() + Sigma_mu_r[i-1]
+    mu_r_aux = jax.vmap(
+        functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+        )(
+            mean=GP_para_r[0],
+            col_cov=GP_para_r[1],
+            row_scale=GP_para_r[2],
+            df=GP_para_r[3],
+            y1=Sigma_mu_r[i-1],
+            basis1=phi_r0,
+            basis2=phi_r1
+    )[0]
     
     # calculate first stage weights
     y_aux = jax.vmap(
