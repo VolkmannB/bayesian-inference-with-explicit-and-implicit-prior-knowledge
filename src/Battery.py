@@ -2,71 +2,100 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from src.BayesianInferrence import bump_RBF
+from src.BayesianInferrence import C2_InversePoly_RBF
 
 
 
 # parameters
-default_para = {
-    'R_c': 0.407, # from literature
-    'C_c': 43.5, # from literature
-    'T_amb': 25, # given
-    'V_0': 2.56
-}
+default_para = dict(
+    T_amb = 25, # given
+    V_0 = 2.65,
+    R_c = 0.407, # from literature
+    C_c = 43.5, # from literature
+    Q_cap = 3450e-3 * 60 * 60, # capacity in As (guess)
+)
+para_train = dict(
+    Q_cap = 3450e-3 * 60 * 60, # capacity in As (guess)
+    R_0 = 30e-3, # serial resistor in Ohm (guess)
+    C_1 = 1.5e3, # cell in F (guess)
+    R_1 = 0.022 # cell resistor in Ohm (guess)
+)
 
-@jax.jit
+
+
 class BatterySSM(eqx.Module):
     
-    R_c: int
-    C_c: int
-    T_amb: int
-    V_0: int
+    T_amb: float
+    V_0: float
+    R_c: float
+    C_c: float
+    Q_cap: float
     
-    def __init__(self, R_c, C_c, T_amb, V_0):
+    def __call__(self, x, I, R_1, C_1, R_0, dt):
         
-        self.R_c = R_c
-        self.C_c = C_c
-        self.T_amb = T_amb
-        self.V_0 = V_0
-    
-    def dx(self, x, I, Q, alpha, beta, R_0):
+        x_new = fx(
+            x=x,
+            I=I,
+            Q_cap=self.Q_cap,
+            R_1=R_1,
+            C_1=C_1,
+            R_0=R_0,
+            T_amb=self.T_amb,
+            R_c=self.R_c,
+            C_c=self.C_c,
+            dt=dt
+        )
         
-        dz = I / Q
-        dV = -alpha*x[1] + beta*I
-        dT = (-(x[2] - self.T_amb)/self.R_c + x[1]*I + R_0*I**2)/self.C_c
+        return x_new
     
-        return jnp.array([dz, dV, dT])
-    
-    def __call__(self, x, I, Q, alpha, beta, R_0, dt):
-        
-        k1 = self.dx(x, I, Q, alpha, beta, R_0)
-        k2 = self.dx(x+dt*k1/2, I, Q, alpha, beta, R_0)
-        k3 = self.dx(x+dt*k2/2, I, Q, alpha, beta, R_0)
-        k4 = self.dx(x+dt*k3, I, Q, alpha, beta, R_0)
-        
-        return x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
-    
+    @jax.jit
     def fy(self, x, I, R_0):
         return jnp.hstack([self.V_0 + x[1] + R_0*I, x[3]])
 
 
 
+@jax.jit
+def dx(x, I, Q_cap, R_1, C_1, R_0, T_amb, R_c, C_c):
+        
+        dz = I / Q_cap
+        dV = -x[1]/R_1/C_1 + I/C_1
+        dT = (-(x[2] - T_amb)/R_c + x[1]*I + R_0*I**2)/C_c
+    
+        return jnp.array([dz, dV, dT])
+
+
+
+@jax.jit
+def fx(x, I, Q_cap, R_1, C_1, R_0, T_amb, R_c, C_c, dt):
+        
+        k1 = dx(x, I, Q_cap, R_1, C_1, R_0, T_amb, R_c, C_c)
+        k2 = dx(x+dt*k1/2, I, Q_cap, R_1, C_1, R_0, T_amb, R_c, C_c)
+        k3 = dx(x+dt*k2/2, I, Q_cap, R_1, C_1, R_0, T_amb, R_c, C_c)
+        k4 = dx(x+dt*k3, I, Q_cap, R_1, C_1, R_0, T_amb, R_c, C_c)
+        
+        return x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
+    
+def fy(self, x, I, R_0):
+    return jnp.hstack([self.V_0 + x[1] + R_0*I, x[2]])
+
+
+
 # basis function for Voltage model for alpha and beta dependent on SoC
-z_ip = jnp.linspace(0, 1, 5)
+z_ip = jnp.linspace(0, 1, 11)
 l_z = z_ip[1] - z_ip[0]
 
 @jax.jit
-def features_V(x):
-    return bump_RBF(x[0], z_ip, l_z)
+def basis_fcn(x):
+    return C2_InversePoly_RBF(x[0], z_ip, l_z)
 
 
 
-# basis functions for resistor model dependent on SoC and current
-I_ip = jnp.linspace(-5, 5, 5)
-l_I = I_ip[1] - I_ip[0]
-zI_ip = jnp.dstack(jnp.meshgrid(z_ip, I_ip, indexing='xy'))
-zI_ip = zI_ip.reshape(zI_ip.shape[0]*zI_ip.shape[1], 2)
+# # basis functions for resistor model dependent on SoC and current
+# I_ip = jnp.linspace(-5, 5, 5)
+# l_I = I_ip[1] - I_ip[0]
+# zI_ip = jnp.dstack(jnp.meshgrid(z_ip, I_ip, indexing='xy'))
+# zI_ip = zI_ip.reshape(zI_ip.shape[0]*zI_ip.shape[1], 2)
 
-@jax.jit
-def features_R(x,I):
-    return bump_RBF(jnp.atleast_2d(jnp.array([x[0],I])), zI_ip, jnp.array([l_z, l_I]))
+# @jax.jit
+# def features_R(x,I):
+#     return C2_InversePoly_RBF(jnp.atleast_2d(jnp.array([x[0],I])), zI_ip, jnp.array([l_z, l_I]))
