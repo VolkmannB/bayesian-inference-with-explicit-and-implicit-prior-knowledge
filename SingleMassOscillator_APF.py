@@ -104,7 +104,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # update system state
     F_sd[i-1] = F_spring(X[i-1,0]) + F_damper(X[i-1,1])
-    X[i] = f_x(X[i-1], F[i-1], F_sd[i-1], dt=dt)
+    X[i] = f_x(X[i-1], F[i-1], F_sd[i-1], dt=dt) + w()
     
     # generate measurment
     Y[i] = X[i,0] + e()[0,0]
