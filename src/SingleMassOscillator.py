@@ -13,6 +13,7 @@ c1=10.0
 c2=2.0
 d1=0.7
 d2=0.4
+C = np.array([[1,0],[0,0]])
 
 
 def F_spring(x):
@@ -44,6 +45,9 @@ def f_x(x, F, F_sd, dt, m=2):
     
     return x
     
+@jax.jit
+def f_y(x):
+    return C @ x
     
     
 #### this section defines functions related to the state space model of the filtering problem
