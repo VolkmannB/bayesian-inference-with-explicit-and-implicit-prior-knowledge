@@ -21,22 +21,22 @@ from src.Filtering import squared_error, systematic_SISR
 
 
 # sim para
-N = 300
-Q_cap = 3.4
+N = 5000
+y1_var=1e-2
 
 
 
 ### Define GP prior and variables for sufficient statistics
 
 # parameter limits
-l_CRR, u_CRR = np.array([0.2e3, 5e-3, 20e-3]), np.array([2.5e3, 0.25, 60e-3])
+l_CRR, u_CRR = np.array([200, 5, 10]), np.array([2000, 8e2, 60])
 
 # model prior C1, R1, R0
 N_z = z_ip.shape[0]
 GP_prior = list(prior_mniw_2naturalPara(
-    np.diag((l_CRR+u_CRR)/2) @ np.ones((3, N_z)),
+    np.zeros((3, N_z)),
     np.eye(N_z),
-    np.diag([1e1, 1e-3, 1e-4]),
+    np.diag([1, 1, 1]),
     0
 ))
 
@@ -54,24 +54,25 @@ GP_stats = [
 data = pd.read_csv("./src/Measurements/Everlast_35E_002.csv", sep=",")
 data["Time"] = pd.to_datetime(data["Time"])
 data = data.set_index("Time")
-start=360
+start=358
 end=10000
-data = data.iloc[368:end]
+data = data.iloc[start:end]
 steps = data.shape[0]
 
 # init model
+default_para["T_amb"] = data["Temperature"].iloc[0]
 model = BatterySSM(**default_para)
 
 
 
 # initial system state
-x0 = np.array([0.9, data["Voltage"].iloc[0]-default_para["V_0"], data["Temperature"].iloc[0]])
-P0 = np.diag([1e-2, 1e-2, 1e-2])
+x0 = np.array([0.9*1.1875, data["Temperature"].iloc[0]])
+P0 = np.diag([5e-3, 1e-2])
 np.random.seed(573573)
 
 # process and measurement noise
 R = np.diag([0.001, 0.25])
-Q = np.diag([1e-12, 5e-6, 1e-4])
+Q = np.diag([5e-9, 1e-4])
 w = lambda n=1: np.random.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
 e = lambda n=1: np.random.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
@@ -82,7 +83,7 @@ e = lambda n=1: np.random.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
 # time series for plot
 
-Sigma_X = np.zeros((steps,N,3))
+Sigma_X = np.zeros((steps,N,2))
 Sigma_Y = np.zeros((steps,N,2))
 Sigma_CRR = np.zeros((steps,N,3))
 
@@ -143,15 +144,15 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
         functools.partial(model, I=ctrl_input[i-1], dt=dt))(
             x=Sigma_X[i-1],
             C_1=Sigma_CRR[i-1,...,0],
-            R_1=Sigma_CRR[i-1,...,1],
-            R_0=Sigma_CRR[i-1,...,2]
+            R_1=Sigma_CRR[i-1,...,1]*1e3,
+            R_0=Sigma_CRR[i-1,...,2]*1e-3
         )
     
     # create auxiliary variable for alpha and beta
     phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1])
     phi_1 = jax.vmap(functools.partial(basis_fcn))(x_aux)
     CRR_aux = jax.vmap(
-        functools.partial(prior_mniw_CondPredictive, y1_var=2e-2)
+        functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
         )(
             mean=GP_para[0],
             col_cov=GP_para[1],
@@ -167,7 +168,7 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
         functools.partial(model.fy, I=ctrl_input[i])
         )(
             x=x_aux,
-            R_0=CRR_aux[:,2])
+            R_0=CRR_aux[:,2]*1e-3)
     l_fy = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x=y_aux)
     l_clip = np.all(np.hstack([l_CRR <= CRR_aux, CRR_aux <= u_CRR]), axis=1)
     p = weights[i-1] * l_fy * l_clip
@@ -207,8 +208,8 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
         functools.partial(model, I=ctrl_input[i-1], dt=dt))(
             x=Sigma_X[i-1],
             C_1=Sigma_CRR[i-1,:,0],
-            R_1=Sigma_CRR[i-1,:,1],
-            R_0=Sigma_CRR[i-1,:,2]
+            R_1=Sigma_CRR[i-1,:,1]*1e3,
+            R_0=Sigma_CRR[i-1,:,2]*1e-3
         ) + w_x
     
     ## sample proposal for alpha and beta at time t
@@ -218,7 +219,7 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     
     # calculate conditional predictive distribution
     c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-        functools.partial(prior_mniw_CondPredictive, y1_var=3e-1)
+        functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
         )(
             mean=GP_para[0],
             col_cov=GP_para[1],
@@ -232,13 +233,13 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     # generate samples
     c_col_scale_chol = np.linalg.cholesky(c_col_scale)
     c_row_scale_chol = np.linalg.cholesky(c_row_scale)
-    t_samples = np.random.standard_t(df=df, size=(3,N)).T
-    Sigma_CRR[i] = c_mean + np.einsum(
-        '...ij,...j,...jk->...k', 
-        c_col_scale_chol, 
-        t_samples, 
-        c_row_scale_chol
-        )
+    t_samples = np.random.standard_t(df=df, size=(1,3,N)).T
+    Sigma_CRR[i] = c_mean + np.squeeze(np.einsum(
+            '...ij,...jk,...kf->...if', 
+            c_row_scale_chol, 
+            t_samples, 
+            c_col_scale_chol
+        ))
         
         
     
@@ -254,7 +255,7 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
         functools.partial(model.fy, I=ctrl_input[i])
         )(
             x=Sigma_X[i],
-            R_0=Sigma_CRR[i,:,2])
+            R_0=Sigma_CRR[i,:,2]*1e-3)
     q_fy = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(Sigma_Y[i])
     q_clip = np.all(np.hstack([l_CRR <= Sigma_CRR[i], Sigma_CRR[i] <= u_CRR]), axis=1)
     weights[i] = q_fy * q_clip / p[idx]
