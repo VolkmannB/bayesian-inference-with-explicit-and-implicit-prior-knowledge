@@ -144,6 +144,20 @@ def prior_niw_calcStatistics(eta_0, eta_1, eta_2, eta_3, new_data):
 
 
 @jax.jit
+def prior_niw_2naturalPara(mean, normal_scale, iw_scale, df):
+    
+    mean = jnp.atleast_2d(mean)
+    iw_scale = jnp.atleast_2d(iw_scale)
+
+    eta_1 = mean/normal_scale
+    eta_2 = 1/normal_scale
+    eta_3 = df
+    eta_0 = jnp.outer(eta_1,mean) + iw_scale
+
+    return eta_0, eta_1, eta_2, eta_3 
+
+
+@jax.jit
 def prior_niw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
     
     mean = eta_1/eta_2
