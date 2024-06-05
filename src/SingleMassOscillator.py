@@ -8,7 +8,7 @@ from src.BayesianInferrence import gaussian_RBF, bump_RBF, generate_Hilbert_Basi
 #### This section defines the simulated single mass oscillator
 
 
-m=2.0
+#m=2.0
 c1=10.0
 c2=2.0
 d1=0.7
@@ -25,7 +25,7 @@ def F_damper(dx):
 
 
 
-def dx(x, F, F_sd):
+def dx(x, F, F_sd, m):
     return jnp.array(
         [x[1], -F_sd/m + F/m + 9.81]
     )
@@ -33,13 +33,13 @@ def dx(x, F, F_sd):
 
 
 @jax.jit
-def f_x(x, F, F_sd, dt):
+def f_x(x, F, F_sd, dt, m=2):
     
     # Runge-Kutta 4
-    k1 = dx(x, F, F_sd)
-    k2 = dx(x+dt/2.0*k1, F, F_sd)
-    k3 = dx(x+dt/2.0*k2, F, F_sd)
-    k4 = dx(x+dt*k3, F, F_sd)
+    k1 = dx(x, F, F_sd, m)
+    k2 = dx(x+dt/2.0*k1, F, F_sd, m)
+    k3 = dx(x+dt/2.0*k2, F, F_sd, m)
+    k4 = dx(x+dt*k3, F, F_sd, m)
     x = x + dt/6.0*(k1+2*k2+2*k3+k4) 
     
     return x
