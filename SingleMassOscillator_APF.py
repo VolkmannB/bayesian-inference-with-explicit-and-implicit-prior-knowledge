@@ -54,7 +54,7 @@ P0 = np.diag([1e-4, 1e-4])
 
 # noise
 R = np.array([[1e-3]])
-Q = np.diag([5e-6, 5e-7])
+Q = np.diag([5e-8, 5e-9])
 w = lambda n=1: np.random.multivariate_normal(np.zeros((2,)), Q, n)
 e = lambda n=1: np.random.multivariate_normal(np.zeros((1,)), R, n)
 
