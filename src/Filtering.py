@@ -27,7 +27,8 @@ def systematic_SISR(u, w: npt.ArrayLike):
 @jax.jit
 def squared_error(x, y, cov):
     
-    dx = x - y
+    cov = jnp.atleast_2d(cov)
+    dx = jnp.atleast_1d(x) - jnp.atleast_1d(y)
     
     t = jnp.linalg.solve(cov, dx)
     r = dx @ t
