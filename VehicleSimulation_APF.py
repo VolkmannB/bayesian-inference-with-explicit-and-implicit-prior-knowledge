@@ -67,7 +67,7 @@ P0 = np.diag([1e-4, 1e-4])
 
 # noise
 R = np.diag([0.01/180*np.pi, 1e-1, 1e-3])
-Q = np.diag([5e-4, 5e-4])
+Q = np.diag([1e-9, 1e-9])
 R_y = 1e1
 w = lambda n=1: np.random.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
 e = lambda n=1: np.random.multivariate_normal(np.zeros((R.shape[0],)), R, n)
@@ -127,7 +127,7 @@ GP_stats_r = list(jax.vmap(prior_mniw_updateStatistics)(
 for i in tqdm(range(1,steps), desc="Running simulation"):
     
     ####### Model simulation
-    X[i] = f_x_sim(X[i-1], ctrl_input[i-1], **default_para)
+    X[i] = f_x_sim(X[i-1], ctrl_input[i-1], **default_para) + w()
     Y[i] = f_y(X[i], ctrl_input[i], **default_para) + e()
     
     
