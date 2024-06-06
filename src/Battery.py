@@ -2,7 +2,7 @@ import jax
 import jax.numpy as jnp
 import equinox as eqx
 
-from src.BayesianInferrence import bump_RBF, gaussian_RBF
+from src.BayesianInferrence import generate_Hilbert_BasisFunction, gaussian_RBF
 
 
 
@@ -76,9 +76,11 @@ def fy(x, I, R_0, V_0):
 z_ip = jnp.linspace(0, 2.4, 15)
 l_z = z_ip[1] - z_ip[0]
 
-@jax.jit
-def basis_fcn(x):
-    return gaussian_RBF(x, z_ip, l_z)
+# @jax.jit
+# def basis_fcn(x):
+#     return gaussian_RBF(x, z_ip, l_z)
+
+basis_fcn, sd = generate_Hilbert_BasisFunction(15, jnp.array([-0.5, 2.4]), l_z, 10)
 
 
 

@@ -6,14 +6,13 @@ import functools
 import pandas as pd
 
 import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 
-
-from src.Battery import BatterySSM, basis_fcn, default_para, z_ip
-from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, prior_mniw_Predictive
-from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_CondPredictive
+from src.Battery import BatterySSM, basis_fcn, sd, default_para, z_ip
+from src.BayesianInferrence import prior_mniw_2naturalPara
+from src.BayesianInferrence import prior_mniw_2naturalPara_inv
+from src.BayesianInferrence import prior_mniw_Predictive
+from src.BayesianInferrence import prior_mniw_updateStatistics
+from src.BayesianInferrence import prior_mniw_CondPredictive
 from src.Filtering import squared_error, systematic_SISR
 
 
@@ -38,7 +37,7 @@ l_R1, u_R1 = 5, 10
 N_z = z_ip.shape[0]
 GP_prior_C1R1 = list(prior_mniw_2naturalPara(
     np.zeros((2, N_z)),
-    np.eye(N_z)*10,
+    np.diag(sd),
     np.diag([1, 1]),
     0
 ))
@@ -60,14 +59,14 @@ data = data.set_index("Time")
 # segment data
 data["Block"] = (data.index.to_series().diff() > time_gap_thresh).cumsum()
 blocks = [group for _, group in data.groupby("Block")]
-data = blocks[0]
+data = blocks[3]
 del blocks
 
 # resampling to uniform time steps
 dt = pd.Timedelta("1s")
-data = data.resample("50ms", origin="start").interpolate().resample("1s", origin="start").asfreq()
+data = data.resample("5ms", origin="start").interpolate().resample("1s", origin="start").asfreq()
 
-data = data.iloc[:20000]
+# data = data.iloc[:2000]
 steps = data.shape[0]
 
 # init model
@@ -135,10 +134,10 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     dt = (data.index[i] - data.index[i-1]).seconds
     
     # apply forgetting operator to statistics for t-1 -> t
-    GP_stats_C1R1[0] *= 1 - 1/1e3
-    GP_stats_C1R1[1] *= 1 - 1/1e3
-    GP_stats_C1R1[2] *= 1 - 1/1e3
-    GP_stats_C1R1[3] *= 1 - 1/1e3
+    GP_stats_C1R1[0] *= 1 - 1/3e3
+    GP_stats_C1R1[1] *= 1 - 1/3e3
+    GP_stats_C1R1[2] *= 1 - 1/3e3
+    GP_stats_C1R1[3] *= 1 - 1/3e3
         
     # calculate parameters of GP from prior and sufficient statistics
     GP_para_C1R1 = list(jax.vmap(prior_mniw_2naturalPara_inv)(
@@ -331,14 +330,16 @@ for i in range(6):
         df=df_C1R1[int((i+1)/6*steps)-1], 
         basis=phi
         )
-    std0 = np.diag(np.linalg.cholesky(col_scale*row_scale[0,0]))
-    std1 = np.diag(np.linalg.cholesky(col_scale*row_scale[1,1]))
+    std0 = np.sqrt(np.diag(col_scale*row_scale[0,0]))
+    std1 = np.sqrt(np.diag(col_scale*row_scale[1,1]))
     
     ax_C1R1[0,i].plot(V, mean[:,0], color='blue')
     ax_C1R1[0,i].fill_between(V, mean[:,0]-std0, mean[:,0]+std0, color='blue', alpha=0.2)
     
     ax_C1R1[1,i].plot(V, mean[:,1], color='blue')
     ax_C1R1[1,i].fill_between(V, mean[:,1]-std1, mean[:,1]+std1, color='blue', alpha=0.2)
+    
+    ax_C1R1[0,i].set_title(f"Step: {int((i+1)/6*steps)}")
 
 
 
