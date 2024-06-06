@@ -25,7 +25,7 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
     # conditional_SMC_with_ancestor_sampling/PGAS Markov kernel according to Wigren.2022 (Algorithm S4) and Svensson.2017 (Algorithm 1)
 
     # setting initial variables
-    T = len(X_prop_im1)
+    T = X_prop_im1.shape[1]
 
     # unpacking distribution parameters
     P_coeff = P_niw_sample[0]
@@ -38,21 +38,22 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
 
     # initialize probability distributions
     w_X = lambda n=1: np.random.multivariate_normal(np.zeros((2,)), X_cov, n)
-    w_F = lambda n=1: np.random.multivariate_normal(np.zeros((1,)), F_cov, n)
-    w_P = lambda n=1: np.random.multivariate_normal(np.zeros((1,)), P_cov, n)
+    w_F = lambda n=1: np.random.normal(0, np.squeeze(F_cov), n)
+    w_P = lambda n=1: np.random.normal(0, np.squeeze(P_cov), n)
 
 
 
     # (1) - (2) initialize particles
-    X = np.repeat(X_prop_im1[:,0],[1,N])
-    X[:N-1,:] = X[:N-1,:] + w_X((N-1,2))
+    X = np.zeros((N,2)) # filter
+    X[...] = X_prop_im1[:,0:1].T
+    X[:N-1,:] = X[:N-1,:] + w_X((N-1,))
 
     phi_x0 = jax.vmap(basis_func)(X)
     #F = P_coeff @ phi_x0
-    F = jax.vmap(jnp.matmul)(F_coeff, phi_x0) + w_F((N,))
+    F = np.squeeze(jax.vmap(lambda x: jnp.matmul(F_coeff,x))(phi_x0)) + w_F((N,))
     #F[:N-1] = F[:N-1] + w_F((N-1,))  # Is it necessary to have a noise-free reference for F and P as well?
 
-    P = np.repeat(P_coeff,N,1) + w_P((N,))
+    P = np.squeeze(P_coeff) + w_P((N,))
     #P[:N-1] = P[:N-1] + w_P((N-1,))  # Is it necessary to have a noise-free reference for F and P as well?
     
     # store initial particles
@@ -72,35 +73,41 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
         y_pred = jax.vmap(h)(X)
         w = jax.vmap(functools.partial(squared_error, y=Y[t], cov=R))(y_pred)
         w = w/np.sum(w)
-
+        if np.any(np.isnan(w)):
+            print(f"Particle degeneration at weights in time step {t}.")
+            break
 
         # (5) draw new indices
         u = np.random.rand()
         idx = np.array(systematic_SISR(u, w))
         idx[idx >= N] = N - 1 # correct out of bounds indices from numerical errors
-        idx = idx[0:N-1]
+        #idx = idx[0:N-1]
 
         # (6) sample ancestor of the N-th particle
         #x_mean_tp1 = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X, F_sd=F, p=P) 
-        x_mean_tp1 = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X[idx,:], F_sd=F[idx,:], p=P[idx,:]) 
-        x_ref_tp1 = X_prop_im1[t+1,:]
+        x_mean_tp1 = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X[idx,...], F_sd=F[idx,...], p=P[idx,...]) 
+        x_ref_tp1 = X_prop_im1[:,t+1]
         prob = w * jax.vmap(functools.partial(squared_error, y=x_ref_tp1, cov=X_cov))(x_mean_tp1)
-        prob = prob/np.sum(prob)
-        idx[N] = np.random.choice(range(0, N), size=1, p=prob)
+        prob = np.asarray(prob).astype('float64')
+        prob /= prob.sum()
+        if np.any(np.isnan(prob)):
+            print(f"Particle degeneration at ancestor sampling in time step {t}.")
+            break
+        idx[N-1] = np.random.choice(np.arange(0,N), p=prob)
 
         # (7) sample x for 1,...,N-1
         #X = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X[idx,:], F_sd=F[idx,:], p=P[idx,:]) + w_X((N,2))
-        X = x_mean_tp1 + w_X((N,2))
+        X = x_mean_tp1 + w_X((N,))
         
         # (8) sample x for N
-        X[N,:] = x_ref_tp1
+        X = X.at[N-1,:].set(x_ref_tp1)
 
         # (9) sample F
         phi_x = jax.vmap(basis_func)(X)
-        F = jax.vmap(jnp.matmul)(F_coeff, phi_x) + w_F((N,))
+        F = np.squeeze(jax.vmap(lambda x: jnp.matmul(F_coeff,x))(phi_x)) + w_F((N,))
 
         # (9) sample P
-        P = np.repeat(P_coeff,N,1) + w_P((N,))
+        P = np.squeeze(P_coeff) + w_P((N,))
 
         # (10) store trajectories for X
         X_store[0:t+1,...] = np.concatenate((X_store[0:t,idx,...], X[None,...]),axis=0)
@@ -113,10 +120,12 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
 
 
     # (13) draw a sample trajectory as output
-    sample = np.random.choice(range(0, N), size=1, p=w)
+    w = np.asarray(w).astype('float64')
+    w /= w.sum()
+    sample = np.random.choice(np.arange(0,N), p=w)
     X_prop_i = np.squeeze(X_store[:,sample,:]).T
-    P_prop_i = np.squeeze(P_store[:,sample,:]).T
-    F_prop_i = np.squeeze(F_store[:,sample,:]).T
+    P_prop_i = np.squeeze(P_store[:,sample]).T
+    F_prop_i = np.squeeze(F_store[:,sample]).T
 
 
     return X_prop_i, P_prop_i, F_prop_i
@@ -154,7 +163,7 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
     P_coeff = P_mean + np.matmul(P_cov_col,n_samples)
     #P_coeff = np.random.multivariate_normal(P_mean,P_cov/P_normal_scale), P_mean.shape
 
-    P_niw_sample = list(P_coeff, P_cov)
+    P_niw_sample = [P_coeff, P_cov]
 
 
 
@@ -185,7 +194,7 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
     # F_cov = np.kron(F_col_cov, F_row_cov)
     # F_coeff = np.reshape(np.random.multivariate_normal(F_mean[:],F_cov), F_mean.shape)
 
-    F_mniw_sample = list(F_coeff, F_row_cov)
+    F_mniw_sample = [F_coeff, F_row_cov]
 
 
 
@@ -208,7 +217,7 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
                 scale=X_iw_scale,
                 random_state=seed)
     
-    X_iw_sample = list(X_cov)
+    X_iw_sample = [X_cov]
 
 
     return X_iw_sample, P_niw_sample, F_mniw_sample
@@ -222,9 +231,9 @@ if __name__ == '__main__':
     ################################################################################
     # General settings
 
-    N = 500    # no of particles
-    t_end = 100.0
-    dt = 0.01
+    N = 1000    # no of particles
+    t_end = 20.0
+    dt = 0.02
     time = np.arange(0.0,t_end,dt)
     steps = len(time)
     seed = 275513 #np.random.randint(100, 1000000)
@@ -285,42 +294,37 @@ if __name__ == '__main__':
     ################################################################################
     # Offline identification
 
-    # -----------------------------------------------------------------------------------
-    ### Initialize first reference trajectory for X
-    X_prop_im1 = np.zeros((2,steps)) 
-
-
 
     # -----------------------------------------------------------------------------------
     ### Initialize prior values for parameters
 
     # -----------------
     # X: parameters of the iw prior
-    X_iw_scale = np.eye(2) # defining distribution parameters
+    X_iw_scale = 1e-1*np.eye(2) # defining distribution parameters
     X_df = 2
 
     X_cov = invwishart.rvs(df=X_df, scale=X_iw_scale, random_state=seed) # sampling 
-    X_iw_sample = list(X_cov)
+    X_iw_sample = [X_cov]
 
-    X_prior = list((X_iw_scale, X_df)) # storing natural parameters
+    X_prior = [X_iw_scale, X_df] # storing natural parameters
 
 
 
     # -----------------
     # P: parameters of the niw prior
-    P_mean = np.eye(1) # defining distribution parameters
+    P_mean = 2*np.eye(1) # defining distribution parameters
     P_normal_scale = np.eye(1)
-    P_iw_scale = np.eye(1)
+    P_iw_scale = 1e-1*np.eye(1)
     P_df = 1
 
-    P_cov = invwishart.rvs(df=P_df, scale=P_iw_scale, random_state=seed) # sampling 
+    P_cov = np.array([[invwishart.rvs(df=P_df, scale=P_iw_scale, random_state=seed)]]) # sampling 
     P_cov_col = np.linalg.cholesky(P_cov/P_normal_scale)
     n_samples = np.random.normal(size=P_mean.shape)
     P_coeff = P_mean + np.matmul(P_cov_col,n_samples)
-    P_niw_sample = list((P_coeff, P_cov))
+    P_niw_sample = [P_coeff, P_cov]
 
     eta_0, eta_1, eta_2, eta_3  = prior_niw_2naturalPara(P_mean, P_normal_scale, P_iw_scale, P_df) # storing natural parameters
-    P_prior = list((eta_0, eta_1, eta_2, eta_3))
+    P_prior = [eta_0, eta_1, eta_2, eta_3]
 
 
 
@@ -328,21 +332,29 @@ if __name__ == '__main__':
     # F: parameters of the mniw prior
     F_mean = np.zeros((1, N_ip)) # defining distribution parameters
     F_col_cov = np.eye(N_ip)*40
-    F_iw_scale = np.eye(1)
+    F_iw_scale = 1e-1*np.eye(1)
     F_df = 1
 
-    F_row_cov = invwishart.rvs(df=F_df, scale=F_iw_scale, random_state=seed) # sampling 
+    F_row_cov = np.array([[invwishart.rvs(df=F_df, scale=F_iw_scale, random_state=seed)]]) # sampling 
     F_row_cov_col = np.sqrt(F_row_cov)
     F_col_cov_col = np.linalg.cholesky(F_col_cov)
     n_samples = np.random.normal(size=F_mean.shape)
     F_coeff = F_mean + F_row_cov_col*np.matmul(n_samples,F_col_cov_col)
-    F_mniw_sample = list((F_coeff, F_row_cov))
+    F_mniw_sample = [F_coeff, F_row_cov]
 
     eta_1, eta_2, eta_0, eta_3 = prior_mniw_2naturalPara(F_mean, F_col_cov, F_iw_scale, F_df) # storing natural parameters
-    F_prior = list((eta_0, eta_1, eta_2, eta_3))
+    F_prior = [eta_0, eta_1, eta_2, eta_3]
 
 
-
+    # -----------------------------------------------------------------------------------
+    ### Initialize first reference trajectory for X
+    # X_prop_im1 = np.zeros((2,steps)) 
+    # X_prop_im1[...,0] = x0
+    # for t in range(1,steps):
+    #     F = np.matmul(F_coeff,H(X_prop_im1[:,t-1]))
+    #     X_prop_im1[:,t:t+1] = f_x(X_prop_im1[:,t-1:t], U[t-1], F, dt=dt, p=np.squeeze(P_coeff))
+        
+    X_prop_im1 = X.T
 
 
 
