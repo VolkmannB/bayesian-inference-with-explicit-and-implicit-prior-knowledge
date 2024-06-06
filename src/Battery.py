@@ -31,17 +31,13 @@ class BatterySSM(eqx.Module):
     C_c: float
     Q_cap: float
     
-    def __call__(self, x, I, R_1, C_1, R_0, dt):
+    def __call__(self, x, I, R_1, C_1, dt):
         
         x_new = fx(
             x=x,
             I=I,
             R_1=R_1,
             C_1=C_1,
-            R_0=R_0,
-            T_amb=self.T_amb,
-            R_c=self.R_c,
-            C_c=self.C_c,
             dt=dt
         )
         
@@ -49,31 +45,30 @@ class BatterySSM(eqx.Module):
     
     @jax.jit
     def fy(self, x, I, R_0):
-        return jnp.hstack([self.V_0 + x[0] + R_0*I, x[3]])
+        return self.V_0 + x + R_0*I
 
 
 
-def dx(x, I, R_1, C_1, R_0, T_amb, R_c, C_c):
+def dx(x, I, R_1, C_1):
         
-        dz = I / C_1 - x[0] / R_1 / C_1
-        dT = (-(x[2] - T_amb)/R_c + x[0]*jnp.abs(I) + R_0*I**2)/C_c
+        dz = I / C_1 - x / R_1 / C_1
     
-        return jnp.array([dz, dT])
+        return dz
 
 
 
 @jax.jit
-def fx(x, I, R_1, C_1, R_0, T_amb, R_c, C_c, dt):
+def fx(x, I, R_1, C_1, dt):
         
-        k1 = dx(x, I, R_1, C_1, R_0, T_amb, R_c, C_c)
-        k2 = dx(x+dt*k1/2, I, R_1, C_1, R_0, T_amb, R_c, C_c)
-        k3 = dx(x+dt*k2/2, I, R_1, C_1, R_0, T_amb, R_c, C_c)
-        k4 = dx(x+dt*k3, I, R_1, C_1, R_0, T_amb, R_c, C_c)
+        k1 = dx(x, I, R_1, C_1)
+        k2 = dx(x+dt*k1/2, I, R_1, C_1)
+        k3 = dx(x+dt*k2/2, I, R_1, C_1)
+        k4 = dx(x+dt*k3, I, R_1, C_1)
         
         return x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
     
 def fy(x, I, R_0, V_0):
-    return jnp.hstack([V_0 + x[1] + R_0*I, x[2]])
+    return V_0 + x + R_0*I
 
 
 
@@ -83,7 +78,7 @@ l_z = z_ip[1] - z_ip[0]
 
 @jax.jit
 def basis_fcn(x):
-    return gaussian_RBF(x[0], z_ip, l_z)
+    return gaussian_RBF(x, z_ip, l_z)
 
 
 
