@@ -13,6 +13,7 @@ c1=10.0
 c2=2.0
 d1=0.7
 d2=0.4
+C = np.array([[1,0],[0,0]])
 
 
 def F_spring(x):
@@ -25,25 +26,28 @@ def F_damper(dx):
 
 
 
-def dx(x, F, F_sd):
+def dx(x, F, F_sd, p):
     return jnp.array(
-        [x[1], -F_sd/m + F/m + 9.81]
+        [x[1], -F_sd/p + F/p + 9.81]
     )
 
 
 
 @jax.jit
-def f_x(x, F, F_sd, dt):
+def f_x(x, F, F_sd, dt, p=m):
     
     # Runge-Kutta 4
-    k1 = dx(x, F, F_sd)
-    k2 = dx(x+dt/2.0*k1, F, F_sd)
-    k3 = dx(x+dt/2.0*k2, F, F_sd)
-    k4 = dx(x+dt*k3, F, F_sd)
+    k1 = dx(x, F, F_sd, p)
+    k2 = dx(x+dt/2.0*k1, F, F_sd, p)
+    k3 = dx(x+dt/2.0*k2, F, F_sd, p)
+    k4 = dx(x+dt*k3, F, F_sd, p)
     x = x + dt/6.0*(k1+2*k2+2*k3+k4) 
     
     return x
     
+@jax.jit
+def f_y(x):
+    return C @ x
     
     
 #### this section defines functions related to the state space model of the filtering problem

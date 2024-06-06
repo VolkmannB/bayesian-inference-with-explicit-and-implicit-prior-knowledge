@@ -58,6 +58,17 @@ def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, basis):
     
     return T_0, T_1, T_2, T_3
 
+
+@jax.jit
+def prior_mniw_calcStatistics(eta_0, eta_1, eta_2, eta_3, old_data, new_data):
+    
+    eta_0 += jnp.outer(new_data,new_data) 
+    eta_1 += jnp.outer(old_data,new_data)
+    eta_2 += jnp.outer(old_data,old_data)
+    eta_3 += new_data.shape[1]
+    
+    return eta_0, eta_1, eta_2, eta_3
+
 @jax.jit
 def prior_mniw_Predictive(mean, col_cov, row_scale, df, basis):
     
@@ -120,6 +131,45 @@ def prior_mniw_CondPredictive(mean, col_cov, row_scale, df, y1, y1_var, basis1, 
     
 
 
+# Normal Inverse Wishart
+@jax.jit
+def prior_niw_calcStatistics(eta_0, eta_1, eta_2, eta_3, new_data):
+    
+    eta_0 += jnp.outer(new_data,new_data) 
+    eta_1 += jnp.sum(new_data,axis=1)
+    eta_2 += new_data.shape[1]
+    eta_3 += new_data.shape[1]
+    
+    return eta_0, eta_1, eta_2, eta_3
+
+
+@jax.jit
+def prior_niw_2naturalPara(mean, normal_scale, iw_scale, df):
+    
+    mean = jnp.atleast_2d(mean)
+    iw_scale = jnp.atleast_2d(iw_scale)
+
+    eta_1 = mean/normal_scale
+    eta_2 = 1/normal_scale
+    eta_3 = df
+    eta_0 = jnp.outer(eta_1,mean) + iw_scale
+
+    return eta_0, eta_1, eta_2, eta_3 
+
+
+@jax.jit
+def prior_niw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
+    
+    mean = eta_1/eta_2
+    normal_scale = 1/eta_2
+    iw_scale = eta_0 - jnp.outer(mean,eta_1)
+    df = eta_3
+    
+    return jnp.atleast_2d(mean), normal_scale, jnp.atleast_2d(iw_scale), df
+
+
+
+
 # Inverse Wishart
 # For a multivariate Gaussian likelihood with known mean and unknown covariance
 @jax.jit
@@ -141,6 +191,15 @@ def prior_iw_updateStatistics(T_0, T_1, y, mu):
     
     return T_0, T_1
     
+@jax.jit
+def prior_iw_calcStatistics(T_0, T_1, mu, y):
+    
+    e = y - mu
+    T_0 = T_0 + jnp.outer(e,e)
+    T_1 = T_1 + y.shape[1]
+    
+    return T_0, T_1
+
 
 
 ################################################################################
