@@ -80,7 +80,7 @@ l_z = z_ip[1] - z_ip[0]
 # def basis_fcn(x):
 #     return gaussian_RBF(x, z_ip, l_z)
 
-basis_fcn, sd = generate_Hilbert_BasisFunction(15, jnp.array([-0.5, 2.4]), l_z, 10)
+basis_fcn, sd = generate_Hilbert_BasisFunction(15, jnp.array([-0.5, 2.4]), l_z, 5)
 
 
 
