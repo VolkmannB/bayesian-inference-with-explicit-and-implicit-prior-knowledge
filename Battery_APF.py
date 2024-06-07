@@ -33,6 +33,12 @@ y1_var=5e-2
 l_C1, u_C1 = 2, 20
 l_R1, u_R1 = 5, 10
 
+# domain of BFE
+offset_C1 = (u_C1 - l_C1)/2
+offset_R1 = (u_R1 - l_R1)/2
+cl_C1, cu_C1 = l_C1 - offset_C1, u_C1 - offset_C1
+cl_R1, cu_R1 = l_R1 - offset_R1, u_R1 - offset_R1
+
 # model prior C1, R1
 N_z = z_ip.shape[0]
 GP_prior_C1R1 = list(prior_mniw_2naturalPara(
@@ -112,8 +118,8 @@ Y = data[["Voltage"]].to_numpy()
 
 # initial values for states
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,)).flatten()
-Sigma_C1R1[0,:,0] = np.random.uniform(l_C1, u_C1, (N,))
-Sigma_C1R1[0,:,1] = np.random.uniform(l_R1, u_R1, (N,))
+Sigma_C1R1[0,:,0] = np.random.uniform(cl_C1, cu_C1, (N,))
+Sigma_C1R1[0,:,1] = np.random.uniform(cl_R1, cu_R1, (N,))
 weights = np.ones((steps,N))/N
 
 # update GP
@@ -156,8 +162,8 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     x_aux = jax.vmap(
         functools.partial(model, I=ctrl_input[i-1], dt=dt))(
             x=Sigma_X[i-1],
-            C_1=Sigma_C1R1[i-1,...,0]*1e2,
-            R_1=Sigma_C1R1[i-1,...,1]*1e3
+            C_1=(offset_C1+Sigma_C1R1[i-1,...,0])*1e2,
+            R_1=(offset_R1+Sigma_C1R1[i-1,...,1])*1e3
         )
     
     # create auxiliary variable for C1, R1 and R0
@@ -180,8 +186,8 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
         functools.partial(model.fy, I=ctrl_input[i], R_0=23e-3)
         )(x=x_aux)
     l_fy = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x=y_aux)
-    l_C0_clip = np.all(np.vstack([l_C1 <= C1R1_aux[:,0], C1R1_aux[:,0] <= u_C1]), axis=0)
-    l_R0_clip = np.all(np.vstack([l_R1 <= C1R1_aux[:,1], C1R1_aux[:,1] <= u_R1]), axis=0)
+    l_C0_clip = np.all(np.vstack([cl_C1 <= C1R1_aux[:,0], C1R1_aux[:,0] <= cu_C1]), axis=0)
+    l_R0_clip = np.all(np.vstack([cl_R1 <= C1R1_aux[:,1], C1R1_aux[:,1] <= cu_R1]), axis=0)
     p = weights[i-1] * l_fy * l_C0_clip * l_R0_clip
     p = p/np.sum(p)
     
@@ -218,8 +224,8 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     Sigma_X[i] = jax.vmap(
         functools.partial(model, I=ctrl_input[i-1], dt=dt))(
             x=Sigma_X[i-1],
-            C_1=Sigma_C1R1[i-1,:,0]*1e2,
-            R_1=Sigma_C1R1[i-1,:,1]*1e3
+            C_1=(offset_C1+Sigma_C1R1[i-1,:,0])*1e2,
+            R_1=(offset_R1+Sigma_C1R1[i-1,:,1])*1e3
         ) + w_x
     
     ## sample proposal for alpha and beta at time t
@@ -265,8 +271,8 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
         functools.partial(model.fy, I=ctrl_input[i], R_0=23e-3)
         )(x=Sigma_X[i])
     q_fy = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(Sigma_Y[i])
-    q_C0_clip = np.all(np.vstack([l_C1 <= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] <= u_C1]), axis=0)
-    q_R0_clip = np.all(np.vstack([l_R1 <= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] <= u_R1]), axis=0)
+    q_C0_clip = np.all(np.vstack([cl_C1 <= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] <= cu_C1]), axis=0)
+    q_R0_clip = np.all(np.vstack([cl_R1 <= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] <= cu_R1]), axis=0)
     weights[i] = q_fy * q_C0_clip * q_R0_clip / p[idx]
     weights[i] = weights[i]/np.sum(weights[i])
     
@@ -333,11 +339,11 @@ for i in range(6):
     std0 = np.sqrt(np.diag(col_scale*row_scale[0,0]))
     std1 = np.sqrt(np.diag(col_scale*row_scale[1,1]))
     
-    ax_C1R1[0,i].plot(V, mean[:,0], color='blue')
-    ax_C1R1[0,i].fill_between(V, mean[:,0]-std0, mean[:,0]+std0, color='blue', alpha=0.2)
+    ax_C1R1[0,i].plot(V, offset_C1+mean[:,0], color='blue')
+    ax_C1R1[0,i].fill_between(V, offset_C1+mean[:,0]-std0, offset_C1+mean[:,0]+std0, color='blue', alpha=0.2)
     
-    ax_C1R1[1,i].plot(V, mean[:,1], color='blue')
-    ax_C1R1[1,i].fill_between(V, mean[:,1]-std1, mean[:,1]+std1, color='blue', alpha=0.2)
+    ax_C1R1[1,i].plot(V, offset_R1+mean[:,1], color='blue')
+    ax_C1R1[1,i].fill_between(V, offset_R1+mean[:,1]-std1, offset_R1+mean[:,1]+std1, color='blue', alpha=0.2)
     
     ax_C1R1[0,i].set_title(f"Step: {int((i+1)/6*steps)}")
 
