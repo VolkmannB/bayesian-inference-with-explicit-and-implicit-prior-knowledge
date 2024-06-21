@@ -121,11 +121,14 @@ def f_y(x, u, **para):
 ##### Filtering
 
 # features for front and rear tire
-N_ip = 8
-vehicle_RBF_ip = jnp.atleast_2d(jnp.linspace(-20/180*jnp.pi, 20/180*jnp.pi, N_ip)).T
-vehicle_lengthscale = vehicle_RBF_ip[1] - vehicle_RBF_ip[0]
-H_vehicle = lambda alpha: bump_RBF(alpha, vehicle_RBF_ip, vehicle_lengthscale)
-# H_vehicle, sd = generate_Hilbert_BasisFunction(N_ip, np.array([-0.5, 0.5]), 1/N_ip, 1, j_start=2, j_step=2)
+N_basis_fcn = 10
+lengthscale = 2 * 20/180*jnp.pi / N_basis_fcn
+H_vehicle, spectral_density = generate_Hilbert_BasisFunction(
+    N_basis_fcn, 
+    np.array([-30/180*jnp.pi, 30/180*jnp.pi]), 
+    lengthscale, 
+    50
+    )
 
 @jax.jit
 def features_MTF_front(x, u, **para):

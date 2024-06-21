@@ -14,6 +14,7 @@ from src.BayesianInferrence import prior_mniw_Predictive
 from src.BayesianInferrence import prior_mniw_updateStatistics
 from src.BayesianInferrence import prior_mniw_CondPredictive
 from src.Filtering import squared_error, systematic_SISR
+from src.Publication_Plotting import plot_BFE_1D, generate_BFE_TimeSlices
 
 
 
@@ -23,6 +24,7 @@ from src.Filtering import squared_error, systematic_SISR
 
 # sim para
 N = 100
+forget_factor = 1 - 1/1e3
 y1_var=5e-2
 
 
@@ -140,10 +142,10 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     dt = (data.index[i] - data.index[i-1]).seconds
     
     # apply forgetting operator to statistics for t-1 -> t
-    GP_stats_C1R1[0] *= 1 - 1/3e3
-    GP_stats_C1R1[1] *= 1 - 1/3e3
-    GP_stats_C1R1[2] *= 1 - 1/3e3
-    GP_stats_C1R1[3] *= 1 - 1/3e3
+    GP_stats_C1R1[0] *= forget_factor
+    GP_stats_C1R1[1] *= forget_factor
+    GP_stats_C1R1[2] *= forget_factor
+    GP_stats_C1R1[3] *= forget_factor
         
     # calculate parameters of GP from prior and sufficient statistics
     GP_para_C1R1 = list(jax.vmap(prior_mniw_2naturalPara_inv)(
@@ -201,19 +203,6 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     idx = np.array(systematic_SISR(u, p))
     idx[idx >= N] = N - 1 # correct out of bounds indices from numerical errors
     
-    # copy statistics
-    GP_stats_C1R1[0] = GP_stats_C1R1[0][idx,...]
-    GP_stats_C1R1[1] = GP_stats_C1R1[1][idx,...]
-    GP_stats_C1R1[2] = GP_stats_C1R1[2][idx,...]
-    GP_stats_C1R1[3] = GP_stats_C1R1[3][idx,...]
-    GP_para_C1R1[0] = GP_para_C1R1[0][idx,...]
-    GP_para_C1R1[1] = GP_para_C1R1[1][idx,...]
-    GP_para_C1R1[2] = GP_para_C1R1[2][idx,...]
-    GP_para_C1R1[3] = GP_para_C1R1[3][idx,...]
-    
-    Sigma_X[i-1] = Sigma_X[i-1,idx,...]
-    Sigma_C1R1[i-1] = Sigma_C1R1[i-1,idx,...]
-    
     
     
     ### Step 3: Make a proposal by generating samples from the hirachical 
@@ -223,25 +212,25 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     w_x = w((N,)).flatten()
     Sigma_X[i] = jax.vmap(
         functools.partial(model, I=ctrl_input[i-1], dt=dt))(
-            x=Sigma_X[i-1],
-            C_1=(offset_C1+Sigma_C1R1[i-1,:,0])*1e2,
-            R_1=(offset_R1+Sigma_C1R1[i-1,:,1])*1e3
+            x=Sigma_X[i-1,idx],
+            C_1=(offset_C1+Sigma_C1R1[i-1,idx,0])*1e2,
+            R_1=(offset_R1+Sigma_C1R1[i-1,idx,1])*1e3
         ) + w_x
     
     ## sample proposal for alpha and beta at time t
     # evaluate basis functions
-    phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1])
+    phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1,idx])
     phi_1 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i])
     
     # calculate conditional predictive distribution for C1 and R1
     c_mean, c_col_scale, c_row_scale, df = jax.vmap(
         functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
         )(
-            mean=GP_para_C1R1[0],
-            col_cov=GP_para_C1R1[1],
-            row_scale=GP_para_C1R1[2],
-            df=GP_para_C1R1[3],
-            y1=Sigma_C1R1[i-1,...],
+            mean=GP_para_C1R1[0][idx],
+            col_cov=GP_para_C1R1[1][idx],
+            row_scale=GP_para_C1R1[2][idx],
+            df=GP_para_C1R1[3][idx],
+            y1=Sigma_C1R1[i-1,idx],
             basis1=phi_0,
             basis2=phi_1
     )
@@ -261,7 +250,10 @@ for i in tqdm(range(1, steps), desc="Running simulation"):
     
     # Update the sufficient statistics of GP with new proposal
     GP_stats_C1R1 = list(jax.vmap(prior_mniw_updateStatistics)(
-        *GP_stats_C1R1,
+        GP_stats_C1R1[0][idx],
+        GP_stats_C1R1[1][idx],
+        GP_stats_C1R1[2][idx],
+        GP_stats_C1R1[3][idx],
         Sigma_C1R1[i],
         phi_1
     ))
@@ -316,36 +308,30 @@ ax_data[1].plot(data.index, data["Current"], color='blue', label='Meas')
 
 
 # plot learned function
-fig_C1R1, ax_C1R1 = plt.subplots(2,6, layout='tight')
-V = jnp.linspace(0, 2.4, 500)
-phi = jax.vmap(basis_fcn)(V[...,None])
+V = jnp.linspace(0, 2.2, 500)
 
-# label
-ax_C1R1[0,0].set_ylabel('Capacity in F x1e2')
-ax_C1R1[1,0].set_ylabel('Resistance in Ohm x1e3')
+Mean, Std, X_stats, X_weights, Time = generate_BFE_TimeSlices(
+    N_slices=4, 
+    X_in=V[...,None], 
+    Sigma_X=Sigma_X, 
+    Sigma_weights=weights,
+    Mean=Mean_C1R1, 
+    Col_Scale=Col_Cov_C1R1, 
+    Row_Scale=Row_Scale_C1R1, 
+    DF=df_C1R1, 
+    basis_fcn=basis_fcn, 
+    forget_factor=forget_factor
+    )
 
-# function
-for i in range(6):
-    ax_C1R1[0,i].set_ylim(0, 20)
-    ax_C1R1[1,i].set_ylim(0, 15)
-    
-    mean, col_scale, row_scale, df = prior_mniw_Predictive(
-        mean=Mean_C1R1[int((i+1)/6*steps)-1], 
-        col_cov=Col_Cov_C1R1[int((i+1)/6*steps)-1], 
-        row_scale=Row_Scale_C1R1[int((i+1)/6*steps)-1], 
-        df=df_C1R1[int((i+1)/6*steps)-1], 
-        basis=phi
-        )
-    std0 = np.sqrt(np.diag(col_scale*row_scale[0,0]))
-    std1 = np.sqrt(np.diag(col_scale*row_scale[1,1]))
-    
-    ax_C1R1[0,i].plot(V, offset_C1+mean[:,0], color='blue')
-    ax_C1R1[0,i].fill_between(V, offset_C1+mean[:,0]-std0, offset_C1+mean[:,0]+std0, color='blue', alpha=0.2)
-    
-    ax_C1R1[1,i].plot(V, offset_R1+mean[:,1], color='blue')
-    ax_C1R1[1,i].fill_between(V, offset_R1+mean[:,1]-std1, offset_R1+mean[:,1]+std1, color='blue', alpha=0.2)
-    
-    ax_C1R1[0,i].set_title(f"Step: {int((i+1)/6*steps)}")
+
+fig_BFE, ax_BFE = plot_BFE_1D(
+    V,
+    np.array([offset_C1, offset_R1])[None,:,None] + Mean,
+    Std,
+    Time,
+    X_stats, 
+    X_weights
+)
 
 
 
