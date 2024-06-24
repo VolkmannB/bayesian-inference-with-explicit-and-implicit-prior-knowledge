@@ -226,6 +226,7 @@ def plot_Data(Particles, weights, Reference, time):
     N_dim = Particles.shape[-1]
     
     fig, axes = plt.subplots(N_dim, 1, layout='tight', sharex='col')
+    axes = np.atleast_1d(axes)
     
     mean = np.einsum('inm,in->im', Particles, weights)
     
