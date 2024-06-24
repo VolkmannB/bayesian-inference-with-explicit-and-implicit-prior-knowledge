@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 
 
 
-from src.SingleMassOscillator import F_spring, F_damper, f_x, N_ip, ip, H, m
+from src.SingleMassOscillator import F_spring, F_damper, f_x, N_ip, sd, basis_fcn, m
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_CondPredictive
 from src.Filtering import systematic_SISR, squared_error
@@ -33,11 +33,10 @@ steps = len(time)
 
 # model of the spring damper system
 # parameters of the prior
-phi = jax.vmap(H)(ip)
 GP_model_prior_eta = list(prior_mniw_2naturalPara(
     np.zeros((1, N_ip)),
-    np.eye(N_ip)*40,
-    np.eye(1),
+    np.diag(sd),
+    np.eye(1)*10,
     0
 ))
 
@@ -91,7 +90,7 @@ F[int(4*t_end/(5*dt)):] = 0
 # set initial values
 Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N,)) # initial particles
 Sigma_F[0,...] = np.random.normal(0, 1e-6, (N,))
-phi = jax.vmap(H)(Sigma_X[0,...])
+phi = jax.vmap(basis_fcn)(Sigma_X[0,...])
 GP_model_stats = list(jax.vmap(prior_mniw_updateStatistics)( # initial value for GP
     *GP_model_stats,
     Sigma_F[0,...],
@@ -177,8 +176,8 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     ## sample from proposal for F at time t
     # evaluate basis functions for all particles
-    phi_x0 = jax.vmap(H)(Sigma_X[i-1,idx])
-    phi_x1 = jax.vmap(H)(Sigma_X[i])
+    phi_x0 = jax.vmap(basis_fcn)(Sigma_X[i-1,idx])
+    phi_x1 = jax.vmap(basis_fcn)(Sigma_X[i])
     
     # calculate conditional predictive distribution
     c_mean, c_col_scale, c_row_scale, df = jax.vmap(
@@ -279,14 +278,14 @@ Mean, Std, X_stats, X_weights, Time = generate_BFE_TimeSlices(
     Col_Scale=Col_cov_F[:int(steps*3/5)], 
     Row_Scale=Row_scale_F[:int(steps*3/5)], 
     DF=df_F[:int(steps*3/5)], 
-    basis_fcn=H, 
+    basis_fcn=basis_fcn, 
     forget_factor=forget_factor
     )
 
-log_mean_err = np.log10(np.abs(Mean-F_sd_true))
+mean_err = np.abs(Mean-F_sd_true)
 fig_BFE_F, ax_BFE_F = plot_BFE_2D(
     X_in,
-    log_mean_err,
+    mean_err,
     Time*dt,
     X_stats, 
     X_weights
