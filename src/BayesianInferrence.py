@@ -291,7 +291,7 @@ def generate_Hilbert_BasisFunction(
     eig_val = (np.pi*S/domain_size)**2
     
     # sort eigenvalues in decending order
-    idx = np.flip(np.argsort(np.sum(eig_val, axis=1)))
+    idx = np.argsort(np.sum(eig_val, axis=1))
     
     # get M combinations of highest eigenvalues
     idx = idx[:num_fcn]
@@ -301,11 +301,12 @@ def generate_Hilbert_BasisFunction(
     eigen_fun = lambda x: functools.partial(_eigen_fnc, L=domain_size/2, eigen_val=eig_val)(x=x-domain_center)
     
     # calculate spectral density
-    spectral_density = _spectral_density_Gaussian(
-        scale, 
-        np.atleast_1d(lengthscale), 
-        np.sqrt(eig_val)
+    spectral_density_fcn = functools.partial(
+        _spectral_density_Gaussian,
+        magnitude=scale,
+        lengthscale=lengthscale
         )
+    spectral_density = jax.vmap(spectral_density_fcn)(freq=np.sqrt(eig_val))
     
     return jax.jit(eigen_fun), spectral_density
     
@@ -316,16 +317,26 @@ def _eigen_fnc(x, eigen_val, L):
         axis=1
         )
 
-def _spectral_density_Gaussian(magnitude, lengthscale, freq):
+def _spectral_density_Gaussian(freq, magnitude, lengthscale):
+    """
+    Calculate the spectral density of the squared exponential kernel with 
+    individual lengthscales.
+
+    Args:
+        freq (ArrayLike): Frequency vector (1D array).
+        magnitude (_type_): Variance parameter.
+        lengthscale (ArrayLike): Lengthscales for each dimension (1D array).
+
+    Returns:
+        float: Spectral density.
+    """
     
-    d = freq.shape[1]
-    r = freq*lengthscale
+    # broadcast to correct shapes
+    D = len(freq)
+    l = jnp.broadcast_to(lengthscale, jnp.asarray(freq).shape)
     
-    if len(lengthscale) == 1:
-        l_d = lengthscale**d
-    else:
-        l_d = np.prod(lengthscale)
+    term1 = magnitude * (2 * jnp.pi)**(D / 2)
+    term2 = jnp.prod(l)
+    exponent = -0.5 * jnp.sum((l**2) * (freq**2))
     
-    s = magnitude * np.sqrt(2*np.pi)**d * l_d * np.exp(-0.5 * np.sum(r**2, axis=1))
-    
-    return s
+    return term1 * term2 * jnp.exp(exponent)
