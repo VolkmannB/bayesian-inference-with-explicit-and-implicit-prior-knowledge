@@ -139,7 +139,7 @@ def plot_BFE_1D(X_in, Mean, Std, time, X_stats, X_weights):
 
 
 
-def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights):
+def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights, norm='log'):
     
     N_TimeSlices = Mean.shape[0]
     N_tasks = Mean.shape[1]
@@ -153,8 +153,6 @@ def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights):
     z_min = np.min(Mean)
     z_max = np.max(Mean)
     
-    levels = np.linspace(z_min,z_max,50)
-    
     for i in range(N_TimeSlices):
         
         # plot slice for each task
@@ -162,7 +160,8 @@ def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights):
             cntr = axes[j,i].tripcolor(
                 X_in[:,0], 
                 X_in[:,1], 
-                Mean[i,j]
+                Mean[i,j],
+                norm=norm
                 )
             axes[j,i].set_xlim(x_min, x_max)
             axes[j,i].set_ylim(y_min, y_max)
