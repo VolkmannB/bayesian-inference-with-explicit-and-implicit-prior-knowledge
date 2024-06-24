@@ -51,7 +51,7 @@ GP_model_stats = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
-# np.random.seed(573573)
+np.random.seed(16723573)
 
 # noise
 R = np.array([[1e-3]])
@@ -250,14 +250,14 @@ fig_X, axes_X = plot_Data(
 apply_basic_formatting(fig_X)
 
 
-# # plot the force estimations
-# fig_F, axes_F = plot_Data(
-#     Particles=Sigma_F,
-#     weights=weights,
-#     Reference=F,
-#     time=time
-# )
-# apply_basic_formatting(fig_F)
+# plot the force estimations
+fig_F, axes_F = plot_Data(
+    Particles=Sigma_F,
+    weights=weights,
+    Reference=F,
+    time=time
+)
+apply_basic_formatting(fig_F)
 
 
 

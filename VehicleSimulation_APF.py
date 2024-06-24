@@ -68,7 +68,7 @@ GP_stats_r = [
 # initial system state
 x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
-# np.random.seed(573573)
+np.random.seed(16723573)
 
 # noise
 R = np.diag([0.01/180*np.pi, 1e-1, 1e-3])
