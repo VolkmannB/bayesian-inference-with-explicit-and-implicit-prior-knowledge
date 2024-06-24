@@ -153,6 +153,11 @@ def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights, norm='log'):
     z_min = np.min(Mean)
     z_max = np.max(Mean)
     
+    if norm=='log':
+        normalizer = matplotlib.colors.LogNorm()
+    else:
+        normalizer = matplotlib.colors.Normalize()
+    
     for i in range(N_TimeSlices):
         
         # plot slice for each task
@@ -161,7 +166,7 @@ def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights, norm='log'):
                 X_in[:,0], 
                 X_in[:,1], 
                 Mean[i,j],
-                norm=norm
+                norm=normalizer
                 )
             axes[j,i].set_xlim(x_min, x_max)
             axes[j,i].set_ylim(y_min, y_max)
