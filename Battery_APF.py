@@ -85,7 +85,7 @@ model = BatterySSM(**default_para)
 # initial system state
 x0 = np.array([data["Voltage"].iloc[0]-default_para["V_0"]])
 P0 = np.diag([5e-3])
-# np.random.seed(573573)
+np.random.seed(16723573)
 
 # process and measurement noise
 R = np.diag([0.001])
