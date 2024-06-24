@@ -53,17 +53,22 @@ def f_y(x):
 #### this section defines functions related to the state space model of the filtering problem
 
 # RBF for GP (the feature vector)
-N_ip = 5
-x_points = np.linspace(-7., 7., N_ip)
-dx_points = np.linspace(-7., 7., N_ip)
-ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
-ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
-H = lambda x: bump_RBF(
-    jnp.atleast_2d(x),
-    loc=jnp.asarray(ip),
-    lengthscale=x_points[1]-x_points[0]
-)
-N_ip = ip.shape[0]
+# N_ip = 5
+# x_points = np.linspace(-7., 7., N_ip)
+# dx_points = np.linspace(-7., 7., N_ip)
+# ip = np.dstack(np.meshgrid(x_points, dx_points, indexing='xy'))
+# ip = ip.reshape(ip.shape[0]*ip.shape[1], 2)
+# H = lambda x: bump_RBF(
+#     jnp.atleast_2d(x),
+#     loc=jnp.asarray(ip),
+#     lengthscale=x_points[1]-x_points[0]
+# )
+# N_ip = ip.shape[0]
 
-# N_ip = 41
-# H, sd = generate_Hilbert_BasisFunction(N_ip, np.array([[-5, 5],[-5, 5]]), 1, 10**2)
+N_ip = 41
+basis_fcn, sd = generate_Hilbert_BasisFunction(
+    num_fcn=N_ip, 
+    domain_boundary=np.array([[-7.5, 7.5],[-7.5, 7.5]]), 
+    lengthscale=7.5*2/N_ip, 
+    scale=60
+    )
