@@ -51,9 +51,9 @@ class BatterySSM(eqx.Module):
 
 def dx(x, I, R_1, C_1):
         
-        dz = I / C_1 - x / R_1 / C_1
+        dV = I / C_1 - x / R_1 / C_1
     
-        return dz
+        return dV
 
 
 

@@ -22,6 +22,12 @@ imes_blue = np.array([0, 80, 155])/255
 imes_orange = np.array([231, 123, 41])/255
 imes_green = np.array([200, 211, 23])/255
 
+imes_colorscale = matplotlib.colors.LinearSegmentedColormap.from_list(
+    "imes_Colorscale",
+    [imes_blue, imes_green, imes_orange],
+    N=256
+    )
+
 aspect_ratio = 16/9
 inch_per_cm = 0.3937007874
 
@@ -90,12 +96,19 @@ def generate_BFE_TimeSlices(
 
 
 
-def plot_BFE_1D(X_in, Mean, Std, time, X_stats, X_weights):
+def plot_BFE_1D(X_in, Mean, Std, time, X_stats, X_weights, dpi=150):
     
     N_TimeSlices = Mean.shape[0]
     N_tasks = Mean.shape[1]
     
-    fig, axes = plt.subplots(N_tasks+1, N_TimeSlices, layout="tight", sharey='row', sharex='col')
+    fig, axes = plt.subplots(
+        N_tasks+1, 
+        N_TimeSlices, 
+        layout="tight", 
+        sharey='row', 
+        sharex='col', 
+        dpi=dpi
+        )
     
     x_min = np.min(X_in)
     x_max = np.max(X_in)
@@ -139,12 +152,12 @@ def plot_BFE_1D(X_in, Mean, Std, time, X_stats, X_weights):
 
 
 
-def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights, norm='log'):
+def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights, norm='log', dpi=150):
     
     N_TimeSlices = Mean.shape[0]
     N_tasks = Mean.shape[1]
     
-    fig, axes = plt.subplots(N_tasks+1, N_TimeSlices, layout="tight")
+    fig, axes = plt.subplots(N_tasks+1, N_TimeSlices, layout="tight", dpi=dpi)
     
     x_min = np.min(X_in[:,0])
     x_max = np.max(X_in[:,0])
@@ -166,7 +179,8 @@ def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights, norm='log'):
                 X_in[:,0], 
                 X_in[:,1], 
                 Mean[i,j],
-                norm=normalizer
+                norm=normalizer,
+                cmap=imes_colorscale
                 )
             axes[j,i].set_xlim(x_min, x_max)
             axes[j,i].set_ylim(y_min, y_max)
@@ -185,7 +199,8 @@ def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights, norm='log'):
             bins=50, 
             range=((x_min, x_max), (y_min, y_max)), 
             weights=X_weights[i].flatten(), 
-            norm=matplotlib.colors.LogNorm()
+            norm=matplotlib.colors.LogNorm(),
+            cmap=imes_colorscale
             )
         axes[N_tasks,i].set_xlim(x_min, x_max)
         axes[N_tasks,i].set_ylim(y_min, y_max)
@@ -218,14 +233,14 @@ def set_font_size(fig, size):
 
 
 
-def plot_Data(Particles, weights, Reference, time):
+def plot_Data(Particles, weights, Reference, time, dpi=150):
     
     Particles = np.atleast_3d(Particles)
     Reference = np.atleast_2d(Reference.T).T
     
     N_dim = Particles.shape[-1]
     
-    fig, axes = plt.subplots(N_dim, 1, layout='tight', sharex='col')
+    fig, axes = plt.subplots(N_dim, 1, layout='tight', sharex='col', dpi=dpi)
     axes = np.atleast_1d(axes)
     
     mean = np.einsum('inm,in->im', Particles, weights)
