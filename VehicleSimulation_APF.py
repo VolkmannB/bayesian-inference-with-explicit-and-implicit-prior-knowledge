@@ -3,6 +3,7 @@ import jax
 import jax.numpy as jnp
 from tqdm import tqdm
 import functools
+import subprocess
 
 
 
@@ -395,7 +396,11 @@ fig_X, axes_X = plot_Data(
     Reference=X,
     time=time
 )
-apply_basic_formatting(fig_X)
+axes_X[0,0].set_ylabel(r"Yaw rate in $rad/s$")
+axes_X[0,1].set_ylabel(r"Lateral velocity $v_y$ in $m/s$")
+axes_X[0,1].set_xlabel(r"Time in $s$")
+apply_basic_formatting(fig_X, width=8, font_size=8)
+fig_X.savefig("VehicleSimulation_APF_X.pdf", bbox_inches='tight')
 
     
     
@@ -412,7 +417,7 @@ mu_f_true = jax.vmap(
     )(alpha=alpha)
 
 Mean, Std, X_stats, X_weights, Time = generate_BFE_TimeSlices(
-    N_slices=2, 
+    N_slices=4, 
     X_in=alpha[...,None], 
     Sigma_X=Sigma_alpha_f, 
     Sigma_weights=weights,
@@ -439,12 +444,13 @@ for ax in ax_BFE_f[0]:
 
 # set x label
 for ax in ax_BFE_f[1]:
-    ax.set_xlabel(r'$\alpha$ in [rad]')
+    ax.set_xlabel(r'$\alpha$ in $rad$')
 
 # create legend
 ax_BFE_f[0,0].legend([r'$\mu_\mathrm{f,GP}$', r'$3\sigma$', r'$\mu_\mathrm{f,true}$'])
 
-apply_basic_formatting(fig_BFE_f, width=16)
+apply_basic_formatting(fig_BFE_f, width=16, font_size=8)
+fig_BFE_f.savefig("VehicleSimulation_APF_muf.pdf", bbox_inches='tight')
 
 
 

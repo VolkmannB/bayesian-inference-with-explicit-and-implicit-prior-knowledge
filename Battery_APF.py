@@ -15,6 +15,7 @@ from src.BayesianInferrence import prior_mniw_updateStatistics
 from src.BayesianInferrence import prior_mniw_CondPredictive
 from src.Filtering import squared_error, systematic_SISR
 from src.Publication_Plotting import plot_BFE_1D, generate_BFE_TimeSlices
+from src.Publication_Plotting import apply_basic_formatting, plot_Data
 
 
 
@@ -298,12 +299,16 @@ Y_pred = np.einsum('...n,...n->...', Sigma_Y, weights)
 
 
 # plot data
-fig_data, ax_data = plt.subplots(2,1, layout='tight')
-
-ax_data[0].plot(data.index, data["Voltage"], color='blue', label='Meas')
-ax_data[0].plot(data.index[1:], Y_pred[1:], color='orange', label='Pred')
-
-ax_data[1].plot(data.index, data["Current"], color='blue', label='Meas')
+fig_Y, axes_Y = plot_Data(
+    Particles=Sigma_Y[1:],
+    weights=weights[1:],
+    Reference=data["Voltage"].iloc[1:],
+    time=data.index[1:]
+)
+axes_Y[0].set_ylabel(r"Voltage in $V$")
+axes_Y[0].set_xlabel("Time")
+apply_basic_formatting(fig_Y, width=8, font_size=8)
+fig_Y.savefig("Battery_APF_Fsd.pdf", bbox_inches='tight')
 
 
 
@@ -332,6 +337,12 @@ fig_BFE, ax_BFE = plot_BFE_1D(
     X_stats, 
     X_weights
 )
+ax_BFE[0,0].set_ylabel(r"Capacity $C_1$ in $F \times 10^{2}$")
+ax_BFE[0,1].set_ylabel(r"Resistance $R_1$ in $\Omega \times 10^{3}$")
+for ax in ax_BFE[1]:
+    ax.set_xlabel(r"Voltage in $V$")
+apply_basic_formatting(fig_BFE, width=16, font_size=8)
+fig_BFE.savefig("Battery_APF_Fsd_fcn.pdf", bbox_inches='tight')
 
 
 

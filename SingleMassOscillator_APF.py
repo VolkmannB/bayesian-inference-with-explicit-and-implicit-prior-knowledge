@@ -247,17 +247,24 @@ fig_X, axes_X = plot_Data(
     Reference=X,
     time=time
 )
-apply_basic_formatting(fig_X)
+axes_X[0].set_ylabel(r"$s$ in $m$")
+axes_X[1].set_ylabel(r"$\dot{s}$ in $m/s$")
+axes_X[1].set_xlabel(r"Time in $s$")
+apply_basic_formatting(fig_X, width=8, font_size=8)
+fig_X.savefig("SingleMassOscillator_APF_X.pdf", bbox_inches='tight')
 
 
 # plot the force estimations
 fig_F, axes_F = plot_Data(
     Particles=Sigma_F,
     weights=weights,
-    Reference=F,
+    Reference=F_sd,
     time=time
 )
-apply_basic_formatting(fig_F)
+axes_X[0].set_ylabel(r"$F_\mathrm{sd}$ in $N$")
+axes_X[0].set_xlabel(r"Time in $s$")
+apply_basic_formatting(fig_F, width=8, font_size=8)
+fig_F.savefig("SingleMassOscillator_APF_Fsd.pdf", bbox_inches='tight')
 
 
 
@@ -294,11 +301,12 @@ fig_BFE_F, ax_BFE_F = plot_BFE_2D(
 
 # set x label
 for ax in ax_BFE_F[1]:
-    ax.set_xlabel(r'$\dot{s}$ in [m/s]')
-ax_BFE_F[0,0].set_ylabel(r'$s$ in [m]')
-ax_BFE_F[1,0].set_ylabel(r'$s$ in [m]')
+    ax.set_xlabel(r'$\dot{s}$ in $m/s$')
+ax_BFE_F[0,0].set_ylabel(r'$s$ in $m$')
+ax_BFE_F[1,0].set_ylabel(r'$s$ in $m$')
     
-apply_basic_formatting(fig_BFE_F)
+apply_basic_formatting(fig_BFE_F, width=16, font_size=8)
+fig_BFE_F.savefig("SingleMassOscillator_APF_Fsd_fcn.pdf", bbox_inches='tight')
 
 
 
