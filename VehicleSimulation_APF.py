@@ -396,9 +396,9 @@ fig_X, axes_X = plot_Data(
     Reference=X,
     time=time
 )
-axes_X[0,0].set_ylabel(r"Yaw rate in $rad/s$")
-axes_X[0,1].set_ylabel(r"Lateral velocity $v_y$ in $m/s$")
-axes_X[0,1].set_xlabel(r"Time in $s$")
+axes_X[0].set_ylabel(r"$\dot{\psi}$ in $rad/s$")
+axes_X[1].set_ylabel(r"$v_y$ in $m/s$")
+axes_X[1].set_xlabel(r"Time in $s$")
 apply_basic_formatting(fig_X, width=8, font_size=8)
 fig_X.savefig("VehicleSimulation_APF_X.pdf", bbox_inches='tight')
 
