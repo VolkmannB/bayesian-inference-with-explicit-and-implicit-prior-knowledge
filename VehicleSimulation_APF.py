@@ -12,8 +12,8 @@ import matplotlib.pyplot as plt
 
 
 from src.Vehicle import features_MTF_front, features_MTF_rear, f_alpha
-from src.Vehicle import default_para, f_x_sim, f_y, H_vehicle
-from src.Vehicle import fx_filter, fy_filter, N_basis_fcn, spectral_density, mu_y
+from src.Vehicle import f_x, f_y, basis_fcn, f_alpha
+from src.Vehicle import N_basis_fcn, spectral_density, mu_y
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_updateStatistics, prior_mniw_CondPredictive
 from src.Filtering import squared_error, systematic_SISR
@@ -29,8 +29,9 @@ rng = np.random.default_rng()
 # sim para
 N = 200
 forget_factor = 0.999
+dt = 0.01
 t_end = 100.0
-time = np.arange(0.0, t_end, default_para['dt'])
+time = np.arange(0.0, t_end, dt)
 steps = len(time)
 
 
@@ -122,10 +123,10 @@ weights = np.ones((steps,N))/N
 
 # update GP
 phi_f = jax.vmap(
-    functools.partial(features_MTF_front, u=ctrl_input[0], **default_para)
+    functools.partial(features_MTF_front, u=ctrl_input[0])
     )(Sigma_X[0])
 phi_r = jax.vmap(
-    functools.partial(features_MTF_rear, u=ctrl_input[0], **default_para)
+    functools.partial(features_MTF_rear, u=ctrl_input[0])
     )(Sigma_X[0])
 GP_stats_f = list(jax.vmap(prior_mniw_updateStatistics)(
     *GP_stats_f,
@@ -143,8 +144,15 @@ GP_stats_r = list(jax.vmap(prior_mniw_updateStatistics)(
 for i in tqdm(range(1,steps), desc="Running simulation"):
     
     ####### Model simulation
-    X[i] = f_x_sim(X[i-1], ctrl_input[i-1], **default_para) + w()
-    Y[i] = f_y(X[i], ctrl_input[i], **default_para) + e()
+    alpha_f, alpha_r = f_alpha(X[i-1], ctrl_input[i-1])
+    mu_f = mu_y(alpha_f)
+    mu_r = mu_y(alpha_r)
+    X[i] = f_x(X[i-1], ctrl_input[i-1], mu_f, mu_r, dt) + w()
+    
+    alpha_f, alpha_r = f_alpha(X[i], ctrl_input[i])
+    mu_f = mu_y(alpha_f)
+    mu_r = mu_y(alpha_r)
+    Y[i] = f_y(X[i], ctrl_input[i], mu_f, mu_r) + e()
     
     
     
@@ -183,7 +191,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     # particles according to the first stage weights
     
     # create auxiliary variable for state x
-    x_aux = jax.vmap(functools.partial(fx_filter, u=ctrl_input[i-1], **default_para))(
+    x_aux = jax.vmap(functools.partial(f_x, u=ctrl_input[i-1], dt=dt))(
         x=Sigma_X[i-1],
         mu_yf=Sigma_mu_f[i-1], 
         mu_yr=Sigma_mu_r[i-1]
@@ -191,10 +199,10 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # create auxiliary variable for mu front
     phi_f0 = jax.vmap(
-        functools.partial(features_MTF_front, u=ctrl_input[i-1], **default_para)
+        functools.partial(features_MTF_front, u=ctrl_input[i-1])
         )(Sigma_X[i-1])
     phi_f1 = jax.vmap(
-        functools.partial(features_MTF_front, u=ctrl_input[i], **default_para)
+        functools.partial(features_MTF_front, u=ctrl_input[i])
         )(x_aux)
     mu_f_aux = jax.vmap(
         functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
@@ -210,10 +218,10 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # create auxiliary variable for mu rear
     phi_r0 = jax.vmap(
-        functools.partial(features_MTF_rear, u=ctrl_input[i-1], **default_para)
+        functools.partial(features_MTF_rear, u=ctrl_input[i-1])
         )(Sigma_X[i-1])
     phi_r1 = jax.vmap(
-        functools.partial(features_MTF_rear, u=ctrl_input[i], **default_para)
+        functools.partial(features_MTF_rear, u=ctrl_input[i])
         )(x_aux)
     mu_r_aux = jax.vmap(
         functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
@@ -229,7 +237,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # calculate first stage weights
     y_aux = jax.vmap(
-        functools.partial(fy_filter, u=ctrl_input[i], **default_para)
+        functools.partial(f_y, u=ctrl_input[i])
         )(
             x=x_aux,
             mu_yf=mu_f_aux, 
@@ -256,7 +264,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     # sample from proposal for x at time t
     w_x = w((N,))
     Sigma_X[i] = jax.vmap(
-        functools.partial(fx_filter, u=ctrl_input[i-1], **default_para)
+        functools.partial(f_x, u=ctrl_input[i-1], dt=dt)
         )(
             x=Sigma_X[i-1,idx],
             mu_yf=Sigma_mu_f[i-1,idx],
@@ -266,10 +274,10 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     ## sample proposal for mu front at time t
     # evaluate basis functions
     phi_f0 = jax.vmap(
-        functools.partial(features_MTF_front, u=ctrl_input[i-1], **default_para)
+        functools.partial(features_MTF_front, u=ctrl_input[i-1])
         )(Sigma_X[i-1,idx])
     phi_f1 = jax.vmap(
-        functools.partial(features_MTF_front, u=ctrl_input[i], **default_para)
+        functools.partial(features_MTF_front, u=ctrl_input[i])
         )(Sigma_X[i])
     
     # calculate conditional predictive distribution
@@ -294,10 +302,10 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     ## sample proposal for mu rear at time t
     # evaluate basis fucntions
     phi_r0 = jax.vmap(
-        functools.partial(features_MTF_rear, u=ctrl_input[i-1], **default_para)
+        functools.partial(features_MTF_rear, u=ctrl_input[i-1])
         )(Sigma_X[i-1,idx])
     phi_r1 = jax.vmap(
-        functools.partial(features_MTF_rear, u=ctrl_input[i], **default_para)
+        functools.partial(features_MTF_rear, u=ctrl_input[i])
         )(Sigma_X[i])
     
     # calculate conditional 
@@ -341,7 +349,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     
     # calculate new weights
     sigma_y = jax.vmap(
-        functools.partial(fy_filter, u=ctrl_input[i], **default_para)
+        functools.partial(f_y, u=ctrl_input[i])
         )(
             x=Sigma_X[i],
             mu_yf=Sigma_mu_f[i], 
@@ -377,7 +385,7 @@ for i in tqdm(range(1,steps), desc="Running simulation"):
     df_r[i] = GP_para_logging[3]
     
     Sigma_alpha_f[i], Sigma_alpha_r[i] = jax.vmap(
-        functools.partial(f_alpha, **default_para, u=ctrl_input[i])
+        functools.partial(f_alpha, u=ctrl_input[i])
         )(
         x=Sigma_X[i]
     )
@@ -406,15 +414,7 @@ fig_X.savefig("VehicleSimulation_APF_X.pdf", bbox_inches='tight')
     
 # plot time slices of the learned MTF for the front tire
 alpha = jnp.linspace(-20/180*jnp.pi, 20/180*jnp.pi, 500)
-mu_f_true = jax.vmap(
-    functools.partial(
-        mu_y, 
-        mu=default_para['mu'], 
-        B=default_para['B_f'], 
-        C=default_para['C_f'], 
-        E=default_para['E_f']
-        )
-    )(alpha=alpha)
+mu_f_true = jax.vmap(functools.partial(mu_y))(alpha=alpha)
 
 Mean, Std, X_stats, X_weights, Time = generate_BFE_TimeSlices(
     N_slices=4, 
@@ -425,7 +425,7 @@ Mean, Std, X_stats, X_weights, Time = generate_BFE_TimeSlices(
     Col_Scale=Col_Cov_f, 
     Row_Scale=Row_Scale_f, 
     DF=df_f, 
-    basis_fcn=H_vehicle, 
+    basis_fcn=basis_fcn, 
     forget_factor=forget_factor
     )
 
@@ -433,7 +433,7 @@ fig_BFE_f, ax_BFE_f = plot_BFE_1D(
     alpha,
     Mean,
     Std,
-    Time*default_para['dt'],
+    Time*dt,
     X_stats, 
     X_weights
 )
