@@ -257,60 +257,86 @@ def C2_InversePoly_RBF(x, loc, lengthscale=1, radius=2):
 
 
 
-def generate_Hilbert_BasisFunction(M, L, l, sigma, j_start=1, j_step=1):
+def generate_Hilbert_BasisFunction(
+    num_fcn, 
+    domain_boundary, 
+    lengthscale, 
+    scale, 
+    idx_start=1, 
+    idx_step=1
+    ):
     
     # dimensionality of the input
-    L = np.atleast_2d(L)
-    d = L.shape[0]
+    domain_boundary = np.atleast_2d(domain_boundary)
+    num_dims = domain_boundary.shape[0]
     
     # center domain L
-    L_center = (L[:,0] + L[:,1])/2
+    domain_center = (domain_boundary[:,0] + domain_boundary[:,1])/2
     
     # set start index to 1 if value is negative
-    if j_start < 1:
-        j_start = 1
+    if idx_start < 1:
+        idx_start = 1
     
     # set indices per dimension
-    L_size = L[:,1] - L[:,0]
-    j_end = M*j_step+1+j_start
-    j = np.arange(j_start, j_end, j_step)
+    domain_size = domain_boundary[:,1] - domain_boundary[:,0]
+    idx_end = num_fcn*idx_step+1+idx_start
+    j = np.arange(idx_start, idx_end, idx_step)
     
     # create all combinations of indices
     S = np.array(list(
-        itertools.product(*np.repeat(j[None,:], d, axis=0))
+        itertools.product(*np.repeat(j[None,:], num_dims, axis=0))
         ))
     
     # calculate eigenvalues
-    eig_val = (np.pi*S/L_size)**2
+    eig_val = (np.pi*S/domain_size)**2
     
     # sort eigenvalues in decending order
-    idx = np.flip(np.argsort(np.sum(eig_val, axis=1)))
+    idx = np.argsort(np.sum(eig_val, axis=1))
     
     # get M combinations of highest eigenvalues
-    idx = idx[:M]
+    idx = idx[:num_fcn]
+    eig_val = eig_val[idx]
     
-    # create function for basis functions
-    eigen_fun = lambda x: functools.partial(_eigen_fnc, L=L_size/2, eigen_val=eig_val[idx])(x=x-L_center)
+    # callable for basis functions
+    eigen_fun = lambda x: functools.partial(_eigen_fnc, L=domain_size/2, eigen_val=eig_val)(x=x-domain_center)
     
     # calculate spectral density
-    sd = _spectral_density_Gaussian(sigma, np.atleast_1d(l), np.sqrt(eig_val[idx]))
+    spectral_density_fcn = functools.partial(
+        _spectral_density_Gaussian,
+        magnitude=scale,
+        lengthscale=lengthscale
+        )
+    spectral_density = jax.vmap(spectral_density_fcn)(freq=np.sqrt(eig_val))
     
-    return jax.jit(eigen_fun), sd
+    return jax.jit(eigen_fun), spectral_density
     
 def _eigen_fnc(x, eigen_val, L):
     
-    return jnp.prod(jnp.sqrt(1/L) * jnp.sin(jnp.sqrt(eigen_val) * (x + L)), axis=1)
+    return jnp.prod(
+        jnp.sqrt(1/L) * jnp.sin(jnp.sqrt(eigen_val) * (x + L)), 
+        axis=1
+        )
 
-def _spectral_density_Gaussian(alpha, l, omega):
+def _spectral_density_Gaussian(freq, magnitude, lengthscale):
+    """
+    Calculate the spectral density of the squared exponential kernel with 
+    individual lengthscales.
+
+    Args:
+        freq (ArrayLike): Frequency vector (1D array).
+        magnitude (_type_): Variance parameter.
+        lengthscale (ArrayLike): Lengthscales for each dimension (1D array).
+
+    Returns:
+        float: Spectral density.
+    """
     
-    d = omega.shape[1]
-    r = omega*l
+    # broadcast to correct shapes
+    D = len(freq)
+    l = jnp.broadcast_to(lengthscale, jnp.asarray(freq).shape)
     
-    if len(l) == 1:
-        l_d = l**d
-    else:
-        l_d = np.prod(l)
+    term1 = magnitude * (2 * jnp.pi)**(D / 2)
+    term2 = jnp.prod(l)
+    exponent = -0.5 * jnp.sum((l**2) * (freq**2))
     
-    s = alpha * np.sqrt(2*np.pi)**d * l_d * np.exp(-0.5 * np.sum(r**2, axis=1))
-    
-    return s
+    return term1 * term2 * jnp.exp(exponent)

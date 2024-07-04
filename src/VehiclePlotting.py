@@ -8,7 +8,7 @@ from plotly.subplots import make_subplots
 
 
 
-from src.Vehicle import H_vehicle, vehicle_RBF_ip, mu_y, f_alpha
+from src.Vehicle import basis_fcn, vehicle_RBF_ip, mu_y, f_alpha
 
 
 
@@ -225,7 +225,7 @@ def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r
     
     # estimated MTF front
     mu_frac = 10
-    mu_f_ = jax.vmap(H_vehicle)(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_f[0,...]
+    mu_f_ = jax.vmap(basis_fcn)(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_f[0,...]
     fig.add_trace(
         go.Scatter(
                 x=alpha[0:-1:mu_frac],
@@ -239,7 +239,7 @@ def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r
         )
     
     # estimated MTF rear
-    mu_r_ = jax.vmap(H_vehicle)(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_r[0,...]
+    mu_r_ = jax.vmap(basis_fcn)(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_r[0,...]
     fig.add_trace(
         go.Scatter(
                 x=alpha[0:-1:mu_frac],
@@ -342,7 +342,7 @@ def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r
         ts_Y1 = go.Scatter(x=[time[i], time[i]], y=[Y1_min, Y1_max], mode='lines', line=dict(color='red', width=2))
         
         # MTF front
-        mu_f_ = jax.vmap(H_vehicle)(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_f[i,...]
+        mu_f_ = jax.vmap(basis_fcn)(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_f[i,...]
         MTF_f = go.Scatter(
             x=alpha[0:-1:mu_frac], 
             y=mu_f_
@@ -351,7 +351,7 @@ def generate_Vehicle_Animation(X, Y, u, weights, Sigma_X, Sigma_mu_f, Sigma_mu_r
             )
         
         # MTF rear
-        mu_r_ = jax.vmap(H_vehicle)(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_r[i,...]
+        mu_r_ = jax.vmap(basis_fcn)(np.atleast_2d(alpha[0:-1:mu_frac]).T) @ W_r[i,...]
         MTF_r = go.Scatter(
             x=alpha[0:-1:mu_frac], 
             y=mu_r_
