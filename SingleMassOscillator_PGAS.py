@@ -5,11 +5,15 @@ import jax.numpy as jnp
 import functools
 from scipy.stats import invwishart
 
+from src.conditional_smc import CSMC
+from src.utils import multinomial_resampling, systematic_resampling, stratified_resampling
 
-from src.SingleMassOscillator import F_spring, F_damper, f_x, f_y, N_ip, H, m
+
+from src.SingleMassOscillator import F_spring, F_damper, f_x, f_y, N_ip, basis_fcn, sd, m
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, gaussian_RBF, prior_iw_calcStatistics, prior_niw_calcStatistics, prior_mniw_calcStatistics, prior_niw_2naturalPara_inv, prior_iw_2naturalPara_inv, prior_niw_2naturalPara
-from src.Filtering import systematic_SISR, squared_error
+from src.Filtering import systematic_SISR, squared_error, logweighting
 from src.SingleMassOscillatorPlotting import generate_Animation
+
 
 
 
@@ -18,14 +22,14 @@ from src.SingleMassOscillatorPlotting import generate_Animation
 
 # function for conditional SMC
 def conditional_SMC_with_ancestor_sampling(Y, U,                    # observations and inputs
-                        P_niw_sample, F_mniw_sample, X_iw_sample,   # parameters
-                        X_prop_im1,                                 # reference trajectory
-                        f, h, basis_func, R,                        # model structures (including known covariance R)
-                        N, dt):                                     # further settings
+                        X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
+                        x0, X_prop_im1,                                 # reference trajectory
+                        f_x, f_y, basis_func, R,                        # model structures (including known covariance R)
+                        n_particles, dt, X_true, P_true, F_true, i):                                     # further settings
     # conditional_SMC_with_ancestor_sampling/PGAS Markov kernel according to Wigren.2022 (Algorithm S4) and Svensson.2017 (Algorithm 1)
 
-    # setting initial variables
-    T = X_prop_im1.shape[1]
+    # setting sequence length
+    seq_len = X_prop_im1.shape[1]
 
     # unpacking distribution parameters
     P_coeff = P_niw_sample[0]
@@ -44,88 +48,185 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
 
 
     # (1) - (2) initialize particles
-    X = np.zeros((N,2)) # filter
-    X[...] = X_prop_im1[:,0:1].T
-    X[:N-1,:] = X[:N-1,:] + w_X((N-1,))
+    X_particles = np.zeros((n_particles,2)) # filter
+    X_particles[...] = x0 # deterministic initial condition
+    X_particles[n_particles-1,:] = X_prop_im1[:,0] # reference trajectory
 
-    phi_x0 = jax.vmap(basis_func)(X)
-    #F = P_coeff @ phi_x0
-    F = np.squeeze(jax.vmap(lambda x: jnp.matmul(F_coeff,x))(phi_x0)) + w_F((N,))
-    #F[:N-1] = F[:N-1] + w_F((N-1,))  # Is it necessary to have a noise-free reference for F and P as well?
+    phi_x0 = jax.vmap(basis_func)(X_particles)
+    #F_particles = P_coeff @ phi_x0
+    F_particles = np.squeeze(jax.vmap(lambda x: jnp.matmul(F_coeff,x))(phi_x0))
+    #F_particles[:n_particles-1] = F_particles[:n_particles-1] + w_F((n_particles-1,))  # Is it necessary to have a noise-free reference for F_particles and P_particles as well?
 
-    P = np.squeeze(P_coeff) + w_P((N,))
-    #P[:N-1] = P[:N-1] + w_P((N-1,))  # Is it necessary to have a noise-free reference for F and P as well?
+    P_particles = np.ones(n_particles)*np.squeeze(P_coeff)
+    #P_particles[:n_particles-1] = P_particles[:n_particles-1] + w_P((n_particles-1,))  # Is it necessary to have a noise-free reference for F_particles and P_particles as well?
     
     # store initial particles
-    X_store = np.zeros((T,N,2))
-    P_store = np.zeros((T,N))
-    F_store = np.zeros((T,N))
-    X_store[0,...] = X[None,...]
-    P_store[0,...] = P[None,...]
-    F_store[0,...] = F[None,...]
+    X_store = np.zeros((seq_len,n_particles,2))
+    P_store = np.zeros((seq_len,n_particles))
+    F_store = np.zeros((seq_len,n_particles))
+    X_store[0,...] = X_particles[None,...]
+    P_store[0,...] = P_particles[None,...]
+    F_store[0,...] = F_particles[None,...]
 
 
 
     # (3) loop
-    for t in range(T-1):
+    log_likelihood = 0
+    for t in range(seq_len-1):
 
         # (4) calculate first stage weights
-        y_pred = jax.vmap(h)(X)
-        w = jax.vmap(functools.partial(squared_error, y=Y[t], cov=R))(y_pred)
-        w = w/np.sum(w)
+        y_pred = jax.vmap(f_y)(X_particles)
+        # w = jax.vmap(functools.partial(squared_error, y=Y[t], cov=R))(y_pred)
+        # w = np.asarray(w).astype('float64')
+        # w = w/np.sum(w)
+
+        logweights = -(1 / (2 * R)) * (Y[t] - y_pred) ** 2
+        max_weight = max(logweights)  # Subtract the maximum value for numerical stability
+        w = np.exp(logweights - max_weight)
+        w = np.squeeze(w / sum(w))  # Save the normalized weights
+        # accumulate the log-likelihood
+        log_likelihood += max_weight + np.log(sum(w)) - np.log(n_particles)
+
         if np.any(np.isnan(w)):
             print(f"Particle degeneration at weights in time step {t}.")
             break
 
         # (5) draw new indices
-        u = np.random.rand()
-        idx = np.array(systematic_SISR(u, w))
-        idx[idx >= N] = N - 1 # correct out of bounds indices from numerical errors
-        #idx = idx[0:N-1]
+        # u = np.random.rand()
+        # idx = np.array(systematic_SISR(u, w))
+        # idx[idx >= n_particles] = n_particles - 1 # correct out of bounds indices from numerical errors
+        # idx = idx[0:n_particles-1]
 
-        # (6) sample ancestor of the N-th particle
-        #x_mean_tp1 = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X, F_sd=F, p=P) 
-        x_mean_tp1 = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X[idx,...], F_sd=F[idx,...], p=P[idx,...]) 
+        idx = systematic_resampling(w)
+        idx.astype(int)
+        idx[n_particles-1] = n_particles-1
+
+        # (6) sample ancestor of the n_particles-th particle
+        #x_mean_tp1 = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X_particles, F_sd=F_particles, p=P_particles) 
+        x_mean_tp1 = jax.vmap(functools.partial(f_x, F=U[t], dt=dt))(x=X_particles[...], F_sd=F_particles[...], p=P_particles[...]) 
         x_ref_tp1 = X_prop_im1[:,t+1]
-        prob = w * jax.vmap(functools.partial(squared_error, y=x_ref_tp1, cov=X_cov))(x_mean_tp1)
+
+        logweights = jax.vmap(functools.partial(logweighting, y=x_ref_tp1, cov=X_cov))(x_mean_tp1)
+        const = max(logweights)  # Subtract the maximum value for numerical stability
+        w_as = np.exp(logweights - const)
+        w_as = np.asarray(w_as).astype('float64')
+        # w_as[n_particles-1] = 0
+        # test = w_as/w_as.sum()
+
+        # Fix ancestor sampling! This does not work yet!
+        prob = np.multiply(w_as, w)
+
+        # prob = w * jax.vmap(functools.partial(squared_error, y=x_ref_tp1, cov=X_cov))(x_mean_tp1)
         prob = np.asarray(prob).astype('float64')
         prob /= prob.sum()
         if np.any(np.isnan(prob)):
+            plt.subplot(2,2,1)
+            for k in range(n_particles):
+                plt.plot(X_store[:,k,0], alpha=w[k], color='b')
+            plt.plot(X_true[:,0].T, marker='x', label='true', markersize=3, color='r')
+            plt.plot(X_prop_im1[0,:].T, marker='o', label='reference', markersize=3, color='k')
+            plt.ylabel('state 0')
+
+            plt.subplot(2,2,3)
+            for k in range(n_particles):
+                plt.plot(X_store[:,k,1], alpha=w[k], color='b')
+            plt.plot(X_true[:,1].T, marker='x', label='true', markersize=3, color='r')
+            plt.plot(X_prop_im1[1,:].T, marker='o', label='reference', markersize=3, color='k')
+            plt.ylabel('state 1')
+            plt.xlabel('time steps')
+            plt.legend()
+
+            plt.subplot(2,2,2)
+            for k in range(n_particles):
+                plt.plot(P_store[:,k], alpha=w[k], color='b')
+            plt.plot(P_true, marker='x', label='true', markersize=3, color='r')
+            plt.ylabel('m')
+
+            plt.subplot(2,2,4)
+            for k in range(n_particles):
+                plt.plot(F_store[:,k], alpha=w[k], color='b')
+            plt.plot(F_true, marker='x', label='true', markersize=3, color='r')
+            plt.ylabel('F')
+            plt.xlabel('time steps')
+
+            plt.show()
             print(f"Particle degeneration at ancestor sampling in time step {t}.")
             break
-        idx[N-1] = np.random.choice(np.arange(0,N), p=prob)
+        idx[n_particles-1] = np.random.choice(np.arange(0,n_particles), p=prob)
 
-        # (7) sample x for 1,...,N-1
-        #X = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X[idx,:], F_sd=F[idx,:], p=P[idx,:]) + w_X((N,2))
-        X = x_mean_tp1 + w_X((N,))
+        # (7) sample x for 1,...,n_particles-1
+        #X_particles = jax.vmap(functools.partial(f, F_particles=U[t], dt=dt))(x=X_particles[idx,:], F_sd=F_particles[idx,:], p=P_particles[idx,:]) + w_X((n_particles,2))
+        X_particles = x_mean_tp1[idx] + w_X((n_particles,))
         
-        # (8) sample x for N
-        X = X.at[N-1,:].set(x_ref_tp1)
+        # (8) sample x for n_particles
+        X_particles = X_particles.at[n_particles-1,:].set(x_ref_tp1)
 
-        # (9) sample F
-        phi_x = jax.vmap(basis_func)(X)
-        F = np.squeeze(jax.vmap(lambda x: jnp.matmul(F_coeff,x))(phi_x)) + w_F((N,))
+        # (9) sample F_particles
+        phi_x = jax.vmap(basis_func)(X_particles)
+        F_particles = np.squeeze(jax.vmap(lambda x: jnp.matmul(F_coeff,x))(phi_x)) + w_F((n_particles,))
 
-        # (9) sample P
-        P = np.squeeze(P_coeff) + w_P((N,))
+        # (9) sample P_particles
+        P_particles = np.squeeze(P_coeff) + w_P((n_particles,))
 
-        # (10) store trajectories for X
-        X_store[0:t+1,...] = np.concatenate((X_store[0:t,idx,...], X[None,...]),axis=0)
+        # (10) store trajectories for X_particles
+        X_store[0:t+1,...] = np.concatenate((X_store[0:t,idx,...], X_particles[None,...]),axis=0)
 
-        # (11) store trajectories for F
-        F_store[0:t+1,...] = np.concatenate((F_store[0:t,idx,...], F[None,...]),axis=0)
+        # (11) store trajectories for F_particles
+        F_store[0:t+1,...] = np.concatenate((F_store[0:t,idx,...], F_particles[None,...]),axis=0)
 
-        # (11) store trajectories for P
-        P_store[0:t+1,...] = np.concatenate((P_store[0:t,idx,...], P[None,...]),axis=0)
+        # (11) store trajectories for P_particles
+        P_store[0:t+1,...] = np.concatenate((P_store[0:t,idx,...], P_particles[None,...]),axis=0)
+
+
+
+    # plt.subplot(2,1,1)
+    # #plt.plot(X_store[:,:,0])
+    # plt.plot(X_prop_im1[0,:].T)
+    # plt.show()
+
+
 
 
     # (13) draw a sample trajectory as output
     w = np.asarray(w).astype('float64')
     w /= w.sum()
-    sample = np.random.choice(np.arange(0,N), p=w)
+    sample = np.random.choice(np.arange(0,n_particles), p=w)
     X_prop_i = np.squeeze(X_store[:,sample,:]).T
     P_prop_i = np.squeeze(P_store[:,sample]).T
     F_prop_i = np.squeeze(F_store[:,sample]).T
+
+    
+    plt.subplot(2,1,1)
+    plt.plot(X_store[:,:,0])
+    plt.plot(X_true[:,0].T, marker='x', label='true', markersize=3, color='r')
+    plt.plot(X_prop_im1[0,:].T, marker='o', label='reference', markersize=3, color='k')
+    plt.plot(X_prop_i[0,:], marker='o', label='chosen', markersize=3, color='g')
+    plt.ylabel('state 0')
+
+    plt.subplot(2,1,3)
+    plt.plot(X_store[:,:,1])
+    plt.plot(X_true[:,1].T, marker='x', label='true', markersize=3, color='r')
+    plt.plot(X_prop_im1[1,:].T, marker='o', label='reference', markersize=3, color='k')
+    plt.plot(X_prop_i[1,:], marker='o', label='chosen', markersize=3, color='g')
+    plt.ylabel('state 1')
+    plt.xlabel('time steps')
+
+    plt.subplot(2,2,2)
+    plt.plot(P_store)
+    plt.plot(P_true, marker='x', label='true', markersize=3, color='r')
+    plt.plot(P_prop_i, marker='o', label='chosen', markersize=3, color='g')
+    plt.ylabel('m')
+
+    plt.subplot(2,2,4)
+    plt.plot(F_store)
+    plt.plot(F_true, marker='x', label='true', markersize=3, color='r')
+    plt.plot(F_prop_i, marker='o', label='chosen', markersize=3, color='g')
+    plt.ylabel('F')
+    plt.xlabel('time steps')
+    
+    plt.legend()
+    plt.savefig(f"plots/PGAS_iteration_{i}")
+    plt.clf()
 
 
     return X_prop_i, P_prop_i, F_prop_i
@@ -137,14 +238,14 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
 # function for parameter update
 def parameter_update(X_prop_i, P_prop_i, F_prop_i,
                     X_prior, P_prior, F_prior,
-                    f, basis_func, U,
+                    f_x, basis_func, U,
                     dt, seed):
     
     ### ---------------------------------------------------------
     ### xi 1 (P)
     ### ---------------------------------------------------------
     # Calculate sufficient statistics with new proposal
-    P_out = P_prop_i
+    P_out = P_prop_i[None,...]
     P_stats_new = list(prior_niw_calcStatistics(*P_prior, P_out))
 
     # use suff. statistics to calculate posterior NIW parameters
@@ -154,7 +255,7 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
     # sample from NIW proposal using posterior parameters
     # Note, in the offline algorithm, it is not required to sample from the predictive distribution but from the posterior in order to obtain parameter samples!
     P_cov = invwishart.rvs(
-                df=P_df,
+                df=int(P_df),
                 scale=P_iw_scale,
                 random_state=seed)
     
@@ -171,9 +272,10 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
     ### xi 2 (F)
     ### ---------------------------------------------------------
     # Calculate sufficient statistics with new proposal
-    F_in = basis_func(X_prop_i)
-    F_out = F_prop_i
+    F_in = jax.vmap(basis_func)(X_prop_i.T).T
+    F_out = F_prop_i[None,...]
     F_stats_new = list(prior_mniw_calcStatistics(*F_prior, F_in, F_out))
+    F_stats_new = [F_stats_new[1],F_stats_new[2],F_stats_new[0],F_stats_new[3]]
 
     # use suff. statistics to calculate posterior MNIW parameters
     F_mean, F_col_cov, F_iw_scale, F_df = prior_mniw_2naturalPara_inv(*F_stats_new)
@@ -182,15 +284,15 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
     # sample from MNIW proposal using posterior parameters
     # Note, in the offline algorithm, it is not required to sample from the predictive distribution but from the posterior in order to obtain parameter samples!
     F_row_cov = invwishart.rvs(
-                df=F_df,
+                df=int(F_df),
                 scale=F_iw_scale,
                 random_state=seed)
     
     
-    F_row_cov_col = np.linalg.cholesky(F_row_cov)
+    F_row_cov_col = np.sqrt(F_row_cov)
     F_col_cov_col = np.linalg.cholesky(F_col_cov)
     n_samples = np.random.normal(size=F_mean.shape)
-    F_coeff = F_mean + np.matmul(F_row_cov_col,np.matmul(n_samples,F_col_cov_col))
+    F_coeff = F_mean + F_row_cov_col*np.matmul(n_samples,F_col_cov_col)
     # F_cov = np.kron(F_col_cov, F_row_cov)
     # F_coeff = np.reshape(np.random.multivariate_normal(F_mean[:],F_cov), F_mean.shape)
 
@@ -202,7 +304,7 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
     ### states (X), overall covariance update | trajectories of states and xis 
     ### ---------------------------------------------------------
     # Calculate sufficient statistics with new proposal
-    X_in = f(X_prop_i[:,:-1], U, F_prop_i, dt=dt, p=P_prop_i)
+    X_in = jax.vmap(functools.partial(f_x, dt=dt))(X_prop_i[:,:-1].T, U[:-1], F_prop_i[:-1], p=P_prop_i[:-1]).T
     X_out = X_prop_i[:,1:]
     X_stats_new = prior_iw_calcStatistics(*X_prior, X_in, X_out)
 
@@ -213,7 +315,7 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
     # sample from MNIW proposal using posterior parameters
     # Note, in the offline algorithm, it is not required to sample from the predictive distribution but from the posterior in order to obtain parameter samples!
     X_cov = invwishart.rvs(
-                df=X_df,
+                df=int(X_df),
                 scale=X_iw_scale,
                 random_state=seed)
     
@@ -226,17 +328,26 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
 
 
 
+
+
+
+
+
+
+
+
 if __name__ == '__main__':
+    from matplotlib import pyplot as plt
 
     ################################################################################
     # General settings
 
-    N = 1000    # no of particles
-    t_end = 20.0
+    n_particles = 400    # no of particles
+    t_end = 2.0
     dt = 0.02
     time = np.arange(0.0,t_end,dt)
     steps = len(time)
-    seed = 275513 #np.random.randint(100, 1000000)
+    seed = 123 #np.random.randint(100, 1000000)
     rng = np.random.default_rng()
     print(f"Seed is: {seed}")
     np.random.seed(seed)
@@ -248,12 +359,12 @@ if __name__ == '__main__':
 
     # initial system state
     x0 = np.array([0.0, 0.0])
-    P0 = np.diag([1e-4, 1e-4])
+    P0 = np.diag([5e-8, 5e-9])
 
 
     # noise
     R = np.array([[1e-3]])
-    Q = np.diag([5e-6, 5e-7])
+    Q = np.diag([5e-8, 5e-9])
     w = lambda n=1: np.random.multivariate_normal(np.zeros((2,)), Q, n)
     e = lambda n=1: np.random.multivariate_normal(np.zeros((1,)), R, n)
 
@@ -263,6 +374,7 @@ if __name__ == '__main__':
     X[0,...] = x0
     Y = np.zeros((steps,))
     F_sd = np.zeros((steps,))
+    M = np.ones((steps,))*m
 
     # input
     # F = np.ones((steps,)) * -9.81*m + np.sin(2*np.pi*np.arange(0,t_end,dt)/10) * 9.81
@@ -300,7 +412,7 @@ if __name__ == '__main__':
 
     # -----------------
     # X: parameters of the iw prior
-    X_iw_scale = 1e-1*np.eye(2) # defining distribution parameters
+    X_iw_scale = 1e-3*np.eye(2) # np.diag([1e1,1e2]) # defining distribution parameters
     X_df = 2
 
     X_cov = invwishart.rvs(df=X_df, scale=X_iw_scale, random_state=seed) # sampling 
@@ -312,9 +424,9 @@ if __name__ == '__main__':
 
     # -----------------
     # P: parameters of the niw prior
-    P_mean = 2*np.eye(1) # defining distribution parameters
-    P_normal_scale = np.eye(1)
-    P_iw_scale = 1e-1*np.eye(1)
+    P_mean = 1*np.eye(1) # defining distribution parameters
+    P_normal_scale = 1e0*np.eye(1)
+    P_iw_scale = 1e0*np.eye(1)
     P_df = 1
 
     P_cov = np.array([[invwishart.rvs(df=P_df, scale=P_iw_scale, random_state=seed)]]) # sampling 
@@ -331,8 +443,9 @@ if __name__ == '__main__':
     # -----------------
     # F: parameters of the mniw prior
     F_mean = np.zeros((1, N_ip)) # defining distribution parameters
-    F_col_cov = np.eye(N_ip)*40
-    F_iw_scale = 1e-1*np.eye(1)
+    # F_col_cov = np.eye(N_ip)*1e0 ### This needs to be adjusted!
+    F_col_cov = np.diag(sd)
+    F_iw_scale = 1e0*np.eye(1)
     F_df = 1
 
     F_row_cov = np.array([[invwishart.rvs(df=F_df, scale=F_iw_scale, random_state=seed)]]) # sampling 
@@ -348,14 +461,35 @@ if __name__ == '__main__':
 
     # -----------------------------------------------------------------------------------
     ### Initialize first reference trajectory for X
-    # X_prop_im1 = np.zeros((2,steps)) 
+    X_prop_im1 = np.zeros((2,steps)) 
+    # N_init = int(2e4)
     # X_prop_im1[...,0] = x0
     # for t in range(1,steps):
-    #     F = np.matmul(F_coeff,H(X_prop_im1[:,t-1]))
+    #     F = np.matmul(F_coeff,basis_fcn(X_prop_im1[:,t-1]))
     #     X_prop_im1[:,t:t+1] = f_x(X_prop_im1[:,t-1:t], U[t-1], F, dt=dt, p=np.squeeze(P_coeff))
         
-    X_prop_im1 = X.T
+    # X_prop_im1 = X.T + 1e-1*np.random.normal(size=X.T.shape)
 
+    # ancestor_sampling = True
+    # N_init = 1e2
+    # resampling_method = 'multi'
+    # X_prop_im1 = np.zeros((2,steps)) 
+
+    # csmc_instance = CSMC(f_x, f_y, basis_fcn, dt, R,
+    #                                         P_niw_sample, F_mniw_sample, X_iw_sample)
+    # csmc_instance.sample_states(Y, U, x0, X_prop_im1, N_init, ancestor_sampling,
+    #                                         resampling_method, 1)
+    
+
+    ### Step 0: Get new state trajectory proposal from PGAS Markov kernel with bootstrap PF | Given the parameters
+    # X_prop_im1 = np.zeros((2,steps)) 
+    # N_init = int(1e2)
+    # for i in range(10):
+    #     X_prop_im1, _, __ = conditional_SMC_with_ancestor_sampling(Y, U,                     # observations and inputs
+    #                                                         X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
+    #                                                         x0, X_prop_im1,                                 # reference trajectory
+    #                                                         f_x, f_y, basis_fcn, R,                             # model structures (including known covariance R)
+    #                                                         N_init, dt)     
 
 
     # -----------------------------------------------------------------------------------
@@ -364,27 +498,28 @@ if __name__ == '__main__':
         
         ### Step 1: Get new state trajectory proposal from PGAS Markov kernel with bootstrap PF | Given the parameters
         X_prop_i, P_prop_i, F_prop_i = conditional_SMC_with_ancestor_sampling(Y, U,                     # observations and inputs
-                                                            P_niw_sample, F_mniw_sample, X_iw_sample,   # parameters
-                                                            X_prop_im1,                                 # reference trajectory
-                                                            f_x, f_y, H, R,                             # model structures (including known covariance R)
-                                                            N, dt)                                      # further settings
+                                                            X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
+                                                            x0, X_prop_im1,                                 # reference trajectory
+                                                            f_x, f_y, basis_fcn, R,                             # model structures (including known covariance R)
+                                                            n_particles, dt, X, M, F_sd, i)                                      # further settings
 
         ### Step 2: Compute parameter posterior | Given the state trajectory
-        P_niw_sample, F_mniw_sample, X_iw_sample = parameter_update(X_prop_i, P_prop_i, F_prop_i,       # samples for the latent variable sequences
+        X_iw_sample, P_niw_sample, F_mniw_sample = parameter_update(X_prop_i, P_prop_i, F_prop_i,       # samples for the latent variable sequences
                                                                 X_prior, P_prior, F_prior,              # initial values for parameter priors
-                                                                f_x, H, U,                              # model structures (including known covariance R)
+                                                                f_x, basis_fcn, U,                              # model structures (including known covariance R)
                                                                 dt, seed)                               # further settings
 
 
 
     # ToDo: 
     # 1. Animation plots
+    # 2. Finding initial reference trajectory and/or initialization? --> Running normal SMC at start?
 
 
     ################################################################################
     # Plots
 
-    # fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, H, W, CW, time, 200., 30., 30)
+    # fig = generate_Animation(X, Y, F_sd, Sigma_X, Sigma_F, weights, basis_fcn, W, CW, time, 200., 30., 30)
 
     # print('RMSE for spring-damper force is {0}'.format(np.std(F_sd-Sigma_F)))
 
