@@ -35,7 +35,16 @@ def squared_error(x, y, cov):
     
     return jnp.exp(-0.5 * r)
 
-
+@jax.jit
+def logweighting(x, y, cov):
+    
+    cov = jnp.atleast_2d(cov)
+    dx = jnp.atleast_1d(x) - jnp.atleast_1d(y)
+    
+    t = jnp.linalg.solve(cov, dx)
+    r = dx @ t
+    
+    return -0.5 * r
 
 @jax.jit
 def EnKF_update(sigma_x, sigma_y, y, R):
