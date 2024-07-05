@@ -62,9 +62,9 @@ def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, basis):
 @jax.jit
 def prior_mniw_calcStatistics(eta_0, eta_1, eta_2, eta_3, old_data, new_data):
     
-    eta_0 += jnp.outer(new_data,new_data) 
-    eta_1 += jnp.outer(old_data,new_data)
-    eta_2 += jnp.outer(old_data,old_data)
+    eta_0 += new_data @ new_data.T
+    eta_1 += old_data @ new_data.T
+    eta_2 += old_data @ old_data.T
     eta_3 += new_data.shape[1]
     
     return eta_0, eta_1, eta_2, eta_3
@@ -135,7 +135,7 @@ def prior_mniw_CondPredictive(mean, col_cov, row_scale, df, y1, y1_var, basis1, 
 @jax.jit
 def prior_niw_calcStatistics(eta_0, eta_1, eta_2, eta_3, new_data):
     
-    eta_0 += jnp.outer(new_data,new_data) 
+    eta_0 += new_data @ new_data.T # jnp.outer(new_data,new_data) 
     eta_1 += jnp.sum(new_data,axis=1)
     eta_2 += new_data.shape[1]
     eta_3 += new_data.shape[1]
@@ -195,7 +195,7 @@ def prior_iw_updateStatistics(T_0, T_1, y, mu):
 def prior_iw_calcStatistics(T_0, T_1, mu, y):
     
     e = y - mu
-    T_0 = T_0 + jnp.outer(e,e)
+    T_0 = T_0 + e @ e.T
     T_1 = T_1 + y.shape[1]
     
     return T_0, T_1
@@ -307,7 +307,7 @@ def generate_Hilbert_BasisFunction(
         lengthscale=lengthscale
         )
     spectral_density = jax.vmap(spectral_density_fcn)(freq=np.sqrt(eig_val))
-    
+
     return jax.jit(eigen_fun), spectral_density
     
 def _eigen_fnc(x, eigen_val, L):
