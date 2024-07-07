@@ -25,7 +25,7 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
                         X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
                         x0, X_prop_im1,                                 # reference trajectory
                         f_x, f_y, basis_func, R,                        # model structures (including known covariance R)
-                        n_particles, dt, X_true, P_true, F_true, i):                                     # further settings
+                        n_particles, dt, X_true, P_true, F_true, i, ancestor_sampling = True):                                     # further settings
     # conditional_SMC_with_ancestor_sampling/PGAS Markov kernel according to Wigren.2022 (Algorithm S4) and Svensson.2017 (Algorithm 1)
 
     # setting sequence length
@@ -69,91 +69,95 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
     F_store[0,...] = F_particles[None,...]
 
 
+    # (4) calculate first stage weights
+    y_pred = jax.vmap(f_y)(X_particles)
+    # w = jax.vmap(functools.partial(squared_error, y=Y[t], cov=R))(y_pred)
+    # w = np.asarray(w).astype('float64')
+    # w = w/np.sum(w)
+
+    logweights = jax.vmap(functools.partial(logweighting, y=Y[0], cov=R))(y_pred)
+    # logweights = -(1 / (2 * R)) * (Y[t] - y_pred) ** 2
+    max_weight = max(logweights)  # Subtract the maximum value for numerical stability
+    w = np.exp(logweights - max_weight)
+    w = np.asarray(w).astype('float64')
+    w = np.squeeze(w / sum(w))  # Save the normalized weights
+    # accumulate the log-likelihood
+    # log_likelihood += max_weight + np.log(sum(w)) - np.log(n_particles)
 
     # (3) loop
     log_likelihood = 0
     for t in range(seq_len-1):
-
-        # (4) calculate first stage weights
-        y_pred = jax.vmap(f_y)(X_particles)
-        # w = jax.vmap(functools.partial(squared_error, y=Y[t], cov=R))(y_pred)
-        # w = np.asarray(w).astype('float64')
-        # w = w/np.sum(w)
-
-        logweights = -(1 / (2 * R)) * (Y[t] - y_pred) ** 2
-        max_weight = max(logweights)  # Subtract the maximum value for numerical stability
-        w = np.exp(logweights - max_weight)
-        w = np.squeeze(w / sum(w))  # Save the normalized weights
-        # accumulate the log-likelihood
-        log_likelihood += max_weight + np.log(sum(w)) - np.log(n_particles)
-
-        if np.any(np.isnan(w)):
-            print(f"Particle degeneration at weights in time step {t}.")
-            break
 
         # (5) draw new indices
         # u = np.random.rand()
         # idx = np.array(systematic_SISR(u, w))
         # idx[idx >= n_particles] = n_particles - 1 # correct out of bounds indices from numerical errors
         # idx = idx[0:n_particles-1]
-
+        
         idx = systematic_resampling(w)
         idx.astype(int)
-        idx[n_particles-1] = n_particles-1
+        idx[n_particles - 1] = n_particles - 1
 
-        # (6) sample ancestor of the n_particles-th particle
+        
         #x_mean_tp1 = jax.vmap(functools.partial(f, F=U[t], dt=dt))(x=X_particles, F_sd=F_particles, p=P_particles) 
         x_mean_tp1 = jax.vmap(functools.partial(f_x, F=U[t], dt=dt))(x=X_particles[...], F_sd=F_particles[...], p=P_particles[...]) 
         x_ref_tp1 = X_prop_im1[:,t+1]
 
-        logweights = jax.vmap(functools.partial(logweighting, y=x_ref_tp1, cov=X_cov))(x_mean_tp1)
-        const = max(logweights)  # Subtract the maximum value for numerical stability
-        w_as = np.exp(logweights - const)
-        w_as = np.asarray(w_as).astype('float64')
-        # w_as[n_particles-1] = 0
-        # test = w_as/w_as.sum()
+        if ancestor_sampling:
+            # (6) sample ancestor of the n_particles-th particle
+            logweights = jax.vmap(functools.partial(logweighting, y=x_ref_tp1, cov=X_cov))(x_mean_tp1[idx])
+            const = max(logweights)  # Subtract the maximum value for numerical stability
+            w_as = np.exp(logweights - const)
+            w_as = np.asarray(w_as).astype('float64')
+            # w_as = np.squeeze(w_as / sum(w_as))  # Save the normalized weights
+            # w_as[n_particles-1] = 0
+            # test = w_as/w_as.sum()
 
-        # Fix ancestor sampling! This does not work yet!
-        prob = np.multiply(w_as, w)
+            # Fix ancestor sampling! This does not work yet!
+            prob = np.multiply(w_as, w)
 
-        # prob = w * jax.vmap(functools.partial(squared_error, y=x_ref_tp1, cov=X_cov))(x_mean_tp1)
-        prob = np.asarray(prob).astype('float64')
-        prob /= prob.sum()
-        if np.any(np.isnan(prob)):
-            plt.subplot(2,2,1)
-            for k in range(n_particles):
-                plt.plot(X_store[:,k,0], alpha=w[k], color='b')
-            plt.plot(X_true[:,0].T, marker='x', label='true', markersize=3, color='r')
-            plt.plot(X_prop_im1[0,:].T, marker='o', label='reference', markersize=3, color='k')
-            plt.ylabel('state 0')
+            # prob = w * jax.vmap(functools.partial(squared_error, y=x_ref_tp1, cov=X_cov))(x_mean_tp1)
+            prob = np.asarray(prob).astype('float64')
+            prob = np.squeeze(prob / sum(prob))  # Save the normalized weights
 
-            plt.subplot(2,2,3)
-            for k in range(n_particles):
-                plt.plot(X_store[:,k,1], alpha=w[k], color='b')
-            plt.plot(X_true[:,1].T, marker='x', label='true', markersize=3, color='r')
-            plt.plot(X_prop_im1[1,:].T, marker='o', label='reference', markersize=3, color='k')
-            plt.ylabel('state 1')
-            plt.xlabel('time steps')
-            plt.legend()
+            if np.any(np.isnan(prob)):
+                plt.subplot(2,2,1)
+                for k in range(n_particles):
+                    plt.plot(X_store[:,k,0], alpha=w[k], color='b')
+                    plt.scatter(t, x_mean_tp1[idx[k],0], marker='x', alpha=w_as[k], color='g')
+                plt.plot(X_true[:,0].T,  label='true', markersize=3, color='r')
+                plt.plot(X_prop_im1[0,:].T,  label='reference', markersize=3, color='k')
+                plt.ylabel('state 0')
 
-            plt.subplot(2,2,2)
-            for k in range(n_particles):
-                plt.plot(P_store[:,k], alpha=w[k], color='b')
-            plt.plot(P_true, marker='x', label='true', markersize=3, color='r')
-            plt.ylabel('m')
+                plt.subplot(2,2,3)
+                for k in range(n_particles):
+                    plt.plot(X_store[:,k,1], alpha=w[k], color='b')
+                    plt.scatter(t, x_mean_tp1[idx[k],1], marker='x', alpha=w_as[k], color='g')
+                plt.plot(X_true[:,1].T,  label='true', markersize=3, color='r')
+                plt.plot(X_prop_im1[1,:].T,  label='reference', markersize=3, color='k')
+                plt.ylabel('state 1')
+                plt.xlabel('time steps')
+                plt.legend()
 
-            plt.subplot(2,2,4)
-            for k in range(n_particles):
-                plt.plot(F_store[:,k], alpha=w[k], color='b')
-            plt.plot(F_true, marker='x', label='true', markersize=3, color='r')
-            plt.ylabel('F')
-            plt.xlabel('time steps')
+                plt.subplot(2,2,2)
+                for k in range(n_particles):
+                    plt.plot(P_store[:,k], alpha=w[k], color='b')
+                plt.plot(P_true,  label='true', markersize=3, color='r')
+                plt.ylabel('m')
 
-            plt.show()
-            print(f"Particle degeneration at ancestor sampling in time step {t}.")
-            break
-        idx[n_particles-1] = np.random.choice(np.arange(0,n_particles), p=prob)
+                plt.subplot(2,2,4)
+                for k in range(n_particles):
+                    plt.plot(F_store[:,k], alpha=w[k], color='b')
+                plt.plot(F_true,  label='true', markersize=3, color='r')
+                plt.ylabel('F')
+                plt.xlabel('time steps')
 
+                plt.show()
+                print(f"Particle degeneration at ancestor sampling in time step {t}.")
+                break
+            idx[n_particles-1] = np.random.choice(np.arange(0,n_particles), p=prob)
+
+        
         # (7) sample x for 1,...,n_particles-1
         #X_particles = jax.vmap(functools.partial(f, F_particles=U[t], dt=dt))(x=X_particles[idx,:], F_sd=F_particles[idx,:], p=P_particles[idx,:]) + w_X((n_particles,2))
         X_particles = x_mean_tp1[idx] + w_X((n_particles,))
@@ -163,21 +167,72 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
 
         # (9) sample F_particles
         phi_x = jax.vmap(basis_func)(X_particles)
-        F_particles = np.squeeze(jax.vmap(lambda x: jnp.matmul(F_coeff,x))(phi_x)) + w_F((n_particles,))
+        F_particles = np.squeeze(jax.vmap(lambda x: jnp.matmul(F_coeff,x))(phi_x)) #+ w_F((n_particles,))
 
         # (9) sample P_particles
-        P_particles = np.squeeze(P_coeff) + w_P((n_particles,))
+        P_particles = np.ones_like(F_particles)*np.squeeze(P_coeff) #+ w_P((n_particles,))
 
         # (10) store trajectories for X_particles
-        X_store[0:t+1,...] = np.concatenate((X_store[0:t,idx,...], X_particles[None,...]),axis=0)
+        X_store[0:t+2,...] = np.concatenate((X_store[0:t+1,idx,...], X_particles[None,...]),axis=0)
 
         # (11) store trajectories for F_particles
-        F_store[0:t+1,...] = np.concatenate((F_store[0:t,idx,...], F_particles[None,...]),axis=0)
+        F_store[0:t+2,...] = np.concatenate((F_store[0:t+1,idx,...], F_particles[None,...]),axis=0)
 
         # (11) store trajectories for P_particles
-        P_store[0:t+1,...] = np.concatenate((P_store[0:t,idx,...], P_particles[None,...]),axis=0)
+        P_store[0:t+2,...] = np.concatenate((P_store[0:t+1,idx,...], P_particles[None,...]),axis=0)
 
 
+
+        # (4) calculate first stage weights
+        y_pred = jax.vmap(f_y)(X_particles)
+        # w = jax.vmap(functools.partial(squared_error, y=Y[t], cov=R))(y_pred)
+        # w = np.asarray(w).astype('float64')
+        # w = w/np.sum(w)
+
+        logweights = jax.vmap(functools.partial(logweighting, y=Y[t+1], cov=R))(y_pred)
+        # logweights = -(1 / (2 * R)) * (Y[t] - y_pred) ** 2
+        max_weight = max(logweights)  # Subtract the maximum value for numerical stability
+        w = np.exp(logweights - max_weight)
+        w = np.asarray(w).astype('float64')
+        w = np.squeeze(w / sum(w))  # Save the normalized weights
+        # accumulate the log-likelihood
+        # log_likelihood += max_weight + np.log(sum(w)) - np.log(n_particles)
+
+        if np.any(np.isnan(w)):
+            plt.subplot(2,2,1)
+            #for k in range(n_particles):
+                #plt.plot(X_store[:,k,0], alpha=w[k], color='b')
+                #plt.scatter(t, x_mean_tp1[idx[k],0], marker='x', alpha=w_as[k], color='g')
+            plt.plot(X_true[:,0].T,  label='true', markersize=3, color='r')
+            plt.plot(X_prop_im1[0,:].T,  label='reference', markersize=3, color='k')
+            plt.ylabel('state 0')
+
+            plt.subplot(2,2,3)
+            #for k in range(n_particles):
+                #plt.plot(X_store[:,k,1], alpha=w[k], color='b')
+                #plt.scatter(t, x_mean_tp1[idx[k],1], marker='x', alpha=w_as[k], color='g')
+            plt.plot(X_true[:,1].T,  label='true', markersize=3, color='r')
+            plt.plot(X_prop_im1[1,:].T,  label='reference', markersize=3, color='k')
+            plt.ylabel('state 1')
+            plt.xlabel('time steps')
+            plt.legend()
+
+            plt.subplot(2,2,2)
+            #for k in range(n_particles):
+                #plt.plot(P_store[:,k], alpha=w[k], color='b')
+            plt.plot(P_true,  label='true', markersize=3, color='r')
+            plt.ylabel('m')
+
+            plt.subplot(2,2,4)
+            #for k in range(n_particles):
+                #plt.plot(F_store[:,k], alpha=w[k], color='b')
+            plt.plot(F_true,  label='true', markersize=3, color='r')
+            plt.ylabel('F')
+            plt.xlabel('time steps')
+
+            plt.show()
+            print(f"Particle degeneration at weights in time step {t}.")
+            break
 
     # plt.subplot(2,1,1)
     # #plt.plot(X_store[:,:,0])
@@ -196,31 +251,35 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
     F_prop_i = np.squeeze(F_store[:,sample]).T
 
     
-    plt.subplot(2,1,1)
-    plt.plot(X_store[:,:,0])
-    plt.plot(X_true[:,0].T, marker='x', label='true', markersize=3, color='r')
-    plt.plot(X_prop_im1[0,:].T, marker='o', label='reference', markersize=3, color='k')
-    plt.plot(X_prop_i[0,:], marker='o', label='chosen', markersize=3, color='g')
+    plt.subplot(2,2,1)
+    for k in range(n_particles):
+        plt.plot(X_store[:,k,0], alpha=w[k], color='b')
+    plt.plot(X_true[:,0].T,  label='true', markersize=3, color='r')
+    plt.plot(X_prop_im1[0,:].T,  label='reference', markersize=3, color='k')
+    plt.plot(X_prop_i[0,:],  label='chosen', markersize=3, color='g')
     plt.ylabel('state 0')
 
-    plt.subplot(2,1,3)
-    plt.plot(X_store[:,:,1])
-    plt.plot(X_true[:,1].T, marker='x', label='true', markersize=3, color='r')
-    plt.plot(X_prop_im1[1,:].T, marker='o', label='reference', markersize=3, color='k')
-    plt.plot(X_prop_i[1,:], marker='o', label='chosen', markersize=3, color='g')
+    plt.subplot(2,2,3)
+    for k in range(n_particles):
+        plt.plot(X_store[:,k,1], alpha=w[k], color='b')
+    plt.plot(X_true[:,1].T,  label='true', markersize=3, color='r')
+    plt.plot(X_prop_im1[1,:].T,  label='reference', markersize=3, color='k')
+    plt.plot(X_prop_i[1,:], label='chosen', markersize=3, color='g')
     plt.ylabel('state 1')
     plt.xlabel('time steps')
 
     plt.subplot(2,2,2)
-    plt.plot(P_store)
-    plt.plot(P_true, marker='x', label='true', markersize=3, color='r')
-    plt.plot(P_prop_i, marker='o', label='chosen', markersize=3, color='g')
+    for k in range(n_particles):
+        plt.plot(P_store[:,k], alpha=w[k], color='b')
+    plt.plot(P_true,  label='true', markersize=3, color='r')
+    plt.plot(P_prop_i,  label='chosen', markersize=3, color='g')
     plt.ylabel('m')
 
     plt.subplot(2,2,4)
-    plt.plot(F_store)
-    plt.plot(F_true, marker='x', label='true', markersize=3, color='r')
-    plt.plot(F_prop_i, marker='o', label='chosen', markersize=3, color='g')
+    for k in range(n_particles):
+        plt.plot(F_store[:,k], alpha=w[k], color='b')
+    plt.plot(F_true,  label='true', markersize=3, color='r')
+    plt.plot(F_prop_i,  label='chosen', markersize=3, color='g')
     plt.ylabel('F')
     plt.xlabel('time steps')
     
@@ -228,7 +287,7 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
     plt.savefig(f"plots/PGAS_iteration_{i}")
     plt.clf()
 
-
+    print(f"CSMC successfull in iteration {i}.")
     return X_prop_i, P_prop_i, F_prop_i
 
 
@@ -240,7 +299,8 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
                     X_prior, P_prior, F_prior,
                     f_x, basis_func, U,
                     dt, seed):
-    
+    P_bounds = [0,5]
+
     ### ---------------------------------------------------------
     ### xi 1 (P)
     ### ---------------------------------------------------------
@@ -260,8 +320,12 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
                 random_state=seed)
     
     P_cov_col = np.linalg.cholesky(P_cov/P_normal_scale)
-    n_samples = np.random.normal(size=P_mean.shape)
-    P_coeff = P_mean + np.matmul(P_cov_col,n_samples)
+    while True:
+        n_samples = np.random.normal(size=P_mean.shape)
+        P_coeff = P_mean + np.matmul(P_cov_col,n_samples)
+        if P_coeff > P_bounds[0] and P_coeff < P_bounds[1]:
+            break
+
     #P_coeff = np.random.multivariate_normal(P_mean,P_cov/P_normal_scale), P_mean.shape
 
     P_niw_sample = [P_coeff, P_cov]
@@ -342,9 +406,9 @@ if __name__ == '__main__':
     ################################################################################
     # General settings
 
-    n_particles = 400    # no of particles
-    t_end = 2.0
-    dt = 0.02
+    n_particles = 10    # no of particles
+    t_end = 40.0
+    dt = 0.04
     time = np.arange(0.0,t_end,dt)
     steps = len(time)
     seed = 123 #np.random.randint(100, 1000000)
@@ -412,7 +476,7 @@ if __name__ == '__main__':
 
     # -----------------
     # X: parameters of the iw prior
-    X_iw_scale = 1e-3*np.eye(2) # np.diag([1e1,1e2]) # defining distribution parameters
+    X_iw_scale = 1e-1*np.eye(2) # np.diag([1e1,1e2]) # defining distribution parameters
     X_df = 2
 
     X_cov = invwishart.rvs(df=X_df, scale=X_iw_scale, random_state=seed) # sampling 
@@ -445,7 +509,7 @@ if __name__ == '__main__':
     F_mean = np.zeros((1, N_ip)) # defining distribution parameters
     # F_col_cov = np.eye(N_ip)*1e0 ### This needs to be adjusted!
     F_col_cov = np.diag(sd)
-    F_iw_scale = 1e0*np.eye(1)
+    F_iw_scale = 1e2*np.eye(1)
     F_df = 1
 
     F_row_cov = np.array([[invwishart.rvs(df=F_df, scale=F_iw_scale, random_state=seed)]]) # sampling 
@@ -491,6 +555,12 @@ if __name__ == '__main__':
     #                                                         f_x, f_y, basis_fcn, R,                             # model structures (including known covariance R)
     #                                                         N_init, dt)     
 
+    ### Step 1: Get new state trajectory proposal from PGAS Markov kernel with bootstrap PF | Given the parameters
+    X_prop_im1, _, __ = conditional_SMC_with_ancestor_sampling(Y, U,                     # observations and inputs
+                                                        X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
+                                                        x0, X_prop_im1,                                 # reference trajectory
+                                                        f_x, f_y, basis_fcn, R,                             # model structures (including known covariance R)
+                                                        100, dt, X, M, F_sd, 0, ancestor_sampling = False)                                      # further settings
 
     # -----------------------------------------------------------------------------------
     ### identification loop
@@ -501,7 +571,7 @@ if __name__ == '__main__':
                                                             X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
                                                             x0, X_prop_im1,                                 # reference trajectory
                                                             f_x, f_y, basis_fcn, R,                             # model structures (including known covariance R)
-                                                            n_particles, dt, X, M, F_sd, i)                                      # further settings
+                                                            n_particles, dt, X, M, F_sd, i, ancestor_sampling = True)                                      # further settings
 
         ### Step 2: Compute parameter posterior | Given the state trajectory
         X_iw_sample, P_niw_sample, F_mniw_sample = parameter_update(X_prop_i, P_prop_i, F_prop_i,       # samples for the latent variable sequences
@@ -509,7 +579,7 @@ if __name__ == '__main__':
                                                                 f_x, basis_fcn, U,                              # model structures (including known covariance R)
                                                                 dt, seed)                               # further settings
 
-
+        X_prop_im1 = X_prop_i
 
     # ToDo: 
     # 1. Animation plots
