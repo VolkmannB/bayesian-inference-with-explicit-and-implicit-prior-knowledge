@@ -130,6 +130,35 @@ def prior_mniw_CondPredictive(mean, col_cov, row_scale, df, y1, y1_var, basis1, 
     return c_mean, c_col_scale, c_row_scale, df
     
 
+# Multivariate Normal
+@jax.jit
+def prior_n_calcStatistics(eta_0, eta_1, new_data):
+    
+    eta_0 += jnp.sum(new_data,axis=1)
+    eta_1 += new_data.shape[1]
+    
+    return eta_0, eta_1
+
+@jax.jit
+def prior_n_2naturalPara(mean, sample_number):
+    
+    mean = jnp.atleast_2d(mean)
+
+    eta_0 = mean*sample_number
+    eta_1 = sample_number
+
+    return eta_0, eta_1
+
+
+@jax.jit
+def prior_n_2naturalPara_inv(eta_0, eta_1):
+    
+    mean = eta_0/eta_1
+    sample_number = eta_1
+    
+    return jnp.atleast_2d(mean), sample_number
+
+
 
 # Normal Inverse Wishart
 @jax.jit
