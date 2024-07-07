@@ -86,6 +86,7 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
 
     # (3) loop
     log_likelihood = 0
+    weight_depletion = False
     for t in range(seq_len-1):
 
         # (5) draw new indices
@@ -94,7 +95,7 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
         # idx[idx >= n_particles] = n_particles - 1 # correct out of bounds indices from numerical errors
         # idx = idx[0:n_particles-1]
         
-        idx = systematic_resampling(w)
+        idx = stratified_resampling(w)
         idx.astype(int)
         idx[n_particles - 1] = n_particles - 1
 
@@ -152,8 +153,9 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
                 plt.ylabel('F')
                 plt.xlabel('time steps')
 
-                plt.show()
+                # plt.show()
                 print(f"Particle degeneration at ancestor sampling in time step {t}.")
+                weight_depletion = True
                 break
             idx[n_particles-1] = np.random.choice(np.arange(0,n_particles), p=prob)
 
@@ -230,8 +232,9 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
             plt.ylabel('F')
             plt.xlabel('time steps')
 
-            plt.show()
+            # plt.show()
             print(f"Particle degeneration at weights in time step {t}.")
+            weight_depletion = True
             break
 
     # plt.subplot(2,1,1)
@@ -284,11 +287,12 @@ def conditional_SMC_with_ancestor_sampling(Y, U,                    # observatio
     plt.xlabel('time steps')
     
     plt.legend()
-    plt.savefig(f"plots/PGAS_iteration_{i}")
+    plt.gcf().set_size_inches(10, 5)
+    plt.savefig(f"plots/PGAS_iteration_{i}", dpi=400)
     plt.clf()
 
-    print(f"CSMC successfull in iteration {i}.")
-    return X_prop_i, P_prop_i, F_prop_i
+    # print(f"CSMC successfull in iteration {i}.")
+    return X_prop_i, P_prop_i, F_prop_i, weight_depletion
 
 
 
@@ -314,11 +318,12 @@ def parameter_update(X_prop_i, P_prop_i, F_prop_i,
     # covariance and mean update | state and xi 1 trajectories
     # sample from NIW proposal using posterior parameters
     # Note, in the offline algorithm, it is not required to sample from the predictive distribution but from the posterior in order to obtain parameter samples!
-    P_cov = invwishart.rvs(
-                df=int(P_df),
-                scale=P_iw_scale,
-                random_state=seed)
-    
+    # P_cov = invwishart.rvs(
+    #             df=int(P_df),
+    #             scale=P_iw_scale,
+    #             random_state=seed)
+    P_cov = np.ones((1,1))*1
+
     P_cov_col = np.linalg.cholesky(P_cov/P_normal_scale)
     while True:
         n_samples = np.random.normal(size=P_mean.shape)
@@ -406,8 +411,8 @@ if __name__ == '__main__':
     ################################################################################
     # General settings
 
-    n_particles = 10    # no of particles
-    t_end = 40.0
+    n_particles = 50    # no of particles
+    t_end = 50.0
     dt = 0.04
     time = np.arange(0.0,t_end,dt)
     steps = len(time)
@@ -476,7 +481,7 @@ if __name__ == '__main__':
 
     # -----------------
     # X: parameters of the iw prior
-    X_iw_scale = 1e-1*np.eye(2) # np.diag([1e1,1e2]) # defining distribution parameters
+    X_iw_scale = 1e1*np.eye(2) # np.diag([1e1,1e2]) # defining distribution parameters
     X_df = 2
 
     X_cov = invwishart.rvs(df=X_df, scale=X_iw_scale, random_state=seed) # sampling 
@@ -488,8 +493,8 @@ if __name__ == '__main__':
 
     # -----------------
     # P: parameters of the niw prior
-    P_mean = 1*np.eye(1) # defining distribution parameters
-    P_normal_scale = 1e0*np.eye(1)
+    P_mean = 2*np.eye(1) # defining distribution parameters
+    P_normal_scale = 1e3*np.eye(1)
     P_iw_scale = 1e0*np.eye(1)
     P_df = 1
 
@@ -556,7 +561,8 @@ if __name__ == '__main__':
     #                                                         N_init, dt)     
 
     ### Step 1: Get new state trajectory proposal from PGAS Markov kernel with bootstrap PF | Given the parameters
-    X_prop_im1, _, __ = conditional_SMC_with_ancestor_sampling(Y, U,                     # observations and inputs
+    P_niw_sample = [np.eye(1)*m, np.eye(1)]
+    X_prop_im1, _, __, weight_depletion = conditional_SMC_with_ancestor_sampling(Y, U,                     # observations and inputs
                                                         X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
                                                         x0, X_prop_im1,                                 # reference trajectory
                                                         f_x, f_y, basis_fcn, R,                             # model structures (including known covariance R)
@@ -565,20 +571,23 @@ if __name__ == '__main__':
     # -----------------------------------------------------------------------------------
     ### identification loop
     for i in tqdm(range(1,steps), desc="Running identification"):
+        weight_depletion = True
+        P_niw_sample = [np.eye(1)*m, np.eye(1)]
+        while weight_depletion:
+            ### Step 1: Get new state trajectory proposal from PGAS Markov kernel with bootstrap PF | Given the parameters
+            X_prop_i, P_prop_i, F_prop_i, weight_depletion = conditional_SMC_with_ancestor_sampling(Y, U,                     # observations and inputs
+                                                                X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
+                                                                x0, X_prop_im1,                                 # reference trajectory
+                                                                f_x, f_y, basis_fcn, R,                             # model structures (including known covariance R)
+                                                                n_particles, dt, X, M, F_sd, i, ancestor_sampling = True)                                      # further settings
+        print(f"CSMC successfull in iteration {i}.")
         
-        ### Step 1: Get new state trajectory proposal from PGAS Markov kernel with bootstrap PF | Given the parameters
-        X_prop_i, P_prop_i, F_prop_i = conditional_SMC_with_ancestor_sampling(Y, U,                     # observations and inputs
-                                                            X_iw_sample, P_niw_sample, F_mniw_sample,   # parameters
-                                                            x0, X_prop_im1,                                 # reference trajectory
-                                                            f_x, f_y, basis_fcn, R,                             # model structures (including known covariance R)
-                                                            n_particles, dt, X, M, F_sd, i, ancestor_sampling = True)                                      # further settings
-
         ### Step 2: Compute parameter posterior | Given the state trajectory
         X_iw_sample, P_niw_sample, F_mniw_sample = parameter_update(X_prop_i, P_prop_i, F_prop_i,       # samples for the latent variable sequences
                                                                 X_prior, P_prior, F_prior,              # initial values for parameter priors
                                                                 f_x, basis_fcn, U,                              # model structures (including known covariance R)
                                                                 dt, seed)                               # further settings
-
+        
         X_prop_im1 = X_prop_i
 
     # ToDo: 
