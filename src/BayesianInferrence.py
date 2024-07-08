@@ -51,10 +51,13 @@ def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
 @jax.jit
 def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, basis):
     
-    T_0 = T_0 + jnp.outer(basis,y) 
-    T_1 = T_1 + jnp.outer(basis,basis)
-    T_2 = T_2 + jnp.outer(y,y)
-    T_3 = T_3 + 1
+    y = jnp.atleast_2d(y)
+    basis = jnp.atleast_2d(basis)
+    
+    T_0 = T_0 + basis.T @ y
+    T_1 = T_1 + basis.T @ basis
+    T_2 = T_2 + y.T @ y
+    T_3 = T_3 + y.shape[0]
     
     return T_0, T_1, T_2, T_3
 
