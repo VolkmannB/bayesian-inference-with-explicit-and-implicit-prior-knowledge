@@ -9,7 +9,7 @@ from src.conditional_smc import CSMC
 from src.utils import multinomial_resampling, systematic_resampling, stratified_resampling
 
 
-from src.SingleMassOscillator import F_spring, F_damper, f_x, f_y, N_ip, basis_fcn, sd, m
+from src.SingleMassOscillator import F_spring, F_damper, f_x, f_y, N_basis_fcn, basis_fcn, sd, m
 from src.BayesianInferrence import prior_mniw_2naturalPara, prior_mniw_2naturalPara_inv, gaussian_RBF, prior_iw_calcStatistics, prior_niw_calcStatistics, prior_mniw_calcStatistics, prior_niw_2naturalPara_inv, prior_iw_2naturalPara_inv, prior_niw_2naturalPara
 from src.Filtering import systematic_SISR, squared_error, logweighting
 from src.SingleMassOscillatorPlotting import generate_Animation
@@ -511,7 +511,7 @@ if __name__ == '__main__':
 
     # -----------------
     # F: parameters of the mniw prior
-    F_mean = np.zeros((1, N_ip)) # defining distribution parameters
+    F_mean = np.zeros((1, N_basis_fcn)) # defining distribution parameters
     # F_col_cov = np.eye(N_ip)*1e0 ### This needs to be adjusted!
     F_col_cov = np.diag(sd)
     F_iw_scale = 1e2*np.eye(1)

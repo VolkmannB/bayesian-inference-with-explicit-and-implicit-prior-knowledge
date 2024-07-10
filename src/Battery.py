@@ -1,54 +1,30 @@
 import jax
 import jax.numpy as jnp
-import equinox as eqx
+import numpy as np
+import functools
+import pandas as pd
+from tqdm import tqdm
 
-from src.BayesianInferrence import generate_Hilbert_BasisFunction, gaussian_RBF
 
 
+from src.BayesianInferrence import generate_Hilbert_BasisFunction
+from src.BayesianInferrence import prior_mniw_2naturalPara
+from src.BayesianInferrence import prior_mniw_2naturalPara_inv
+from src.BayesianInferrence import prior_mniw_updateStatistics
+from src.BayesianInferrence import prior_mniw_CondPredictive
+from src.Filtering import systematic_SISR, squared_error
+
+
+
+#### This section defines the state space model
 
 # parameters
-default_para = dict(
-    T_amb = 27, # given
-    V_0 = 2.4125, # interpolated from product specification V_nom at 1.0C and V_cutoff at 0.2C
-    R_c = 0.407, # from literature
-    C_c = 43.5, # from literature
-    Q_cap = 3500e-3 * 3.6, # capacity in As (guess)
-)
-para_train = dict(
-    Q_cap = 3450e-3 * 60 * 60, # capacity in As (guess)
-    R_0 = 30e-3, # serial resistor in Ohm (guess)
-    C_1 = 1.5e3, # cell in F (guess)
-    R_1 = 0.022 # cell resistor in Ohm (guess)
-)
+V_0 = 2.4125 # interpolated from product specification V_nom at 1.0C and V_cutoff at 0.2C
+R_0 = 23e-3
 
 
 
-class BatterySSM(eqx.Module):
-    
-    T_amb: float
-    V_0: float
-    R_c: float
-    C_c: float
-    Q_cap: float
-    
-    def __call__(self, x, I, R_1, C_1, dt):
-        
-        x_new = fx(
-            x=x,
-            I=I,
-            R_1=R_1,
-            C_1=C_1,
-            dt=dt
-        )
-        
-        return x_new
-    
-    @jax.jit
-    def fy(self, x, I, R_0):
-        return self.V_0 + x + R_0*I
-
-
-
+# state dynamics
 def dx(x, I, R_1, C_1):
         
         dV = I / C_1 - x / R_1 / C_1
@@ -57,8 +33,9 @@ def dx(x, I, R_1, C_1):
 
 
 
+# time discrete state space model with Runge-Kutta-4
 @jax.jit
-def fx(x, I, R_1, C_1, dt):
+def f_x(x, I, R_1, C_1, dt):
         
         k1 = dx(x, I, R_1, C_1)
         k2 = dx(x+dt*k1/2, I, R_1, C_1)
@@ -66,30 +43,279 @@ def fx(x, I, R_1, C_1, dt):
         k4 = dx(x+dt*k3, I, R_1, C_1)
         
         return x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
-    
-def fy(x, I, R_0, V_0):
+
+
+
+# measurement model
+@jax.jit
+def f_y(x, I, R_0=R_0, V_0=V_0):
     return V_0 + x + R_0*I
 
 
 
-# basis function for Voltage model for alpha and beta dependent on SoC
-z_ip = jnp.linspace(0, 2.4, 15)
-l_z = z_ip[1] - z_ip[0]
+#### This section loads the measurment data
 
-# @jax.jit
-# def basis_fcn(x):
-#     return gaussian_RBF(x, z_ip, l_z)
+### Load data
+time_gap_thresh = pd.Timedelta("1h")
+data = pd.read_csv("./src/Measurements/Everlast_35E_003.csv", sep=",")
+data["Time"] = pd.to_datetime(data["Time"])
+data = data.set_index("Time")
 
-basis_fcn, sd = generate_Hilbert_BasisFunction(15, jnp.array([-0.5, 2.4]), l_z, 5)
+# segment data
+data["Block"] = (data.index.to_series().diff() > time_gap_thresh).cumsum()
+blocks = [group for _, group in data.groupby("Block")]
+data = blocks[3]
+del blocks
+
+# resampling to uniform time steps
+dt = pd.Timedelta("1s")
+data = data.resample("5ms", origin="start").interpolate().resample("1s", origin="start").asfreq()
+
+# data = data.iloc[:2000]
+steps = data.shape[0]
 
 
 
-# # basis functions for resistor model dependent on SoC and current
-# I_ip = jnp.linspace(-5, 5, 5)
-# l_I = I_ip[1] - I_ip[0]
-# zI_ip = jnp.dstack(jnp.meshgrid(z_ip, I_ip, indexing='xy'))
-# zI_ip = zI_ip.reshape(zI_ip.shape[0]*zI_ip.shape[1], 2)
+#### This section defines relevant parameters for the simulation
 
-# @jax.jit
-# def features_R(x,I):
-#     return C2_InversePoly_RBF(jnp.atleast_2d(jnp.array([x[0],I])), zI_ip, jnp.array([l_z, l_I]))
+# set seed for reproducability
+np.random.seed(16723573)
+
+# sim para
+N_particles = 100
+forget_factor = 1 - 1/1e3
+y1_var=5e-2
+dt = dt.seconds
+
+
+# parameter limits
+l_C1, u_C1 = 2, 20
+l_R1, u_R1 = 5, 10
+
+# limits for clipping
+offset_C1 = (u_C1 - l_C1)/2
+offset_R1 = (u_R1 - l_R1)/2
+cl_C1, cu_C1 = l_C1 - offset_C1, u_C1 - offset_C1
+cl_R1, cu_R1 = l_R1 - offset_R1, u_R1 - offset_R1
+C1_scale = 1e2
+R1_scale = 1e3
+
+
+# initial system state
+x0 = np.array([data["Voltage"].iloc[0]-V_0])
+P0 = np.diag([5e-3])
+
+# process and measurement noise
+R = np.diag([0.001])
+Q = np.diag([5e-6])
+w = lambda n=1: np.random.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
+e = lambda n=1: np.random.multivariate_normal(np.zeros((R.shape[0],)), R, n)
+
+# input
+ctrl_input = data["Current"].to_numpy()
+
+# measurments
+Y = data[["Voltage"]].to_numpy()
+
+
+#### This section defines the basis function expansion
+
+N_basis_fcn = 15
+basis_fcn, sd = generate_Hilbert_BasisFunction(N_basis_fcn, jnp.array([-0.5, 2.4]), 2.4/N_basis_fcn, 5)
+
+GP_prior_C1R1 = list(prior_mniw_2naturalPara(
+    np.zeros((2, N_basis_fcn)),
+    np.diag(sd),
+    np.diag([1, 1]),
+    0
+))
+
+
+
+#### This section defines a function to run the online version of the algorithm
+
+def Battery_APF(Y=Y):
+    
+    # time series for plot
+    Sigma_X = np.zeros((steps,N_particles))
+    Sigma_Y = np.zeros((steps,N_particles))
+    Sigma_C1R1 = np.zeros((steps,N_particles,2))
+
+    Mean_C1R1 = np.zeros((steps, 2, N_basis_fcn))
+    Col_Cov_C1R1 = np.zeros((steps, N_basis_fcn, N_basis_fcn))
+    Row_Scale_C1R1 = np.zeros((steps, 2, 2))
+    df_C1R1 = np.zeros((steps,))
+    
+    # variable for sufficient statistics
+    GP_stats_C1R1 = [
+        np.zeros((N_particles, N_basis_fcn, 2)),
+        np.zeros((N_particles, N_basis_fcn, N_basis_fcn)),
+        np.zeros((N_particles, 2, 2)),
+        np.zeros((N_particles,))
+    ]
+    
+    # initial values for states
+    Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N_particles,)).flatten()
+    Sigma_C1R1[0,:,0] = np.random.uniform(cl_C1, cu_C1, (N_particles,))
+    Sigma_C1R1[0,:,1] = np.random.uniform(cl_R1, cu_R1, (N_particles,))
+    weights = np.ones((steps,N_particles))/N_particles
+
+    # update GP
+    phi_0 = jax.vmap(
+        functools.partial(basis_fcn)
+        )(Sigma_X[0])
+    GP_stats_C1R1 = list(jax.vmap(prior_mniw_updateStatistics)(
+        *GP_stats_C1R1,
+        Sigma_C1R1[0,...],
+        phi_0
+    ))
+    
+    
+    # simulation loop
+    for i in tqdm(range(1, steps), desc="Running Online Algorithm"):
+        
+        ### Step 1: Propagate GP parameters in time
+        
+        # apply forgetting operator to statistics for t-1 -> t
+        GP_stats_C1R1[0] *= forget_factor
+        GP_stats_C1R1[1] *= forget_factor
+        GP_stats_C1R1[2] *= forget_factor
+        GP_stats_C1R1[3] *= forget_factor
+            
+        # calculate parameters of GP from prior and sufficient statistics
+        GP_para_C1R1 = list(jax.vmap(prior_mniw_2naturalPara_inv)(
+            GP_prior_C1R1[0] + GP_stats_C1R1[0],
+            GP_prior_C1R1[1] + GP_stats_C1R1[1],
+            GP_prior_C1R1[2] + GP_stats_C1R1[2],
+            GP_prior_C1R1[3] + GP_stats_C1R1[3]
+        ))
+        
+        
+        
+        ### Step 2: According to the algorithm of the auxiliary PF, resample 
+        # particles according to the first stage weights
+        
+        # create auxiliary variable for state x
+        x_aux = jax.vmap(
+            functools.partial(f_x, I=ctrl_input[i-1], dt=dt))(
+                x=Sigma_X[i-1],
+                C_1=(offset_C1+Sigma_C1R1[i-1,...,0])*C1_scale,
+                R_1=(offset_R1+Sigma_C1R1[i-1,...,1])*R1_scale
+            )
+        
+        # create auxiliary variable for C1, R1 and R0
+        phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1])
+        phi_1 = jax.vmap(functools.partial(basis_fcn))(x_aux)
+        C1R1_aux = jax.vmap(
+            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
+            )(
+                mean=GP_para_C1R1[0],
+                col_cov=GP_para_C1R1[1],
+                row_scale=GP_para_C1R1[2],
+                df=GP_para_C1R1[3],
+                y1=Sigma_C1R1[i-1,...],
+                basis1=phi_0,
+                basis2=phi_1
+        )[0]
+        
+        # calculate first stage weights
+        y_aux = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=x_aux)
+        l_fy = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x=y_aux)
+        l_C0_clip = np.all(np.vstack([cl_C1 <= C1R1_aux[:,0], C1R1_aux[:,0] <= cu_C1]), axis=0)
+        l_R0_clip = np.all(np.vstack([cl_R1 <= C1R1_aux[:,1], C1R1_aux[:,1] <= cu_R1]), axis=0)
+        p = weights[i-1] * l_fy * l_C0_clip * l_R0_clip
+        p = p/np.sum(p)
+        
+        #abort
+        if np.any(np.isnan(p)):
+            print("Particle degeneration at auxiliary weights")
+            break
+        
+        # draw new indices
+        u = np.random.rand()
+        idx = np.array(systematic_SISR(u, p))
+        idx[idx >= N_particles] = N_particles - 1 # correct out of bounds indices from numerical errors
+        
+        
+        
+        ### Step 3: Make a proposal by generating samples from the hirachical 
+        # model
+        
+        # sample from proposal for x at time t
+        w_x = w((N_particles,)).flatten()
+        Sigma_X[i] = jax.vmap(
+            functools.partial(f_x, I=ctrl_input[i-1], dt=dt))(
+                x=Sigma_X[i-1,idx],
+                C_1=(offset_C1+Sigma_C1R1[i-1,idx,0])*C1_scale,
+                R_1=(offset_R1+Sigma_C1R1[i-1,idx,1])*R1_scale
+            ) + w_x
+        
+        ## sample proposal for alpha and beta at time t
+        # evaluate basis functions
+        phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1,idx])
+        phi_1 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i])
+        
+        # calculate conditional predictive distribution for C1 and R1
+        c_mean, c_col_scale, c_row_scale, df = jax.vmap(
+            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
+            )(
+                mean=GP_para_C1R1[0][idx],
+                col_cov=GP_para_C1R1[1][idx],
+                row_scale=GP_para_C1R1[2][idx],
+                df=GP_para_C1R1[3][idx],
+                y1=Sigma_C1R1[i-1,idx],
+                basis1=phi_0,
+                basis2=phi_1
+        )
+        
+        # generate samples
+        c_col_scale_chol = np.linalg.cholesky(c_col_scale)
+        c_row_scale_chol = np.linalg.cholesky(c_row_scale)
+        t_samples = np.random.standard_t(df=df, size=(1,2,N_particles)).T
+        Sigma_C1R1[i] = c_mean + np.squeeze(np.einsum(
+                '...ij,...jk,...kf->...if', 
+                c_row_scale_chol, 
+                t_samples, 
+                c_col_scale_chol
+            ))
+            
+            
+        
+        # Update the sufficient statistics of GP with new proposal
+        GP_stats_C1R1 = list(jax.vmap(prior_mniw_updateStatistics)(
+            GP_stats_C1R1[0][idx],
+            GP_stats_C1R1[1][idx],
+            GP_stats_C1R1[2][idx],
+            GP_stats_C1R1[3][idx],
+            Sigma_C1R1[i],
+            phi_1
+        ))
+        
+        # calculate new weights
+        Sigma_Y[i] = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=Sigma_X[i])
+        q_fy = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(Sigma_Y[i])
+        q_C0_clip = np.all(np.vstack([cl_C1 <= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] <= cu_C1]), axis=0)
+        q_R0_clip = np.all(np.vstack([cl_R1 <= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] <= cu_R1]), axis=0)
+        weights[i] = q_fy * q_C0_clip * q_R0_clip / p[idx]
+        weights[i] = weights[i]/np.sum(weights[i])
+        
+        
+        
+        # logging
+        GP_para_logging_C1R1 = prior_mniw_2naturalPara_inv(
+            GP_prior_C1R1[0] + np.einsum('n...,n->...', GP_stats_C1R1[0], weights[i]),
+            GP_prior_C1R1[1] + np.einsum('n...,n->...', GP_stats_C1R1[1], weights[i]),
+            GP_prior_C1R1[2] + np.einsum('n...,n->...', GP_stats_C1R1[2], weights[i]),
+            GP_prior_C1R1[3] + np.einsum('n...,n->...', GP_stats_C1R1[3], weights[i])
+        )
+        Mean_C1R1[i] = GP_para_logging_C1R1[0]
+        Col_Cov_C1R1[i] = GP_para_logging_C1R1[1]
+        Row_Scale_C1R1[i] = GP_para_logging_C1R1[2]
+        df_C1R1[i] = GP_para_logging_C1R1[3]
+        
+        #abort
+        if np.any(np.isnan(weights[i])):
+            print("Particle degeneration at new weights")
+            break
+    
+    return Sigma_X, Sigma_C1R1, Sigma_Y, weights, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R1, df_C1R1
