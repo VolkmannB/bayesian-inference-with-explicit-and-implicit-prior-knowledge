@@ -5,6 +5,7 @@ import itertools
 import abc
 import jax
 import jax.numpy as jnp
+import jax.scipy as jsc
 
 
 
@@ -35,6 +36,8 @@ def squared_error(x, y, cov):
     
     return jnp.exp(-0.5 * r)
 
+
+
 @jax.jit
 def logweighting(x, y, cov):
     
@@ -45,6 +48,8 @@ def logweighting(x, y, cov):
     r = dx @ t
     
     return -0.5 * r
+
+
 
 @jax.jit
 def EnKF_update(sigma_x, sigma_y, y, R):
@@ -63,3 +68,70 @@ def EnKF_update(sigma_x, sigma_y, y, R):
     K_T = jnp.linalg.solve(P_yy, P_xy.T)
     
     return sigma_x + (y - sigma_y) @ K_T
+
+
+
+@jax.jit
+def log_likelihood_Normal(observed, mean, cov):
+    """
+    Computes the un-normalized log likelihood for the multivariate
+    normal distribution.
+    
+    .. math::
+    \log\mathcal{N}(x|mean, cov) \propto -\frac{1}{2} (x-mean)^\mathrm{T} cov (x-mean)
+
+    Args:
+        x (ArrayLike): input
+        mean (ArrayLike): mean vector
+        cov (ArrayLike): Covariance martrix
+
+    Returns:
+        ArrayLike: log-likelihood
+    """
+    
+    cov = jnp.atleast_2d(cov)
+    dx = jnp.atleast_1d(observed) - jnp.atleast_1d(mean)
+    
+    L = jnp.linalg.cholesky(cov)
+    t = jsc.linalg.cho_solve((L, True), dx)
+    r = dx @ t
+    
+    return -0.5 * r
+
+
+
+@jax.jit
+def log_likelihood_Multivariate_t(observed, mean, scale, df):
+    """
+    Computes the unnormalized log-likelihood of a multivariate t-distribution.
+
+    Args:
+        observed (array-like): Observation vector of shape (p,).
+        mean (array-like): Mean vector of shape (p,).
+        scale (array-like): Scale matrix of shape (p, p).
+        df (float): Degrees of freedom.
+
+    Returns:
+        float: The unnormalized log-likelihood of the observation x.
+    """
+    
+    # Calculate the dimensionality
+    observed = jnp.atleast_1d(observed)
+    mean = jnp.atleast_1d(mean)
+    p = observed.shape[0]
+    
+    # Calculate the term (x - mu)
+    diff = observed - mean
+    
+    # Compute the Cholesky decomposition of scae matrix
+    scale = jnp.atleast_2d(scale)
+    L = jnp.linalg.cholesky(scale)
+    
+    # Compute the squared Mahalanobis distance
+    m = jsc.linalg.cho_solve((L, True), diff)
+    m_squared = diff @ m
+    
+    # Calculate the unnormalized log-likelihood
+    log_likelihood = -0.5 * (df + p) * jnp.log(1 + (1 / df) * m_squared)
+    
+    return log_likelihood
