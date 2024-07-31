@@ -290,4 +290,49 @@ def apply_basic_formatting(fig, width=8, font_size=12, dpi=150):
         #     ax.zaxis.set_major_formatter(formatter)
         
     fig.set_dpi(dpi)
+
+
+
+def plot_PGAS_iterrations(Trajectories, time, iter_idx, dpi=150):
     
+    Trajectories = np.atleast_3d(Trajectories)
+    
+    N_Slices = iter_idx.shape[0]
+    N_tasks = Trajectories.shape[-1]
+    
+    fig, axes = plt.subplots(
+        N_tasks, 
+        N_Slices, 
+        layout="tight", 
+        sharey='row', 
+        sharex='col', 
+        dpi=dpi
+        )
+    axes = np.atleast_2d(axes)
+    
+    
+    for i in range(N_Slices):
+        
+        for j in range(N_tasks):
+            
+            # plot reference
+            axes[j,i].plot(time, Trajectories[:,int(iter_idx[i]-1),j], 
+                        color=imes_blue,
+                        label='Ref')
+            
+            # plot drawn sample
+            axes[j,i].plot(time, Trajectories[:,int(iter_idx[i]),j], 
+                        color=imes_orange,
+                        linestyle='',
+                        marker='.', 
+                        markersize=3,
+                        label='sample'
+                        )
+            
+        axes[0,i].set_title(f"Iteration ${int(iter_idx[i])}$")
+        axes[-1,i].set_xlabel(r'Time in [$s$]')
+        axes[-1,i].set_xlim(np.min(time), np.max(time))
+    
+    axes[0,-1].legend()
+        
+    return fig, axes
