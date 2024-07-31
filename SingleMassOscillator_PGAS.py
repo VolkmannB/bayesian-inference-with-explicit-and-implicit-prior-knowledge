@@ -15,7 +15,8 @@ from src.SingleMassOscillator import SingleMassOscillator_APF
 from src.SingleMassOscillator import GP_model_prior, N_basis_fcn
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
-from src.Publication_Plotting import plot_BFE_2D, apply_basic_formatting, plot_Data
+from src.Publication_Plotting import plot_BFE_2D, apply_basic_formatting
+from src.Publication_Plotting import plot_Data, plot_PGAS_iterrations
 
 
 
@@ -25,11 +26,11 @@ from src.Publication_Plotting import plot_BFE_2D, apply_basic_formatting, plot_D
 X, Y, F_sd = SingleMassOscillator_simulation()
 
 ### Online Algorithm
-N_iterations = 10
+N_iterations = 21
 Sigma_X = np.zeros((steps,N_iterations,2))
 Sigma_F = np.zeros((steps,N_iterations))
 Likelihood_Y = np.zeros((N_iterations,))
-weights = np.ones((steps,N_iterations))/N_iterations * np.flip(np.cumprod(np.ones((N_iterations))*0.5))
+weights = np.ones((steps,N_iterations))/N_iterations
 weights = weights / np.sum(weights[0])
 
 # logging of model
@@ -113,10 +114,10 @@ for k in range(1, N_iterations):
     
     
     # logging
-    GP_model_stats_logging[0] = GP_model_stats_logging[0] * 0.5 + np.sum(T_0, axis=0)
-    GP_model_stats_logging[1] = GP_model_stats_logging[1] * 0.5 + np.sum(T_1, axis=0)
-    GP_model_stats_logging[2] = GP_model_stats_logging[2] * 0.5 + np.sum(T_2, axis=0)
-    GP_model_stats_logging[3] = GP_model_stats_logging[3] * 0.5 + np.sum(T_3, axis=0)
+    GP_model_stats_logging[0] = np.sum(T_0, axis=0)
+    GP_model_stats_logging[1] = np.sum(T_1, axis=0)
+    GP_model_stats_logging[2] = np.sum(T_2, axis=0)
+    GP_model_stats_logging[3] = np.sum(T_3, axis=0)
     
     GP_para_logging = prior_mniw_2naturalPara_inv(
         GP_model_prior[0] + GP_model_stats_logging[0],
@@ -145,7 +146,7 @@ axes_X[0].set_ylabel(r"$s$ in $m$")
 axes_X[1].set_ylabel(r"$\dot{s}$ in $m/s$")
 axes_X[1].set_xlabel(r"Time in $s$")
 apply_basic_formatting(fig_X, width=8, font_size=8)
-fig_X.savefig("SingleMassOscillator_APF_X.pdf", bbox_inches='tight')
+fig_X.savefig("SingleMassOscillator_PGAS_X.pdf", bbox_inches='tight')
 
 
 # plot the force estimations
@@ -158,11 +159,11 @@ fig_F, axes_F = plot_Data(
 axes_X[0].set_ylabel(r"$F_\mathrm{sd}$ in $N$")
 axes_X[0].set_xlabel(r"Time in $s$")
 apply_basic_formatting(fig_F, width=8, font_size=8)
-fig_F.savefig("SingleMassOscillator_APF_Fsd.pdf", bbox_inches='tight')
+fig_F.savefig("SingleMassOscillator_PGAS_Fsd.pdf", bbox_inches='tight')
 
 
 
-# plot time slices of the learned spring-damper function
+# plot different iterations of the PGAS for the learned spring-damper function
 x_plt = np.linspace(-5., 5., 50)
 dx_plt = np.linspace(-5., 5., 50)
 grid_x, grid_y = np.meshgrid(x_plt, dx_plt, indexing='xy')
@@ -175,11 +176,11 @@ Mean = np.zeros((N_slices, *F_sd_true.shape))
 phi_in = jax.vmap(basis_fcn)(X_in)
 X_stats = []
 X_weights = []
+index = (np.array(range(N_slices))+1)/N_slices*(N_iterations-1)
 for k in range(N_slices):
-    index = int((k+1)/N_slices*(N_iterations-1))
-    Mean[k] = Mean_F[index] @ phi_in.T
-    X_stats.append(Sigma_X[:,:index])
-    X_weights.append(weights[:,:index])
+    Mean[k] = Mean_F[int(index[k])] @ phi_in.T
+    X_stats.append(Sigma_X[:,int(index[k])])
+    X_weights.append(weights[:,int(index[k])])
 
 
 mean_err = np.abs(Mean-F_sd_true)[:,None,:]
@@ -201,7 +202,13 @@ ax_BFE_F[0,0].set_ylabel(r'$s$ in $m$')
 ax_BFE_F[1,0].set_ylabel(r'$s$ in $m$')
     
 apply_basic_formatting(fig_BFE_F, width=16, font_size=8)
-fig_BFE_F.savefig("SingleMassOscillator_APF_Fsd_fcn.pdf", bbox_inches='tight')
+fig_BFE_F.savefig("SingleMassOscillator_PGAS_Fsd_fcn.pdf", bbox_inches='tight')
+
+
+
+# plot iterations of the PGAS
+fig_PGAS, ax_PGAS = plot_PGAS_iterrations(Sigma_X, time, index)
+apply_basic_formatting(fig_PGAS, width=16, font_size=8)
 
 
 
