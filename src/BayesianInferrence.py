@@ -49,28 +49,14 @@ def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
     return jnp.atleast_2d(mean), col_cov, jnp.atleast_2d(row_scale), eta_3
 
 @jax.jit
-def prior_mniw_updateStatistics(T_0, T_1, T_2, T_3, y, basis):
+def prior_mniw_calcStatistics(y, basis):
     
-    y = jnp.atleast_2d(y.T).T
-    basis = jnp.atleast_2d(basis.T).T
-    
-    T_0 = T_0 + basis.T @ y
-    T_1 = T_1 + basis.T @ basis
-    T_2 = T_2 + y.T @ y
-    T_3 = T_3 + y.shape[0]
+    T_0 = jnp.outer(basis, y)
+    T_1 = jnp.outer(basis, basis)
+    T_2 = jnp.outer(y, y)
+    T_3 = 1
     
     return T_0, T_1, T_2, T_3
-
-
-@jax.jit
-def prior_mniw_calcStatistics(eta_0, eta_1, eta_2, eta_3, old_data, new_data):
-    
-    eta_0 += new_data @ new_data.T
-    eta_1 += old_data @ new_data.T
-    eta_2 += old_data @ old_data.T
-    eta_3 += new_data.shape[1]
-    
-    return eta_0, eta_1, eta_2, eta_3
 
 @jax.jit
 def prior_mniw_Predictive(mean, col_cov, row_scale, df, basis):
