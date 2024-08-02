@@ -8,9 +8,9 @@ from tqdm import tqdm
 from src.BayesianInferrence import generate_Hilbert_BasisFunction
 from src.BayesianInferrence import prior_mniw_2naturalPara
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
-from src.BayesianInferrence import prior_mniw_updateStatistics
+from src.BayesianInferrence import prior_mniw_calcStatistics
 from src.BayesianInferrence import prior_mniw_CondPredictive
-from src.Filtering import systematic_SISR, squared_error
+from src.Filtering import systematic_SISR, log_likelihood_Normal, log_likelihood_Multivariate_t
 
 
 #### This section defines the state space model
@@ -262,13 +262,11 @@ def Vehicle_APF(Y):
     phi_r = jax.vmap(
         functools.partial(features_MTF_rear, u=ctrl_input[0])
         )(Sigma_X[0])
-    GP_stats_f = list(jax.vmap(prior_mniw_updateStatistics)(
-        *GP_stats_f,
+    GP_stats_f = list(jax.vmap(prior_mniw_calcStatistics)(
         Sigma_mu_f[0,...],
         phi_f
     ))
-    GP_stats_r = list(jax.vmap(prior_mniw_updateStatistics)(
-        *GP_stats_r,
+    GP_stats_r = list(jax.vmap(prior_mniw_calcStatistics)(
         Sigma_mu_r[0,...],
         phi_r
     ))
@@ -360,8 +358,8 @@ def Vehicle_APF(Y):
                 x=x_aux,
                 mu_yf=mu_f_aux, 
                 mu_yr=mu_r_aux)
-        l = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(x=y_aux)
-        p = weights[i-1] * l
+        l_y_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
+        p = weights[i-1] * np.exp(l_y_aux)
         p = p/np.sum(p)
         
         #abort
@@ -448,22 +446,25 @@ def Vehicle_APF(Y):
             
         
         # Update the sufficient statistics of GP with new proposal
-        GP_stats_f = list(jax.vmap(prior_mniw_updateStatistics)(
-            GP_stats_f[0][idx],
-            GP_stats_f[1][idx],
-            GP_stats_f[2][idx],
-            GP_stats_f[3][idx],
+        T_0, T_1, T_2, T_3 = list(jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_f[i],
             phi_f1
         ))
-        GP_stats_r = list(jax.vmap(prior_mniw_updateStatistics)(
-            GP_stats_r[0][idx],
-            GP_stats_r[1][idx],
-            GP_stats_r[2][idx],
-            GP_stats_r[3][idx],
+        GP_stats_f[0] = GP_stats_f[0][idx] + T_0
+        GP_stats_f[1] = GP_stats_f[1][idx] + T_1
+        GP_stats_f[2] = GP_stats_f[2][idx] + T_2
+        GP_stats_f[3] = GP_stats_f[3][idx] + T_3
+        
+        T_0, T_1, T_2, T_3 = list(jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_r[i],
             phi_r1
         ))
+        GP_stats_r[0] = GP_stats_r[0][idx] + T_0
+        GP_stats_r[1] = GP_stats_r[1][idx] + T_1
+        GP_stats_r[2] = GP_stats_r[2][idx] + T_2
+        GP_stats_r[3] = GP_stats_r[3][idx] + T_3
+        
+        
         
         # calculate new weights
         sigma_y = jax.vmap(
@@ -473,9 +474,14 @@ def Vehicle_APF(Y):
                 mu_yf=Sigma_mu_f[i], 
                 mu_yr=Sigma_mu_r[i])
         Sigma_Y[i] = sigma_y[:,:2]
-        q = jax.vmap(functools.partial(squared_error, y=Y[i], cov=R))(sigma_y)
-        weights[i] = q / p[idx]
+        l_y = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(sigma_y)
+        weights[i] = np.exp(l_y - l_y_aux[idx])
         weights[i] = weights[i]/np.sum(weights[i])
+        
+        #abort
+        if np.any(np.isnan(weights[i])):
+            print("Particle degeneration at new weights")
+            break
         
         
         
@@ -507,10 +513,5 @@ def Vehicle_APF(Y):
             )(
             x=Sigma_X[i]
         )
-        
-        #abort
-        if np.any(np.isnan(weights[i])):
-            print("Particle degeneration at new weights")
-            break
         
     return Sigma_X, Sigma_mu_r, Sigma_mu_f, Sigma_alpha_f, Sigma_alpha_r, weights, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r
