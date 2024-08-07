@@ -99,10 +99,66 @@ def f_y(x, u, mu_yf, mu_yr, m=m, l_f=l_f, l_r=l_r, g=g, mu_x=mu_x, mu=mu, B=B, C
 
 
 
+@jax.jit
+def log_likelihood(obs_x, obs_mu_f, obs_mu_r, x_mean, x_1, mu_f_1, mu_r_1, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r):
+    
+    # log likelihood of state x
+    l_x = log_likelihood_Normal(obs_x, x_mean, Q)
+    
+    
+    
+    # log likelihood of mu_f from conditional predictive PDF
+    phi_1 = basis_fcn(x_1)
+    phi_2 = basis_fcn(obs_x)
+    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_CondPredictive(
+        y1_var=y1_var,
+        mean=Mean_f,
+        col_cov=Col_Cov_f,
+        row_scale=Row_Scale_f,
+        df=df_f,
+        y1=mu_f_1,
+        basis1=phi_1,
+        basis2=phi_2
+        )
+    
+    l_muf = log_likelihood_Multivariate_t(
+        observed=obs_mu_f, 
+        mean=c_mean, 
+        scale=c_col_scale*c_row_scale, 
+        df=c_df
+        )
+    
+    
+    
+    # log likelihood of mu_f from conditional predictive PDF
+    phi_1 = basis_fcn(x_1)
+    phi_2 = basis_fcn(obs_x)
+    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_CondPredictive(
+        y1_var=y1_var,
+        mean=Mean_r,
+        col_cov=Col_Cov_r,
+        row_scale=Row_Scale_r,
+        df=df_r,
+        y1=mu_r_1,
+        basis1=phi_1,
+        basis2=phi_2
+        )
+    
+    l_mur = log_likelihood_Multivariate_t(
+        observed=obs_mu_r, 
+        mean=c_mean, 
+        scale=c_col_scale*c_row_scale, 
+        df=c_df
+        )
+    
+    return l_x + l_muf + l_mur
+
+
+
 #### This section defines relevant parameters for the simulation
 
 # set seed for reproducability
-np.random.seed(16723573)
+rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
@@ -111,6 +167,7 @@ dt = 0.01
 t_end = 100.0
 time = np.arange(0.0, t_end, dt)
 steps = len(time)
+y1_var = 3e-2
 
 # initial system state
 x0 = np.array([0.0, 0.0])
@@ -120,8 +177,8 @@ P0 = np.diag([1e-4, 1e-4])
 R = np.diag([0.01/180*np.pi, 1e-1, 1e-3])
 Q = np.diag([1e-9, 1e-9])
 R_y = 1e1
-w = lambda n=1: np.random.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
-e = lambda n=1: np.random.multivariate_normal(np.zeros((R.shape[0],)), R, n)
+w = lambda n=1: rng.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
+e = lambda n=1: rng.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
 
 # control input to the vehicle as [steering angle, longitudinal velocity]
@@ -359,18 +416,19 @@ def Vehicle_APF(Y):
                 mu_yf=mu_f_aux, 
                 mu_yr=mu_r_aux)
         l_y_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
-        p = weights[i-1] * np.exp(l_y_aux)
-        p = p/np.sum(p)
+        weights_aux = weights[i-1] * np.exp(l_y_aux)
+        weights_aux = weights_aux/np.sum(weights_aux)
         
         #abort
-        if np.any(np.isnan(p)):
+        if np.any(np.isnan(weights_aux)):
             print("Particle degeneration at auxiliary weights")
             break
         
         # draw new indices
-        u = np.random.rand()
-        idx = np.array(systematic_SISR(u, p))
-        idx[idx >= N_particles] = N_particles - 1 # correct out of bounds indices from numerical errors
+        u = rng.random()
+        idx = np.array(systematic_SISR(u, weights_aux))
+        # correct out of bounds indices from numerical errors
+        idx[idx >= N_particles] = N_particles - 1
         
         
         
@@ -398,7 +456,7 @@ def Vehicle_APF(Y):
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
             )(
                 mean=GP_para_f[0][idx],
                 col_cov=GP_para_f[1][idx],
@@ -412,7 +470,7 @@ def Vehicle_APF(Y):
         # generate samples
         c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
         c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
-        t_samples = np.random.standard_t(df=df)
+        t_samples = rng.standard_t(df=df)
         Sigma_mu_f[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
         
         ## sample proposal for mu rear at time t
@@ -426,7 +484,7 @@ def Vehicle_APF(Y):
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
             )(
                 mean=GP_para_r[0][idx],
                 col_cov=GP_para_r[1][idx],
@@ -440,7 +498,7 @@ def Vehicle_APF(Y):
         # generate samples
         c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
         c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
-        t_samples = np.random.standard_t(df=df)
+        t_samples = rng.standard_t(df=df)
         Sigma_mu_r[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
             
             
@@ -514,4 +572,286 @@ def Vehicle_APF(Y):
             x=Sigma_X[i]
         )
         
-    return Sigma_X, Sigma_mu_r, Sigma_mu_f, Sigma_alpha_f, Sigma_alpha_r, weights, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r
+    return Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_alpha_f, Sigma_alpha_r, weights, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r
+
+
+
+#### This section defines a function to run the offline version of the algorithm
+
+def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r):
+    
+    #variables for logging
+    Sigma_X = np.zeros((steps,N_particles,2))
+    Sigma_Y = np.zeros((steps,N_particles,2))
+    Sigma_mu_f = np.zeros((steps,N_particles))
+    Sigma_mu_r = np.zeros((steps,N_particles))
+    ancestor_idx = np.zeros((steps-1,N_particles))
+    
+    # initial values for states
+    Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N_particles,))
+    Sigma_mu_f[0,...] = np.random.normal(0, 1e-2, (N_particles,))
+    Sigma_mu_r[0,...] = np.random.normal(0, 1e-2, (N_particles,))
+    weights = np.ones((steps,N_particles))/N_particles
+    
+    if x_ref is not None:
+        Sigma_X[0,-1,...] = x_ref[0]
+        Sigma_mu_f[0,-1,...] = mu_f_ref[0]
+        Sigma_mu_r[0,-1,...] = mu_r_ref[0]
+    
+    
+    
+    for i in tqdm(range(1,steps), desc="    Running CPF Kernel"):
+            
+            
+            
+        ### Step 1: According to the algorithm of the auxiliary PF, resample 
+        # particles according to the first stage weights
+        
+        # create auxiliary variable for state x
+        x_aux = jax.vmap(functools.partial(f_x, u=ctrl_input[i-1], dt=dt))(
+            x=Sigma_X[i-1],
+            mu_yf=Sigma_mu_f[i-1], 
+            mu_yr=Sigma_mu_r[i-1]
+        )
+        
+        # create auxiliary variable for mu front
+        phi_f0 = jax.vmap(
+            functools.partial(features_MTF_front, u=ctrl_input[i-1])
+            )(Sigma_X[i-1])
+        phi_f1 = jax.vmap(
+            functools.partial(features_MTF_front, u=ctrl_input[i])
+            )(x_aux)
+        mu_f_aux = jax.vmap(
+            functools.partial(prior_mniw_CondPredictive, 
+                y1_var=y1_var, 
+                mean=Mean_f,
+                col_cov=Col_Cov_f,
+                row_scale=Row_Scale_f,
+                df=df_f)
+            )(
+                y1=Sigma_mu_f[i-1],
+                basis1=phi_f0,
+                basis2=phi_f1
+        )[0]
+        
+        # create auxiliary variable for mu rear
+        phi_r0 = jax.vmap(
+            functools.partial(features_MTF_rear, u=ctrl_input[i-1])
+            )(Sigma_X[i-1])
+        phi_r1 = jax.vmap(
+            functools.partial(features_MTF_rear, u=ctrl_input[i])
+            )(x_aux)
+        mu_r_aux = jax.vmap(
+            functools.partial(prior_mniw_CondPredictive, 
+                y1_var=y1_var,
+                mean=Mean_r,
+                col_cov=Col_Cov_r,
+                row_scale=Row_Scale_r,
+                df=df_r)
+            )(
+                y1=Sigma_mu_r[i-1],
+                basis1=phi_r0,
+                basis2=phi_r1
+        )[0]
+        
+        # calculate first stage weights
+        y_aux = jax.vmap(
+            functools.partial(f_y, u=ctrl_input[i])
+            )(
+                x=x_aux,
+                mu_yf=mu_f_aux, 
+                mu_yr=mu_r_aux)
+        l_y_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
+        weights_aux = weights[i-1] * np.exp(l_y_aux)
+        weights_aux = weights_aux/np.sum(weights_aux)
+        
+        #abort
+        if np.any(np.isnan(weights_aux)):
+            print("Particle degeneration at auxiliary weights")
+            break
+        
+        # draw new indices
+        u = rng.random()
+        idx = np.array(systematic_SISR(u, weights_aux))
+        # correct out of bounds indices from numerical errors
+        idx[idx >= N_particles] = N_particles - 1
+        
+        # let reference trajectory survive
+        if x_ref is not None:
+            idx[-1] = N_particles - 1
+        
+        
+        
+        ### Step 2: Make a proposal by generating samples from the hirachical 
+        # model
+        
+        # sample from proposal for x at time t
+        w_x = w((N_particles,))
+        Sigma_X_mean = jax.vmap(
+            functools.partial(f_x, u=ctrl_input[i-1], dt=dt)
+            )(
+                x=Sigma_X[i-1,idx],
+                mu_yf=Sigma_mu_f[i-1,idx],
+                mu_yr=Sigma_mu_r[i-1,idx]
+                )
+        Sigma_X[i] = Sigma_X_mean + w_x
+        
+        # set reference trajectory for state x
+        if x_ref is not None:
+            Sigma_X[i,-1] = x_ref[i]
+        
+        ## sample proposal for mu front at time t
+        # evaluate basis functions
+        phi_f0 = jax.vmap(
+            functools.partial(features_MTF_front, u=ctrl_input[i-1])
+            )(Sigma_X[i-1,idx])
+        phi_f1 = jax.vmap(
+            functools.partial(features_MTF_front, u=ctrl_input[i])
+            )(Sigma_X[i])
+        
+        # calculate conditional predictive distribution
+        c_mean, c_col_scale, c_row_scale, df = jax.vmap(
+            functools.partial(prior_mniw_CondPredictive, 
+                y1_var=y1_var,
+                mean=Mean_f,
+                col_cov=Col_Cov_f,
+                row_scale=Row_Scale_f,
+                df=df_f)
+            )(
+                y1=Sigma_mu_f[i-1,idx],
+                basis1=phi_f0,
+                basis2=phi_f1
+        )
+            
+        # generate samples
+        c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
+        c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
+        t_samples = rng.standard_t(df=df)
+        Sigma_mu_f[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
+        
+        # set reference trajectory for mu_f
+        if x_ref is not None:
+            Sigma_mu_f[i,-1] = mu_f_ref[i]
+        
+        
+        ## sample proposal for mu rear at time t
+        # evaluate basis fucntions
+        phi_r0 = jax.vmap(
+            functools.partial(features_MTF_rear, u=ctrl_input[i-1])
+            )(Sigma_X[i-1,idx])
+        phi_r1 = jax.vmap(
+            functools.partial(features_MTF_rear, u=ctrl_input[i])
+            )(Sigma_X[i])
+        
+        # calculate conditional predictive distribution
+        c_mean, c_col_scale, c_row_scale, df = jax.vmap(
+            functools.partial(prior_mniw_CondPredictive, 
+                y1_var=y1_var,
+                mean=Mean_r,
+                col_cov=Col_Cov_r,
+                row_scale=Row_Scale_r,
+                df=df_r)
+            )(
+                y1=Sigma_mu_r[i-1,idx],
+                basis1=phi_r0,
+                basis2=phi_r1
+        )
+            
+        # generate samples
+        c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
+        c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
+        t_samples = rng.standard_t(df=df)
+        Sigma_mu_r[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
+        
+        # set reference trajectory for mu_r
+        if x_ref is not None:
+            Sigma_mu_r[i,-1] = mu_r_ref[i]
+        
+        
+        
+        ### Step 3: Sample a new ancestor for the reference trajectory
+        
+        if x_ref is not None:
+            # calculate ancestor weights
+            l_x = jax.vmap(
+                functools.partial(
+                    log_likelihood, 
+                    obs_x=Sigma_X[i,-1], 
+                    obs_mu_f=Sigma_mu_f[i,-1], 
+                    obs_mu_r=Sigma_mu_r[i,-1], 
+                    Mean_f=Mean_f, 
+                    Col_Cov_f=Col_Cov_f, 
+                    Row_Scale_f=Row_Scale_f, 
+                    df_f=df_f, 
+                    Mean_r=Mean_r, 
+                    Col_Cov_r=Col_Cov_r, 
+                    Row_Scale_r=Row_Scale_r, 
+                    df_r=df_r)
+                )(
+                    x_mean=Sigma_X_mean, 
+                    x_1=Sigma_X[i-1], 
+                    mu_f_1=Sigma_mu_f[i-1], 
+                    mu_r_1=Sigma_mu_r[i-1]
+                    )
+            weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
+            
+            # sample an ancestor index for reference trajectory
+            if np.isclose(np.sum(weights_ancestor), 0):
+                ref_idx = N_particles - 1
+            else:
+                weights_ancestor /= np.sum(weights_ancestor)
+                u = rng.random()
+                ref_idx = np.searchsorted(np.cumsum(weights_ancestor), u)
+            
+            # set ancestor index
+            idx[-1] = ref_idx
+        
+        # save genealogy
+        ancestor_idx[i-1] = idx
+        
+        
+        
+        ### Step 4: Calculate new weights
+        sigma_y = jax.vmap(
+            functools.partial(f_y, u=ctrl_input[i])
+            )(
+                x=Sigma_X[i],
+                mu_yf=Sigma_mu_f[i], 
+                mu_yr=Sigma_mu_r[i])
+        Sigma_Y[i] = sigma_y[:,:2]
+        l_y = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(sigma_y)
+        weights[i] = np.exp(l_y - l_y_aux[idx])
+        weights[i] = weights[i]/np.sum(weights[i])
+        
+        #abort
+        if np.any(np.isnan(weights[i])):
+            print("Particle degeneration at new weights")
+            break
+    
+    
+    
+    ### Step 5: sample a new trajectory to return
+    
+    # draw trajectory index
+    u = rng.random()
+    idx_traj = np.searchsorted(np.cumsum(weights[i]), u)
+    
+    # reconstruct trajectory from genealogy
+    x_traj = np.zeros((steps,2))
+    x_traj[-1] = Sigma_X[-1, idx_traj]
+    
+    mu_f_traj = np.zeros((steps,))
+    mu_f_traj[-1] = Sigma_mu_f[-1, idx_traj]
+    
+    mu_r_traj = np.zeros((steps,))
+    mu_r_traj[-1] = Sigma_mu_r[-1, idx_traj]
+    
+    ancestry = np.zeros((steps,))
+    ancestry[-1] = idx_traj
+    for i in range(steps-2, -1, -1): # run backward in time
+        ancestry[i] = ancestor_idx[i, int(ancestry[i+1])]
+        x_traj[i] = Sigma_X[i, int(ancestry[i])]
+        mu_f_traj[i] = Sigma_mu_f[i, int(ancestry[i])]
+        mu_r_traj[i] = Sigma_mu_r[i, int(ancestry[i])]
+        
+    return x_traj, mu_f_traj, mu_r_traj

@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 from src.SingleMassOscillator import F_spring, F_damper, basis_fcn, steps, time
 from src.SingleMassOscillator import SingleMassOscillator_simulation
 from src.SingleMassOscillator import SingleMassOscillator_CPFAS_Kernel
-from src.SingleMassOscillator import SingleMassOscillator_APF
 from src.SingleMassOscillator import GP_model_prior, N_basis_fcn
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
@@ -30,8 +29,7 @@ N_iterations = 21
 Sigma_X = np.zeros((steps,N_iterations,2))
 Sigma_F = np.zeros((steps,N_iterations))
 Likelihood_Y = np.zeros((N_iterations,))
-weights = np.ones((steps,N_iterations))/N_iterations
-weights = weights / np.sum(weights[0])
+weights = np.ones((steps,N_iterations))
 
 # logging of model
 Mean_F = np.zeros((N_iterations, 1, N_basis_fcn)) # GP
@@ -57,21 +55,44 @@ GP_model_stats_logging = [
 
 # set initial reference using APF
 print(f"\nSetting initial reference trajectory")
-sample_X, sample_F, sample_w, _, _, _, _ = SingleMassOscillator_APF(Y)
-Sigma_X[:,0] = np.einsum('in...,in->i...', sample_X, sample_w)
-Sigma_F[:,0] = np.einsum('in...,in->i...', sample_F, sample_w)
+GP_para = prior_mniw_2naturalPara_inv(
+    GP_model_prior[0],
+    GP_model_prior[1],
+    GP_model_prior[2],
+    GP_model_prior[3]
+)
+Sigma_X[:,0], Sigma_F[:,0] = SingleMassOscillator_CPFAS_Kernel(
+        Y=Y,
+        x_ref=None,
+        F_ref=None,
+        Mean_F=GP_para[0], 
+        Col_cov_F=GP_para[1], 
+        Row_scale_F=GP_para[2], 
+        df_F=GP_para[3])
+    
+    
+# make proposal for distribution of F_sd using new proposals of trajectories
+phi = jax.vmap(basis_fcn)(Sigma_X[:,0])
+T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+        Sigma_F[:,0],
+        phi
+    )
+GP_model_stats[0] = np.sum(T_0, axis=0)
+GP_model_stats[1] = np.sum(T_1, axis=0)
+GP_model_stats[2] = np.sum(T_2, axis=0)
+GP_model_stats[3] = np.sum(T_3, axis=0)
 
 # initial model
-GP_para_logging = prior_mniw_2naturalPara_inv(
-    GP_model_prior[0] + GP_model_stats_logging[0],
-    GP_model_prior[1] + GP_model_stats_logging[1],
-    GP_model_prior[2] + GP_model_stats_logging[2],
-    GP_model_prior[3] + GP_model_stats_logging[3]
+GP_para = prior_mniw_2naturalPara_inv(
+    GP_model_prior[0] + GP_model_stats[0],
+    GP_model_prior[1] + GP_model_stats[1],
+    GP_model_prior[2] + GP_model_stats[2],
+    GP_model_prior[3] + GP_model_stats[3]
 )
-Mean_F[0] = GP_para_logging[0]
-Col_cov_F[0] = GP_para_logging[1]
-Row_scale_F[0] = GP_para_logging[2]
-df_F[0] = GP_para_logging[3]
+Mean_F[0] = GP_para[0]
+Col_cov_F[0] = GP_para[1]
+Row_scale_F[0] = GP_para[2]
+df_F[0] = GP_para[3]
 
 
 
@@ -114,21 +135,16 @@ for k in range(1, N_iterations):
     
     
     # logging
-    GP_model_stats_logging[0] = np.sum(T_0, axis=0)
-    GP_model_stats_logging[1] = np.sum(T_1, axis=0)
-    GP_model_stats_logging[2] = np.sum(T_2, axis=0)
-    GP_model_stats_logging[3] = np.sum(T_3, axis=0)
-    
-    GP_para_logging = prior_mniw_2naturalPara_inv(
-        GP_model_prior[0] + GP_model_stats_logging[0],
-        GP_model_prior[1] + GP_model_stats_logging[1],
-        GP_model_prior[2] + GP_model_stats_logging[2],
-        GP_model_prior[3] + GP_model_stats_logging[3]
+    GP_para = prior_mniw_2naturalPara_inv(
+        GP_model_prior[0] + GP_model_stats[0],
+        GP_model_prior[1] + GP_model_stats[1],
+        GP_model_prior[2] + GP_model_stats[2],
+        GP_model_prior[3] + GP_model_stats[3]
     )
-    Mean_F[k] = GP_para_logging[0]
-    Col_cov_F[k] = GP_para_logging[1]
-    Row_scale_F[k] = GP_para_logging[2]
-    df_F[k] = GP_para_logging[3]
+    Mean_F[k] = GP_para[0]
+    Col_cov_F[k] = GP_para[1]
+    Row_scale_F[k] = GP_para[2]
+    df_F[k] = GP_para[3]
     
 
 ################################################################################

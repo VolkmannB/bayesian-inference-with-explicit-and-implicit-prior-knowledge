@@ -12,8 +12,9 @@ import matplotlib.pyplot as plt
 
 
 from src.Vehicle import Vehicle_simulation, Vehicle_APF, basis_fcn, mu_y
-from src.Vehicle import time, forget_factor, dt
-from src.Publication_Plotting import plot_BFE_1D, generate_BFE_TimeSlices, plot_Data, apply_basic_formatting
+from src.Vehicle import time, forget_factor, dt, f_alpha
+from src.Publication_Plotting import plot_BFE_1D, generate_BFE_TimeSlices
+from src.Publication_Plotting import plot_Data, apply_basic_formatting
 
 
 
@@ -25,8 +26,8 @@ X, Y = Vehicle_simulation()
 # Online Algorithm
 (
     Sigma_X, 
-    Sigma_mu_r, 
     Sigma_mu_f, 
+    Sigma_mu_r, 
     Sigma_alpha_f, 
     Sigma_alpha_r, 
     weights, 
