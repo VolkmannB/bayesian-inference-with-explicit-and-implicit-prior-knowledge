@@ -362,8 +362,10 @@ def SingleMassOscillator_CPFAS_Kernel(
     ## set initial values
     Sigma_X[0,...] = rng.multivariate_normal(x0, P0, (N_particles,)) 
     Sigma_F[0,...] = rng.normal(0, P0_F, (N_particles,))
-    Sigma_X[0,-1] = x_ref[0]
-    Sigma_F[0,-1] = F_ref[0]
+    
+    if x_ref is not None:
+        Sigma_X[0,-1] = x_ref[0]
+        Sigma_F[0,-1] = F_ref[0]
     
     
     for i in tqdm(range(1,steps), desc="    Running CPF Kernel"):
@@ -398,7 +400,8 @@ def SingleMassOscillator_CPFAS_Kernel(
         idx[idx >= N_particles] = N_particles - 1 
         
         # let reference trajectory survive
-        idx[-1] = N_particles - 1
+        if x_ref is not None:
+            idx[-1] = N_particles - 1
         
         
         
@@ -416,7 +419,8 @@ def SingleMassOscillator_CPFAS_Kernel(
         Sigma_X[i] = Sigma_X_mean + w_x
         
         # set reference trajectory for state x
-        Sigma_X[i,-1] = x_ref[i]
+        if x_ref is not None:
+            Sigma_X[i,-1] = x_ref[i]
         
         ## sample from proposal for F at time t
         # evaluate basis functions for all particles
@@ -446,35 +450,38 @@ def SingleMassOscillator_CPFAS_Kernel(
         Sigma_F[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
         
         # set reference trajectory for F_sd
-        Sigma_F[i,-1] = F_ref[i]
+        if x_ref is not None:
+            Sigma_F[i,-1] = F_ref[i]
         
         
         
         ### Step 3: Sample a new ancestor for the reference trajectory
         
-        # calculate ancestor weights
-        l_x = jax.vmap(
-            functools.partial(
-                log_likelihood, 
-                obs_x=Sigma_X[i,-1], 
-                obs_F=Sigma_F[i,-1], 
-                Mean_F=Mean_F, 
-                Col_cov_F=Col_cov_F, 
-                Row_scale_F=Row_scale_F, 
-                df_F=df_F)
-            )(x_mean=Sigma_X_mean, x_1=Sigma_X[i-1], F_1=Sigma_F[i-1])
-        weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
-        
-        # sample an ancestor index for reference trajectory
-        if np.isclose(np.sum(weights_ancestor), 0):
-            ref_idx = N_particles - 1
-        else:
-            weights_ancestor /= np.sum(weights_ancestor)
-            u = rng.random()
-            ref_idx = np.searchsorted(np.cumsum(weights_ancestor), u)
-        
-        # set ancestor index
-        idx[-1] = ref_idx
+        if x_ref is not None:
+            
+            # calculate ancestor weights
+            l_x = jax.vmap(
+                functools.partial(
+                    log_likelihood, 
+                    obs_x=Sigma_X[i,-1], 
+                    obs_F=Sigma_F[i,-1], 
+                    Mean_F=Mean_F, 
+                    Col_cov_F=Col_cov_F, 
+                    Row_scale_F=Row_scale_F, 
+                    df_F=df_F)
+                )(x_mean=Sigma_X_mean, x_1=Sigma_X[i-1], F_1=Sigma_F[i-1])
+            weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
+            
+            # sample an ancestor index for reference trajectory
+            if np.isclose(np.sum(weights_ancestor), 0):
+                ref_idx = N_particles - 1
+            else:
+                weights_ancestor /= np.sum(weights_ancestor)
+                u = rng.random()
+                ref_idx = np.searchsorted(np.cumsum(weights_ancestor), u)
+            
+            # set ancestor index
+            idx[-1] = ref_idx
         
         # save genealogy
         ancestor_idx[i-1] = idx
@@ -496,7 +503,7 @@ def SingleMassOscillator_CPFAS_Kernel(
     
     
     ### Step 5: sample a new trajectory to return
-        
+    
     # draw trajectory index
     u = rng.random()
     idx_traj = np.searchsorted(np.cumsum(weights[i]), u)
