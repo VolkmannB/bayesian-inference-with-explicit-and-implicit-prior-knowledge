@@ -32,7 +32,7 @@ N_iterations = 2
 Sigma_X = np.zeros((steps,N_iterations,2))
 Sigma_mu_f = np.zeros((steps,N_iterations))
 Sigma_mu_r = np.zeros((steps,N_iterations))
-weights = np.ones((steps,N_iterations))
+weights = np.ones((steps,N_iterations))/N_iterations
 Sigma_alpha_f = np.zeros((steps,N_iterations))
 Sigma_alpha_r = np.zeros((steps,N_iterations))
 

@@ -29,7 +29,7 @@ N_iterations = 21
 Sigma_X = np.zeros((steps,N_iterations,2))
 Sigma_F = np.zeros((steps,N_iterations))
 Likelihood_Y = np.zeros((N_iterations,))
-weights = np.ones((steps,N_iterations))
+weights = np.ones((steps,N_iterations))/N_iterations
 
 # logging of model
 Mean_F = np.zeros((N_iterations, 1, N_basis_fcn)) # GP
