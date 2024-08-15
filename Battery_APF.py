@@ -7,9 +7,11 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 
-from src.Battery import Battery_APF, basis_fcn, data, forget_factor, offset_C1, offset_R1
-from src.Publication_Plotting import plot_BFE_1D, generate_BFE_TimeSlices
-from src.Publication_Plotting import apply_basic_formatting, plot_Data
+from src.Battery import Battery_APF, basis_fcn, data, time, scale_C1, scale_R1
+from src.Battery import offset_C1, offset_R1, GP_prior_C1R1, steps
+from src.Publication_Plotting import plot_fcn_error_1D
+from src.Publication_Plotting import apply_basic_formatting
+from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPara_inv
 
 
 
@@ -24,56 +26,42 @@ Sigma_X, Sigma_C1R1, Sigma_Y, weights, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R1, 
 ################################################################################
 # Plotting
 
-X_pred = np.einsum('...n,...n->...', Sigma_X, weights)
-Y_pred = np.einsum('...n,...n->...', Sigma_Y, weights)
-
-
-
-# plot data
-fig_Y, axes_Y = plot_Data(
-    Particles=Sigma_Y[1:],
-    weights=weights[1:],
-    Reference=data["Voltage"].iloc[1:],
-    time=data.index[1:]
-)
-axes_Y[0].set_ylabel(r"Voltage in $V$")
-axes_Y[0].set_xlabel("Time")
-apply_basic_formatting(fig_Y, width=8, font_size=8)
-fig_Y.savefig("Battery_APF_Fsd.pdf", bbox_inches='tight')
-
-
 
 # plot learned function
 V = jnp.linspace(0, 2.2, 500)
+basis_in = jax.vmap(basis_fcn)(V)
 
-Mean, Std, X_stats, X_weights, Time = generate_BFE_TimeSlices(
-    N_slices=4, 
-    X_in=V[...,None], 
-    Sigma_X=Sigma_X, 
-    Sigma_weights=weights,
-    Mean=Mean_C1R1, 
-    Col_Scale=Col_Cov_C1R1, 
-    Row_Scale=Row_Scale_C1R1, 
-    DF=df_C1R1, 
-    basis_fcn=basis_fcn, 
-    forget_factor=forget_factor
-    )
+N_slices = 4
+index = (np.array(range(N_slices))+1)/N_slices*(steps-1)
 
+# function value from GP
+fcn_mean = np.zeros((steps, 2, V.shape[0]))
+fcn_var = np.zeros((steps, 2, V.shape[0]))
+for i in tqdm(range(0, steps), desc='Calculating fcn value and var'):
+    mean, col_scale, row_scale, _ = prior_mniw_Predictive(
+        mean=Mean_C1R1[i], 
+        col_cov=Col_Cov_C1R1[i], 
+        row_scale=Row_Scale_C1R1[i], 
+        df=df_C1R1[i], 
+        basis=basis_in)
+    fcn_var[i,0,:] = np.diag(col_scale-1) * row_scale[0,0] * scale_C1**2
+    fcn_var[i,1,:] = np.diag(col_scale-1) * row_scale[1,1] * scale_R1**2
+    fcn_mean[i] = (mean * np.array([scale_C1, scale_R1]) + np.array([offset_C1, offset_R1])).T
 
-fig_BFE, ax_BFE = plot_BFE_1D(
-    V,
-    np.array([offset_C1, offset_R1])[None,:,None] + Mean,
-    Std,
-    Time,
-    X_stats, 
-    X_weights
-)
-ax_BFE[0,0].set_ylabel(r"Capacity $C_1$ in $F \times 10^{2}$")
-ax_BFE[0,1].set_ylabel(r"Resistance $R_1$ in $\Omega \times 10^{3}$")
-for ax in ax_BFE[1]:
-    ax.set_xlabel(r"Voltage in $V$")
-apply_basic_formatting(fig_BFE, width=16, font_size=8)
-fig_BFE.savefig("Battery_APF_Fsd_fcn.pdf", bbox_inches='tight')
+# generate plot
+for i in index:
+    fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
+        V, 
+        Mean=fcn_mean[int(i)], 
+        Std=np.sqrt(fcn_var[int(i)]),
+        X_stats=Sigma_X[:int(i)], 
+        X_weights=weights[:int(i)])
+    ax_fcn_e[0][2].set_xlabel(r"Voltage in $\mathrm{V}$")
+    ax_fcn_e[0][1].set_ylabel(r"Capacity in $\mathrm{F}$")
+    ax_fcn_e[0][2].set_ylabel(r"Resistance in $\mathrm{\Omega}$")
+        
+    apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
+    fig_fcn_e.savefig(f"Battery_APF_muf_fcn_{int(i)}.svg")
 
 
 
