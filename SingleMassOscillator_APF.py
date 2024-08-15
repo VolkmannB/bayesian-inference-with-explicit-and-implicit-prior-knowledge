@@ -123,6 +123,7 @@ ax_RMSE.plot(
 )
 ax_RMSE.set_ylabel(r"wRMSE")
 ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
+ax_RMSE.set_ylim(0)
 
 for i in index:
     ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
