@@ -399,10 +399,10 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
             functools.partial(
                 prior_mniw_CondPredictive, 
                 y1_var=y1_var,
-                mean=Mean_C1R1[0],
-                col_cov=Col_Cov_C1R1[1],
-                row_scale=Row_Scale_C1R1[2],
-                df=df_C1R1[3])
+                mean=Mean_C1R1,
+                col_cov=Col_Cov_C1R1,
+                row_scale=Row_Scale_C1R1,
+                df=df_C1R1)
             )(
                 y1=Sigma_C1R1[i-1,...],
                 basis1=phi_0,
@@ -411,7 +411,7 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
         
         # calculate first stage weights
         y_aux = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=x_aux)
-        l_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(x=y_aux)
+        l_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
         l_C0_clip = np.all(np.vstack([cl_C1 <= C1R1_aux[:,0], C1R1_aux[:,0] <= cu_C1]), axis=0)
         l_R0_clip = np.all(np.vstack([cl_R1 <= C1R1_aux[:,1], C1R1_aux[:,1] <= cu_R1]), axis=0)
         weights_aux = weights[i-1] * l_fy * l_C0_clip * l_R0_clip
@@ -461,10 +461,10 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
             functools.partial(
                 prior_mniw_CondPredictive, 
                 y1_var=y1_var,
-                mean=Mean_C1R1[0],
-                col_cov=Col_Cov_C1R1[1],
-                row_scale=Row_Scale_C1R1[2],
-                df=df_C1R1[3])
+                mean=Mean_C1R1,
+                col_cov=Col_Cov_C1R1,
+                row_scale=Row_Scale_C1R1,
+                df=df_C1R1)
             )(
                 y1=Sigma_C1R1[i-1,idx],
                 basis1=phi_0,
