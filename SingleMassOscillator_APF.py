@@ -1,5 +1,8 @@
 import numpy as np
 import jax
+import jax.numpy as jnp
+import functools
+from tqdm import tqdm
 
 
 
@@ -8,10 +11,12 @@ import matplotlib.pyplot as plt
 
 
 from src.SingleMassOscillator import F_spring, F_damper, basis_fcn, time, steps
-from src.SingleMassOscillator import forget_factor, dt
+from src.SingleMassOscillator import forget_factor, dt, GP_model_prior
 from src.SingleMassOscillator import SingleMassOscillator_simulation
 from src.SingleMassOscillator import SingleMassOscillator_APF
-from src.Publication_Plotting import plot_BFE_2D, generate_BFE_TimeSlices, plot_Data, apply_basic_formatting
+from src.Publication_Plotting import plot_BFE_2D, generate_BFE_TimeSlices, plot_fcn_error_2D
+from src.Publication_Plotting import plot_Data, apply_basic_formatting, imes_blue
+from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPara_inv
 
 
 
@@ -30,71 +35,100 @@ Sigma_X, Sigma_F, weights, Mean_F, Col_cov_F, Row_scale_F, df_F = SingleMassOsci
 
 # plot the state estimations
 fig_X, axes_X = plot_Data(
-    Particles=Sigma_X,
+    Particles=np.concatenate([Sigma_X, Sigma_F[...,None]], axis=-1),
     weights=weights,
-    Reference=X,
+    Reference=np.concatenate([X,F_sd[...,None]], axis=-1),
     time=time
 )
-axes_X[0].set_ylabel(r"$s$ in $m$")
-axes_X[1].set_ylabel(r"$\dot{s}$ in $m/s$")
-axes_X[1].set_xlabel(r"Time in $s$")
-apply_basic_formatting(fig_X, width=8, font_size=8)
-fig_X.savefig("SingleMassOscillator_APF_X.pdf", bbox_inches='tight')
-
-
-# plot the force estimations
-fig_F, axes_F = plot_Data(
-    Particles=Sigma_F,
-    weights=weights,
-    Reference=F_sd,
-    time=time
-)
-axes_X[0].set_ylabel(r"$F_\mathrm{sd}$ in $N$")
-axes_X[0].set_xlabel(r"Time in $s$")
-apply_basic_formatting(fig_F, width=8, font_size=8)
-fig_F.savefig("SingleMassOscillator_APF_Fsd.pdf", bbox_inches='tight')
+axes_X[0].set_ylabel(r"$s$ in $\mathrm{m}$")
+axes_X[1].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+axes_X[2].set_ylabel(r"$F$ in $\mathrm{N}$")
+axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
+apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
+fig_X.savefig("SingleMassOscillator_APF_X.svg", bbox_inches='tight')
 
 
 
-# plot time slices of the learned spring-damper function
+### plot time slices of the learned spring-damper function
 x_plt = np.linspace(-5., 5., 50)
 dx_plt = np.linspace(-5., 5., 50)
 grid_x, grid_y = np.meshgrid(x_plt, dx_plt, indexing='xy')
 X_in = np.vstack([grid_x.flatten(), grid_y.flatten()]).T
+basis_in = jax.vmap(basis_fcn)(X_in)
 
+N_slices = 4
+index = (np.array(range(N_slices))+1)/N_slices*(steps-1)
+
+# true spring damper force
 F_sd_true = jax.vmap(F_spring)(X_in[:,0]) + jax.vmap(F_damper)(X_in[:,1])
 
-Mean, Std, X_stats, X_weights, Time = generate_BFE_TimeSlices(
-    N_slices=4, 
-    X_in=X_in, 
-    Sigma_X=Sigma_X[:int(steps*3/5)], 
-    Sigma_weights=weights[:int(steps*3/5)],
-    Mean=Mean_F[:int(steps*3/5)], 
-    Col_Scale=Col_cov_F[:int(steps*3/5)], 
-    Row_Scale=Row_scale_F[:int(steps*3/5)], 
-    DF=df_F[:int(steps*3/5)], 
-    basis_fcn=basis_fcn, 
-    forget_factor=forget_factor
-    )
+# function values with GP prior
+GP_prior = prior_mniw_2naturalPara_inv(
+            GP_model_prior[0],
+            GP_model_prior[1],
+            GP_model_prior[2],
+            GP_model_prior[3]
+        )
+_, col_scale_prior, row_scale_prior, _ = prior_mniw_Predictive(
+    mean=GP_prior[0], 
+    col_cov=GP_prior[1], 
+    row_scale=GP_prior[2], 
+    df=GP_prior[3], 
+    basis=basis_in)
+fcn_var_prior = np.diag(col_scale_prior-1) * row_scale_prior[0,0]
+del col_scale_prior, row_scale_prior, GP_prior
 
-mean_err = np.abs(Mean-F_sd_true)
-fig_BFE_F, ax_BFE_F = plot_BFE_2D(
-    X_in,
-    mean_err,
-    Time*dt,
-    X_stats, 
-    X_weights
+# function value from GP
+fcn_mean = np.zeros((time.shape[0], X_in.shape[0]))
+fcn_var = np.zeros((time.shape[0], X_in.shape[0]))
+for i in tqdm(range(0, time.shape[0]), desc='Calculating fcn error and var'):
+    mean, col_scale, row_scale, _ = prior_mniw_Predictive(
+        mean=Mean_F[i], 
+        col_cov=Col_cov_F[i], 
+        row_scale=Row_scale_F[i], 
+        df=df_F[i], 
+        basis=basis_in)
+    fcn_var[i,:] = np.diag(col_scale-1) * row_scale[0,0]
+    fcn_mean[i] = mean
+
+# normalize variance to create transparency effect
+fcn_alpha = np.maximum(np.minimum(1 - fcn_var/fcn_var_prior, 1), 0)
+
+# generate plot
+for i in index:
+    fig_fcn_e, ax_fcn_e = plot_fcn_error_2D(
+        X_in, 
+        Mean=np.abs(fcn_mean[int(i)]-F_sd_true), 
+        X_stats=Sigma_X[:int(i)], 
+        X_weights=weights[:int(i)], 
+        alpha=fcn_alpha[int(i)])
+    ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
+    ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+        
+    apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
+    fig_fcn_e.savefig(f"SingleMassOscillator_APF_Fsd_fcn_{np.round(time[int(i)],3)}.svg")
+
+
+
+
+# plot weighted RMSE of GP over entire function space
+fcn_var = fcn_var + 1e-4 # to avoid dividing by zero
+v1 = np.sum(1/fcn_var, axis=-1)
+wRMSE = np.sqrt(v1/(v1**2 - v1) * jnp.sum((fcn_mean - F_sd_true) ** 2 / fcn_var, axis=-1))
+fig_RMSE, ax_RMSE = plt.subplots(1,1, layout='tight')
+ax_RMSE.plot(
+    time,
+    wRMSE,
+    color=imes_blue
 )
+ax_RMSE.set_ylabel(r"wRMSE")
+ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
 
-
-# set x label
-for ax in ax_BFE_F[1]:
-    ax.set_xlabel(r'$\dot{s}$ in $m/s$')
-ax_BFE_F[0,0].set_ylabel(r'$s$ in $m$')
-ax_BFE_F[1,0].set_ylabel(r'$s$ in $m$')
+for i in index:
+    ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
     
-apply_basic_formatting(fig_BFE_F, width=16, font_size=8)
-fig_BFE_F.savefig("SingleMassOscillator_APF_Fsd_fcn.pdf", bbox_inches='tight')
+apply_basic_formatting(fig_RMSE, width=8, font_size=8)
+fig_RMSE.savefig("SingleMassOscillator_APF_Fsd_wRMSE.svg", bbox_inches='tight')
 
 
 
