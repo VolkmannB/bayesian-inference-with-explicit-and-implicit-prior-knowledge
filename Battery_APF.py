@@ -57,11 +57,11 @@ for i in index:
         X_stats=Sigma_X[:int(i)], 
         X_weights=weights[:int(i)])
     ax_fcn_e[0][2].set_xlabel(r"Voltage in $\mathrm{V}$")
-    ax_fcn_e[0][1].set_ylabel(r"Capacity in $\mathrm{F}$")
-    ax_fcn_e[0][2].set_ylabel(r"Resistance in $\mathrm{\Omega}$")
+    ax_fcn_e[0][1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
+    ax_fcn_e[0][2].set_ylabel(r"$R_1$ in $\mathrm{\Omega}$")
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
-    fig_fcn_e.savefig(f"Battery_APF_muf_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"Battery_APF_C1R1_fcn_{int(i)}.svg")
 
 
 
