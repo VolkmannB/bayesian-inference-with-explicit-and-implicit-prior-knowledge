@@ -339,7 +339,7 @@ def plot_PGAS_iterrations(Trajectories, time, iter_idx, dpi=150):
 
 def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150):
     
-    fig = plt.figure(layout="tight", dpi=dpi)
+    fig = plt.figure(dpi=dpi)
     gs = fig.add_gridspec(2, 2,  width_ratios=(5, 1), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
     
     ax = fig.add_subplot(gs[1, 0])
@@ -377,13 +377,13 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
     # plot histogram
     ax_histx.hist(
         X_stats[...,0].flatten(), 
-        bins=50,
+        bins=np.linspace(x_min, x_max, 100),
         weights=X_weights.flatten(), 
         color=imes_blue,
         log=False)
     ax_histy.hist(
         X_stats[...,1].flatten(), 
-        bins=50, 
+        bins=np.linspace(x_min, x_max, 100), 
         weights=X_weights.flatten(), 
         color=imes_blue,
         log=False,
@@ -393,3 +393,55 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
     fig.colorbar(cntr, ax=ax_histy)
     
     return fig, [ax, ax_histx, ax_histy]
+
+
+
+def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150):
+    
+    Mean = np.atleast_2d(Mean)
+    Std = np.atleast_2d(Std)
+    N_tasks = Mean.shape[0]
+    
+    x_min = np.min(X_in)
+    x_max = np.max(X_in)
+    
+    fig = plt.figure(dpi=dpi)
+    gs = fig.add_gridspec(
+        N_tasks+1, 1, 
+        height_ratios=(1, *(5*np.ones((N_tasks,)))), 
+        hspace=0.05, 
+        wspace=0.05)
+    
+    ax = []
+    for i in range(0,N_tasks):
+        
+        if i == 0:
+            ax.append(fig.add_subplot(gs[i+1, 0]))
+        else:
+            ax.append(fig.add_subplot(gs[i+1, 0], sharex=ax[i-1]))
+    
+        # plot function
+        ax[i].plot(X_in, Mean[i], color=imes_blue)
+        ax[i].fill_between(
+            X_in, 
+            Mean[i] - 3*Std[i], 
+            Mean[i] + 3*Std[i], 
+            color=imes_blue, 
+            alpha=0.2)
+        ax[i].set_xlim(x_min, x_max)
+    
+    # plot histogram
+    ax_histx = fig.add_subplot(gs[0, 0], sharex=ax[-1])
+    ax_histx.hist(
+        X_stats.flatten(), 
+        bins=np.linspace(x_min, x_max, 100),
+        weights=X_weights.flatten(), 
+        color=imes_blue)
+    ax_histx.tick_params(
+        axis='x', 
+        which='both', 
+        bottom=False, 
+        top=False, 
+        labelbottom=False)
+    
+    return fig, [ax, ax_histx]
