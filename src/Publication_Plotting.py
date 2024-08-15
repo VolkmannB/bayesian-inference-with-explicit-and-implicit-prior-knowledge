@@ -264,14 +264,12 @@ def plot_Data(Particles, weights, Reference, time, dpi=150):
         
         # set limits
         axes[i].set_xlim(np.min(time), np.max(time))
-    
-    axes[i].set_xlabel(r'Time in [$s$]')
         
     return fig, axes
 
 
 
-def apply_basic_formatting(fig, width=8, font_size=12, dpi=150):
+def apply_basic_formatting(fig, width=8, aspect_ratio=aspect_ratio, font_size=12, dpi=150):
     
     fig.set_size_inches(width*inch_per_cm, width*inch_per_cm/aspect_ratio)
     
@@ -336,3 +334,62 @@ def plot_PGAS_iterrations(Trajectories, time, iter_idx, dpi=150):
     axes[0,-1].legend()
         
     return fig, axes
+
+
+
+def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150):
+    
+    fig = plt.figure(layout="tight", dpi=dpi)
+    gs = fig.add_gridspec(2, 2,  width_ratios=(5, 1), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
+    
+    ax = fig.add_subplot(gs[1, 0])
+    ax_histx = fig.add_subplot(gs[0, 0], sharex=ax)
+    ax_histy = fig.add_subplot(gs[1, 1], sharey=ax)
+    
+    ax_histx.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
+    ax_histy.tick_params(axis='y', which='both', left=False, right=False, labelbottom=False)
+    
+    x_min = np.min(X_in[:,0])
+    x_max = np.max(X_in[:,0])
+    y_min = np.min(X_in[:,1])
+    y_max = np.max(X_in[:,1])
+    
+    
+    if norm=='log':
+        normalizer = matplotlib.colors.LogNorm()
+    else:
+        normalizer = matplotlib.colors.Normalize()
+    
+    # plot triangulized mesh
+    cntr = ax.tripcolor(
+        X_in[:,0], 
+        X_in[:,1], 
+        Mean,
+        norm=normalizer,
+        cmap=imes_colorscale,
+        alpha=alpha,
+        shading='gouraud',
+        edgecolors='none'
+        )
+    ax.set_xlim(x_min, x_max)
+    ax.set_ylim(y_min, y_max)
+    
+    # plot histogram
+    ax_histx.hist(
+        X_stats[...,0].flatten(), 
+        bins=50,
+        weights=X_weights.flatten(), 
+        color=imes_blue,
+        log=False)
+    ax_histy.hist(
+        X_stats[...,1].flatten(), 
+        bins=50, 
+        weights=X_weights.flatten(), 
+        color=imes_blue,
+        log=False,
+        orientation='horizontal',)
+    
+    # add colorbar
+    fig.colorbar(cntr, ax=ax_histy)
+    
+    return fig, [ax, ax_histx, ax_histy]
