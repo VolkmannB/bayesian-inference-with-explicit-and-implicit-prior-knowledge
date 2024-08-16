@@ -11,10 +11,9 @@ import matplotlib.pyplot as plt
 
 
 from src.SingleMassOscillator import F_spring, F_damper, basis_fcn, time, steps
-from src.SingleMassOscillator import forget_factor, dt, GP_model_prior
 from src.SingleMassOscillator import SingleMassOscillator_simulation
-from src.SingleMassOscillator import SingleMassOscillator_APF
-from src.Publication_Plotting import plot_BFE_2D, generate_BFE_TimeSlices, plot_fcn_error_2D
+from src.SingleMassOscillator import SingleMassOscillator_APF, GP_prior
+from src.Publication_Plotting import plot_fcn_error_2D
 from src.Publication_Plotting import plot_Data, apply_basic_formatting, imes_blue
 from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPara_inv
 
@@ -64,10 +63,10 @@ F_sd_true = jax.vmap(F_spring)(X_in[:,0]) + jax.vmap(F_damper)(X_in[:,1])
 
 # function values with GP prior
 GP_prior = prior_mniw_2naturalPara_inv(
-            GP_model_prior[0],
-            GP_model_prior[1],
-            GP_model_prior[2],
-            GP_model_prior[3]
+            GP_prior[0],
+            GP_prior[1],
+            GP_prior[2],
+            GP_prior[3]
         )
 _, col_scale_prior, row_scale_prior, _ = prior_mniw_Predictive(
     mean=GP_prior[0], 
