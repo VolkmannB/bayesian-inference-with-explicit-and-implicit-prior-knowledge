@@ -37,8 +37,8 @@ def dx(x, I, R_1, C_1):
 @jax.jit
 def f_x(x, I, R_1, C_1, dt):
     
-        C_1 = offset_C1 + C_1 * scale_C1
-        R_1 = offset_R1 + R_1 * scale_R1
+        C_1 = (offset_C1 + C_1) * scale_C1
+        R_1 = (offset_R1 + R_1) * scale_R1
         
         k1 = dx(x, I, R_1, C_1)
         k2 = dx(x+dt*k1/2, I, R_1, C_1)
@@ -544,7 +544,7 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
     idx_traj = np.searchsorted(np.cumsum(weights[i]), u)
     
     # reconstruct trajectory from genealogy
-    x_traj = np.zeros((steps,2))
+    x_traj = np.zeros((steps))
     x_traj[-1] = Sigma_X[-1, idx_traj]
     C1R1_traj = np.zeros((steps,2))
     C1R1_traj[-1] = Sigma_C1R1[-1, idx_traj]

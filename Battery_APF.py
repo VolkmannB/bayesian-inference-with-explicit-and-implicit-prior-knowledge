@@ -46,7 +46,7 @@ for i in tqdm(range(0, steps), desc='Calculating fcn value and var'):
         basis=basis_in)
     fcn_var[i,0,:] = np.diag(col_scale-1) * row_scale[0,0] * scale_C1**2
     fcn_var[i,1,:] = np.diag(col_scale-1) * row_scale[1,1] * scale_R1**2
-    fcn_mean[i] = (mean * np.array([scale_C1, scale_R1]) + np.array([offset_C1, offset_R1])).T
+    fcn_mean[i] = ((mean + np.array([offset_C1, offset_R1])) * np.array([scale_C1, scale_R1])).T
 
 # generate plot
 for i in index:
@@ -56,9 +56,9 @@ for i in index:
         Std=np.sqrt(fcn_var[int(i)]),
         X_stats=Sigma_X[:int(i)], 
         X_weights=weights[:int(i)])
-    ax_fcn_e[0][2].set_xlabel(r"Voltage in $\mathrm{V}$")
-    ax_fcn_e[0][1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
-    ax_fcn_e[0][2].set_ylabel(r"$R_1$ in $\mathrm{\Omega}$")
+    ax_fcn_e[0][1].set_xlabel(r"Voltage in $\mathrm{V}$")
+    ax_fcn_e[0][0].set_ylabel(r"$C_1$ in $\mathrm{F}$")
+    ax_fcn_e[0][1].set_ylabel(r"$R_1$ in $\mathrm{\Omega}$")
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
     fig_fcn_e.savefig(f"Battery_APF_C1R1_fcn_{int(i)}.svg")
