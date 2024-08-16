@@ -100,6 +100,7 @@ rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
+N_PGAS_iter = 200
 t_end = 100.0
 dt = 0.01
 forget_factor = 0.999
@@ -141,7 +142,7 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
 
 
 # parameters of the MNIW prior
-GP_model_prior = list(prior_mniw_2naturalPara(
+GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
     np.eye(1)*10,
@@ -181,23 +182,25 @@ def SingleMassOscillator_simulation():
 
 def SingleMassOscillator_APF(Y):
     
-    # Particle trajectories
-    Sigma_X = np.zeros((steps,N_particles,2))
-    Sigma_F = np.zeros((steps,N_particles))
-    weights = np.ones((steps,N_particles))/N_particles
+    print("\n=== Online Algorithm ===")
     
-    # logging of model
-    Mean_F = np.zeros((steps, 1, N_basis_fcn)) # GP
-    Col_cov_F = np.zeros((steps, N_basis_fcn, N_basis_fcn)) # GP
-    Row_scale_F = np.zeros((steps, 1, 1)) # GP
-    df_F = np.zeros((steps,)) # GP
+    # Particle trajectories
+    Sigma_X = np.zeros((steps, N_particles, 2))
+    Sigma_F = np.zeros((steps, N_particles))
+    weights = np.ones((steps, N_particles))/N_particles
     
     # variable for the sufficient statistics
-    GP_model_stats = [
+    GP_stats = [
         np.zeros((N_particles, N_basis_fcn, 1)),
         np.zeros((N_particles, N_basis_fcn, N_basis_fcn)),
         np.zeros((N_particles, 1, 1)),
         np.zeros((N_particles,))
+    ]
+    GP_stats_logging = [
+        np.zeros((steps, N_basis_fcn, 1)),
+        np.zeros((steps, N_basis_fcn, N_basis_fcn)),
+        np.zeros((steps, 1, 1)),
+        np.zeros((steps,))
     ]
     
     ## set initial values
@@ -211,29 +214,35 @@ def SingleMassOscillator_APF(Y):
         Sigma_F[0,...],
         phi
     )
-    GP_model_stats[0] += T_0
-    GP_model_stats[1] += T_1
-    GP_model_stats[2] += T_2
-    GP_model_stats[3] += T_3
+    GP_stats[0] += T_0
+    GP_stats[1] += T_1
+    GP_stats[2] += T_2
+    GP_stats[3] += T_3
+    
+    # logging
+    GP_stats_logging[0][0] = np.einsum('n...,n->...', T_0, weights[0])
+    GP_stats_logging[1][0] = np.einsum('n...,n->...', T_1, weights[0])
+    GP_stats_logging[2][0] = np.einsum('n...,n->...', T_2, weights[0])
+    GP_stats_logging[3][0] = np.einsum('n...,n->...', T_3, weights[0])
     
     
     
-    for i in tqdm(range(1,steps), desc="Running Online Algorithm"):
+    for i in tqdm(range(1,steps), desc="Running APF Algorithm"):
         
         ### Step 1: Propagate GP parameters in time
         
         # apply forgetting operator to statistics for t-1 -> t
-        GP_model_stats[0] *= forget_factor
-        GP_model_stats[1] *= forget_factor
-        GP_model_stats[2] *= forget_factor
-        GP_model_stats[3] *= forget_factor
+        GP_stats[0] *= forget_factor
+        GP_stats[1] *= forget_factor
+        GP_stats[2] *= forget_factor
+        GP_stats[3] *= forget_factor
         
         # calculate parameters of GP from prior and sufficient statistics
         GP_para = list(jax.vmap(prior_mniw_2naturalPara_inv)(
-            GP_model_prior[0] + GP_model_stats[0],
-            GP_model_prior[1] + GP_model_stats[1],
-            GP_model_prior[2] + GP_model_stats[2],
-            GP_model_prior[3] + GP_model_stats[3]
+            GP_prior[0] + GP_stats[0],
+            GP_prior[1] + GP_stats[1],
+            GP_prior[2] + GP_stats[2],
+            GP_prior[3] + GP_stats[3]
         ))
             
             
@@ -307,10 +316,10 @@ def SingleMassOscillator_APF(Y):
             Sigma_F[i],
             phi_x1
         )
-        GP_model_stats[0] = GP_model_stats[0][idx] + T_0
-        GP_model_stats[1] = GP_model_stats[1][idx] + T_1
-        GP_model_stats[2] = GP_model_stats[2][idx] + T_2
-        GP_model_stats[3] = GP_model_stats[3][idx] + T_3
+        GP_stats[0] = GP_stats[0][idx] + T_0
+        GP_stats[1] = GP_stats[1][idx] + T_1
+        GP_stats[2] = GP_stats[2][idx] + T_2
+        GP_stats[3] = GP_stats[3][idx] + T_3
         
         # calculate new weights (measurment update)
         sigma_y = Sigma_X[i,:,0,None]
@@ -321,37 +330,130 @@ def SingleMassOscillator_APF(Y):
         
         
         # logging
-        GP_para_logging = prior_mniw_2naturalPara_inv(
-            GP_model_prior[0] + np.einsum('n...,n->...', GP_model_stats[0], weights[i]),
-            GP_model_prior[1] + np.einsum('n...,n->...', GP_model_stats[1], weights[i]),
-            GP_model_prior[2] + np.einsum('n...,n->...', GP_model_stats[2], weights[i]),
-            GP_model_prior[3] + np.einsum('n...,n->...', GP_model_stats[3], weights[i])
-        )
-        Mean_F[i] = GP_para_logging[0]
-        Col_cov_F[i] = GP_para_logging[1]
-        Row_scale_F[i] = GP_para_logging[2]
-        df_F[i] = GP_para_logging[3]
+        GP_stats_logging[0][i] = np.einsum('n...,n->...', T_0, weights[i])
+        GP_stats_logging[1][i] = np.einsum('n...,n->...', T_1, weights[i])
+        GP_stats_logging[2][i] = np.einsum('n...,n->...', T_2, weights[i])
+        GP_stats_logging[3][i] = np.einsum('n...,n->...', T_3, weights[i])
         
         #abort
         if np.any(np.isnan(weights[i])):
             print("Particle degeneration at new weights")
             break
         
-    return Sigma_X, Sigma_F, weights, Mean_F, Col_cov_F, Row_scale_F, df_F
+    return Sigma_X, Sigma_F, weights, GP_stats_logging
 
 
 
 #### This section defines a function to run the offline version of the algorithm
+
+def SingleMassOscillator_PGAS(Y):
+    """
+    This function runs the PGAS algorithm.
+
+    Args:
+        Y (Array): Measurements
+    """
+    print("\n=== Offline Algorithm ===")
+    
+    Sigma_X = np.zeros((steps,N_PGAS_iter,2))
+    Sigma_F = np.zeros((steps,N_PGAS_iter))
+    weights = np.ones((steps,N_PGAS_iter))/N_PGAS_iter
+
+    # variable for sufficient statistics
+    GP_stats = [
+        np.zeros((N_PGAS_iter, N_basis_fcn, 1)),
+        np.zeros((N_PGAS_iter, N_basis_fcn, N_basis_fcn)),
+        np.zeros((N_PGAS_iter, 1, 1)),
+        np.zeros((N_PGAS_iter,))
+    ]
+
+    # set initial reference using CPFAS Kernel without reference
+    print(f"Setting initial reference trajectory")
+    GP_para = prior_mniw_2naturalPara_inv(
+        GP_prior[0],
+        GP_prior[1],
+        GP_prior[2],
+        GP_prior[3]
+    )
+    Sigma_X[:,0], Sigma_F[:,0] = SingleMassOscillator_CPFAS_Kernel(
+            Y=Y,
+            x_ref=None,
+            F_ref=None,
+            Mean_F=GP_para[0], 
+            Col_Cov_F=GP_para[1], 
+            Row_Scale_F=GP_para[2], 
+            df_F=GP_para[3])
+        
+        
+    # make proposal for distribution of F_sd using new proposals of trajectories
+    phi = jax.vmap(basis_fcn)(Sigma_X[:,0])
+    T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+            Sigma_F[:,0],
+            phi
+        )
+    GP_stats[0][0] = np.sum(T_0, axis=0)
+    GP_stats[1][0] = np.sum(T_1, axis=0)
+    GP_stats[2][0] = np.sum(T_2, axis=0)
+    GP_stats[3][0] = np.sum(T_3, axis=0)
+
+
+
+    ### Run PGAS
+    for k in range(1, N_PGAS_iter):
+        print(f"Starting iteration {k}")
+            
+        # calculate parameters of GP from prior and sufficient statistics
+        GP_para = list(prior_mniw_2naturalPara_inv(
+            GP_prior[0] + GP_stats[0][k-1],
+            GP_prior[1] + GP_stats[1][k-1],
+            GP_prior[2] + GP_stats[2][k-1],
+            GP_prior[3] + GP_stats[3][k-1]
+        ))
+        
+        
+        
+        # sample new proposal for trajectories using CPF with AS
+        Sigma_X[:,k], Sigma_F[:,k] = SingleMassOscillator_CPFAS_Kernel(
+            Y=Y,
+            x_ref=Sigma_X[:,k-1],
+            F_ref=Sigma_F[:,k-1],
+            Mean_F=GP_para[0], 
+            Col_Cov_F=GP_para[1], 
+            Row_Scale_F=GP_para[2], 
+            df_F=GP_para[3])
+        
+        
+        # make proposal for distribution of F_sd using new proposals of trajectories
+        phi = jax.vmap(basis_fcn)(Sigma_X[:,k])
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+                Sigma_F[:,k],
+                phi
+            )
+        GP_stats[0][k] = np.sum(T_0, axis=0)
+        GP_stats[1][k] = np.sum(T_1, axis=0)
+        GP_stats[2][k] = np.sum(T_2, axis=0)
+        GP_stats[3][k] = np.sum(T_3, axis=0)
+    
+    
+    return Sigma_X, Sigma_F, weights, GP_stats
+
+
 
 def SingleMassOscillator_CPFAS_Kernel(
     Y, 
     x_ref, 
     F_ref, 
     Mean_F, 
-    Col_cov_F, 
-    Row_scale_F, 
+    Col_Cov_F, 
+    Row_Scale_F, 
     df_F
     ):
+    """
+    This function runs the CPFAS kernel for the PGAS algorithm to generate new 
+    proposals for the state trajectory. It is a conditional auxiliary particle 
+    filter. 
+    
+    """
     
     # Particle trajectories
     Sigma_X = np.zeros((steps,N_particles,2))
@@ -366,6 +468,7 @@ def SingleMassOscillator_CPFAS_Kernel(
     if x_ref is not None:
         Sigma_X[0,-1] = x_ref[0]
         Sigma_F[0,-1] = F_ref[0]
+    
     
     
     for i in tqdm(range(1,steps), desc="    Running CPF Kernel"):
@@ -433,8 +536,8 @@ def SingleMassOscillator_CPFAS_Kernel(
                 prior_mniw_CondPredictive, 
                 y1_var=y1_var,
                 mean=Mean_F,
-                col_cov=Col_cov_F,
-                row_scale=Row_scale_F,
+                col_cov=Col_Cov_F,
+                row_scale=Row_Scale_F,
                 df=df_F
                 )
             )(
@@ -466,8 +569,8 @@ def SingleMassOscillator_CPFAS_Kernel(
                     obs_x=Sigma_X[i,-1], 
                     obs_F=Sigma_F[i,-1], 
                     Mean_F=Mean_F, 
-                    Col_cov_F=Col_cov_F, 
-                    Row_scale_F=Row_scale_F, 
+                    Col_cov_F=Col_Cov_F, 
+                    Row_scale_F=Row_Scale_F, 
                     df_F=df_F)
                 )(x_mean=Sigma_X_mean, x_1=Sigma_X[i-1], F_1=Sigma_F[i-1])
             weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
