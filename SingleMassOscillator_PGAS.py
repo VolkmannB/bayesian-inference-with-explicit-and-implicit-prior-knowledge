@@ -101,6 +101,8 @@ mdict = {
     'prior_T0': GP_prior[0],
     'prior_T1': GP_prior[1],
     'prior_T2': GP_prior[2],
-    'prior_T3': GP_prior[3]
+    'prior_T3': GP_prior[3],
+    'X': X,
+    'F_sd': F_sd
 }
 scipy.io.savemat('SingleMassOscillator.mat', mdict)
