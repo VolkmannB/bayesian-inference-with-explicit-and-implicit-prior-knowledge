@@ -164,7 +164,7 @@ rng = np.random.default_rng(16723573)
 N_particles = 200
 forget_factor = 0.999
 dt = 0.01
-t_end = 100.0
+t_end = 40.0
 time = np.arange(0.0, t_end, dt)
 steps = len(time)
 y1_var = 3e-2
@@ -245,6 +245,7 @@ def Vehicle_simulation():
     # time series for plot
     X = np.zeros((steps,2)) # sim
     Y = np.zeros((steps,3))
+    Mu_true = np.zeros((steps,2)) # sim
     
     # initial value
     X[0,...] = x0
@@ -259,12 +260,16 @@ def Vehicle_simulation():
         mu_r = mu_y(alpha_r)
         X[i] = f_x(X[i-1], ctrl_input[i-1], mu_f, mu_r, dt) + w()
         
+        Mu_true[i] = np.array([mu_f,mu_r])
+
         alpha_f, alpha_r = f_alpha(X[i], ctrl_input[i])
         mu_f = mu_y(alpha_f)
         mu_r = mu_y(alpha_r)
         Y[i] = f_y(X[i], ctrl_input[i], mu_f, mu_r) + e()
+
+
     
-    return X, Y
+    return X, Y, Mu_true
 
 
 
