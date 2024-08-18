@@ -7,7 +7,7 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 
-from src.Battery import Battery_CPFAS_Kernel, basis_fcn, scale_C1, scale_R1
+from src.Battery import Battery_CPFAS_Kernel, basis_fcn, scale_C1, scale_R1, time
 from src.Battery import steps, N_basis_fcn, GP_prior_C1R1, offset_C1, offset_R1
 from src.Battery import  forget_factor
 from src.Publication_Plotting import apply_basic_formatting, plot_fcn_error_1D
@@ -21,7 +21,7 @@ from src.BayesianInferrence import prior_mniw_Predictive
 ################################################################################
 ### Offline Algorithm
 
-N_iterations = 2
+N_iterations = 10
 Sigma_X = np.zeros((steps,N_iterations))
 Sigma_C1R1 = np.zeros((steps,N_iterations,2))
 weights = np.ones((steps,N_iterations))/N_iterations
@@ -185,5 +185,18 @@ for i in index:
     fig_fcn_e.savefig(f"Battery_PGAS_C1R1_fcn_{int(i)}.svg")
 
 
+np.savez('Battery_PGAS_saved.npz',
+    Sigma_X=Sigma_X, 
+    Sigma_C1R1=Sigma_C1R1, 
+    weights=weights, 
+    Mean_C1R1=Mean_C1R1, 
+    Col_Cov_C1R1=Col_Cov_C1R1, 
+    Row_Scale_C1R1=Row_Scale_C1R1, 
+    df_C1R1=df_C1R1, 
+    fcn_var=fcn_var,
+    fcn_mean=fcn_mean,
+    time=time,
+    steps=steps,
+    )
 
 plt.show()

@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 
 from src.Battery import Battery_APF, basis_fcn, data, time, scale_C1, scale_R1
 from src.Battery import offset_C1, offset_R1, GP_prior_C1R1, steps
-from src.Publication_Plotting import plot_fcn_error_1D
+from src.Publication_Plotting import plot_fcn_error_1D, imes_blue
 from src.Publication_Plotting import apply_basic_formatting
 from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPara_inv
 
@@ -62,6 +62,25 @@ for i in index:
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
     fig_fcn_e.savefig(f"Battery_APF_C1R1_fcn_{int(i)}.svg")
+
+
+################################################################################
+# Saving
+
+np.savez('Battery_APF_saved.npz',
+    Sigma_X=Sigma_X, 
+    Sigma_C1R1=Sigma_C1R1, 
+    Sigma_Y=Sigma_Y, 
+    weights=weights, 
+    Mean_C1R1=Mean_C1R1, 
+    Col_Cov_C1R1=Col_Cov_C1R1, 
+    Row_Scale_C1R1=Row_Scale_C1R1, 
+    df_C1R1=df_C1R1, 
+    fcn_var=fcn_var,
+    fcn_mean=fcn_mean,
+    time=time,
+    steps=steps,
+    )
 
 
 
