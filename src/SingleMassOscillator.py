@@ -100,7 +100,7 @@ rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
-t_end = 100.0
+t_end = 40.0
 dt = 0.01
 forget_factor = 0.999
 time = np.arange(0.0,t_end,dt)

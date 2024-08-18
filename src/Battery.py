@@ -117,7 +117,7 @@ rng = np.random.default_rng(16723573)
 
 # sim para
 N_particles = 100
-forget_factor = 1 - 1/1e3
+forget_factor = 1 - 1/1e4
 y1_var=5e-2
 dt = dt.seconds
 
