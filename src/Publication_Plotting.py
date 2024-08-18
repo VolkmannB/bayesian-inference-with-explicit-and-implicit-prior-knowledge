@@ -337,7 +337,7 @@ def plot_PGAS_iterrations(Trajectories, time, iter_idx, dpi=150):
 
 
 
-def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150):
+def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150, max_x=None, max_y=None):
     
     fig = plt.figure(dpi=dpi)
     gs = fig.add_gridspec(2, 2,  width_ratios=(5, 1), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
@@ -389,6 +389,15 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
         log=False,
         orientation='horizontal',)
     
+    if max_x is not None:
+        ax_histx.set_ylim(0,max_x)
+    # ax_histx.set_ylabel(r"\# $\mathrm{Data}$")
+
+    
+    if max_y is not None:
+        ax_histy.set_xlim(0,max_y)
+    # ax_histy.set_xlabel(r"\# $\mathrm{Data}$")
+
     # add colorbar
     fig.colorbar(cntr, ax=ax_histy)
     
@@ -396,7 +405,7 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
 
 
 
-def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150):
+def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150, max_hist=None):
     
     Mean = np.atleast_2d(Mean)
     Std = np.atleast_2d(Std)
@@ -443,5 +452,8 @@ def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150):
         bottom=False, 
         top=False, 
         labelbottom=False)
+    
+    if max_hist is not None:
+        ax_histx.set_ylim(0,max_hist)
     
     return fig, [ax, ax_histx]
