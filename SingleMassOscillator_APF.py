@@ -29,6 +29,8 @@ X, Y, F_sd = SingleMassOscillator_simulation()
 Sigma_X, Sigma_F, weights, Mean_F, Col_cov_F, Row_scale_F, df_F = SingleMassOscillator_APF(Y)
     
 
+
+
 ################################################################################
 # Plots
 
@@ -44,7 +46,7 @@ axes_X[0].set_ylabel(r"$s$ in $\mathrm{m}$")
 axes_X[1].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
 axes_X[2].set_ylabel(r"$F$ in $\mathrm{N}$")
 axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
-apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
+apply_basic_formatting(fig_X, width=8, aspect_ratio=1, font_size=8)
 fig_X.savefig("SingleMassOscillator_APF_X.svg", bbox_inches='tight')
 
 
@@ -57,7 +59,8 @@ X_in = np.vstack([grid_x.flatten(), grid_y.flatten()]).T
 basis_in = jax.vmap(basis_fcn)(X_in)
 
 N_slices = 4
-index = (np.array(range(N_slices))+1)/N_slices*(steps-1)
+index2 = (np.array(range(N_slices))+1)/N_slices*(steps-1)
+index = np.array([0.01, 0.05, 0.1, 0.2, 0.3, 0.4, 0.6, 0.8])*(steps-1)
 
 # true spring damper force
 F_sd_true = jax.vmap(F_spring)(X_in[:,0]) + jax.vmap(F_damper)(X_in[:,1])
@@ -101,7 +104,8 @@ for i in index:
         Mean=np.abs(fcn_mean[int(i)]-F_sd_true), 
         X_stats=Sigma_X[:int(i)], 
         X_weights=weights[:int(i)], 
-        alpha=fcn_alpha[int(i)])
+        alpha=fcn_alpha[int(i)],
+        max_x=250, max_y=100)
     ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
     ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
         
@@ -128,9 +132,30 @@ ax_RMSE.set_ylim(0)
 for i in index:
     ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
     
-apply_basic_formatting(fig_RMSE, width=8, font_size=8)
+apply_basic_formatting(fig_RMSE, width=8, aspect_ratio=1,  font_size=8)
 fig_RMSE.savefig("SingleMassOscillator_APF_Fsd_wRMSE.svg", bbox_inches='tight')
 
 
+################################################################################
+# Saving
 
+np.savez('SingleMassOscillator_APF_saved.npz',
+    X=X, 
+    Y=Y, 
+    F_sd=F_sd,
+    Sigma_X=Sigma_X, 
+    Sigma_F=Sigma_F, 
+    weights=weights, 
+    Mean_F=Mean_F, 
+    Col_cov_F=Col_cov_F, 
+    Row_scale_F=Row_scale_F, 
+    df_F=df_F,
+    fcn_var=fcn_var,
+    fcn_mean=fcn_mean,
+    time=time,
+    steps=steps,
+    )
+
+
+###
 plt.show()
