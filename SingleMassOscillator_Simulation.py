@@ -30,16 +30,6 @@ X, Y, F_sd = SingleMassOscillator_simulation()
  offline_weights, offline_GP_stats) = SingleMassOscillator_PGAS(Y)
 offline_T0, offline_T1, offline_T2, offline_T3 = offline_GP_stats
 del offline_GP_stats
-    
-    
-# Convert sufficient statistics to standard parameters
-(offline_GP_Mean, offline_GP_Col_Cov, 
- offline_GP_Row_Scale, offline_GP_df) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior[0] + offline_T0,
-    GP_prior[1] + offline_T1,
-    GP_prior[2] + offline_T2,
-    GP_prior[3] + offline_T3
-)
 
 
 
@@ -51,16 +41,6 @@ del offline_GP_stats
  online_weights, online_GP_stats) = SingleMassOscillator_APF(Y)
 online_T0, online_T1, online_T2, online_T3 = online_GP_stats
 del online_GP_stats
-    
-    
-# Convert sufficient statistics to standard parameters
-(online_GP_Mean, online_GP_Col_Cov, 
- online_GP_Row_Scale, online_GP_df) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior[0] + online_T0,
-    GP_prior[1] + online_T1,
-    GP_prior[2] + online_T2,
-    GP_prior[3] + online_T3
- )
     
     
 
