@@ -220,10 +220,10 @@ def SingleMassOscillator_APF(Y):
     GP_stats[3] += T_3
     
     # logging
-    GP_stats_logging[0][0] = np.einsum('n...,n->...', T_0, weights[0])
-    GP_stats_logging[1][0] = np.einsum('n...,n->...', T_1, weights[0])
-    GP_stats_logging[2][0] = np.einsum('n...,n->...', T_2, weights[0])
-    GP_stats_logging[3][0] = np.einsum('n...,n->...', T_3, weights[0])
+    GP_stats_logging[0][0] = np.einsum('n...,n->...', GP_stats[0], weights[0])
+    GP_stats_logging[1][0] = np.einsum('n...,n->...', GP_stats[1], weights[0])
+    GP_stats_logging[2][0] = np.einsum('n...,n->...', GP_stats[2], weights[0])
+    GP_stats_logging[3][0] = np.einsum('n...,n->...', GP_stats[3], weights[0])
     
     
     
@@ -330,10 +330,10 @@ def SingleMassOscillator_APF(Y):
         
         
         # logging
-        GP_stats_logging[0][i] = np.einsum('n...,n->...', T_0, weights[i])
-        GP_stats_logging[1][i] = np.einsum('n...,n->...', T_1, weights[i])
-        GP_stats_logging[2][i] = np.einsum('n...,n->...', T_2, weights[i])
-        GP_stats_logging[3][i] = np.einsum('n...,n->...', T_3, weights[i])
+        GP_stats_logging[0][i] = np.einsum('n...,n->...', GP_stats[0], weights[i])
+        GP_stats_logging[1][i] = np.einsum('n...,n->...', GP_stats[1], weights[i])
+        GP_stats_logging[2][i] = np.einsum('n...,n->...', GP_stats[2], weights[i])
+        GP_stats_logging[3][i] = np.einsum('n...,n->...', GP_stats[3], weights[i])
         
         #abort
         if np.any(np.isnan(weights[i])):
