@@ -160,6 +160,8 @@ ax_RMSE.set_ylim(0)
 for i in index:
     ax_RMSE.plot([int(i), int(i)], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
     
+wRMSE_offline_final = wRMSE[-1]
+    
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
 fig_RMSE.savefig("SingleMassOscillator_PGAS_Fsd_wRMSE.svg", bbox_inches='tight')
 
@@ -231,6 +233,12 @@ ax_RMSE.plot(
 ax_RMSE.set_ylabel(r"wRMSE")
 ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
 ax_RMSE.set_ylim(0)
+
+# plot convergence wRMSE of offline algorithm
+ax_RMSE.plot(
+    [time[0], time[-1]], 
+    [wRMSE_offline_final, wRMSE_offline_final], 
+    color='red', linestyle=':')
 
 for i in index:
     ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
