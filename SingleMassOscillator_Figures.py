@@ -21,7 +21,7 @@ from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPar
 ################################################################################
 
 
-N_slices = 4
+N_slices = 2
 
 
 data = scipy.io.loadmat('SingleMassOscillator.mat')
@@ -56,10 +56,10 @@ del data
 # Convert sufficient statistics to standard parameters
 (offline_GP_Mean, offline_GP_Col_Cov, 
  offline_GP_Row_Scale, offline_GP_df) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior_stats[0] + offline_T0,
-    GP_prior_stats[1] + offline_T1,
-    GP_prior_stats[2] + offline_T2,
-    GP_prior_stats[3] + offline_T3
+    GP_prior_stats[0] + np.cumsum(offline_T0, axis=0),
+    GP_prior_stats[1] + np.cumsum(offline_T1, axis=0),
+    GP_prior_stats[2] + np.cumsum(offline_T2, axis=0),
+    GP_prior_stats[3] + np.cumsum(offline_T3, axis=0)
 )
     
     
@@ -132,8 +132,8 @@ for i in index:
     fig_fcn_e, ax_fcn_e = plot_fcn_error_2D(
         X_plot, 
         Mean=np.abs(fcn_mean[int(i)]-F_sd_true_plot), 
-        X_stats=offline_Sigma_X[:,int(i)], 
-        X_weights=offline_weights[:,int(i)], 
+        X_stats=offline_Sigma_X[:,:int(i)], 
+        X_weights=offline_weights[:,:int(i)], 
         alpha=fcn_alpha[int(i)])
     ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
     ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
@@ -144,9 +144,11 @@ for i in index:
 
 
 # plot weighted RMSE of GP over entire function space
-fcn_var = fcn_var + 1e-4 # to avoid dividing by zero
-v1 = np.sum(1/fcn_var, axis=-1)
-wRMSE = np.sqrt(v1/(v1**2 - v1) * jnp.sum((fcn_mean - F_sd_true_plot) ** 2 / fcn_var, axis=-1))
+w = 1 / fcn_var
+w = w / np.sum(w, axis=-1, keepdims=True)
+v1 = np.sum(w, axis=-1)
+v2 = np.sum(w**2, axis=-1)
+wRMSE = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean - F_sd_true_plot)**2 * w, axis=-1))
 fig_RMSE, ax_RMSE = plt.subplots(1,1, layout='tight')
 ax_RMSE.plot(
     range(0,N_iterations),
@@ -221,9 +223,11 @@ for i in index:
 
 
 # plot weighted RMSE of GP over entire function space
-fcn_var = fcn_var + 1e-4 # to avoid dividing by zero
-v1 = np.sum(1/fcn_var, axis=-1)
-wRMSE = np.sqrt(v1/(v1**2 - v1) * jnp.sum((fcn_mean - F_sd_true_plot) ** 2 / fcn_var, axis=-1))
+w = 1 / fcn_var
+w = w / np.sum(w, axis=-1, keepdims=True)
+v1 = np.sum(w, axis=-1)
+v2 = np.sum(w**2, axis=-1)
+wRMSE = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean - F_sd_true_plot)**2 * w, axis=-1))
 fig_RMSE, ax_RMSE = plt.subplots(1,1, layout='tight')
 ax_RMSE.plot(
     time,
