@@ -117,6 +117,7 @@ rng = np.random.default_rng(16723573)
 
 # sim para
 N_particles = 100
+N_PGAS_iter = 5
 forget_factor = 1 - 1/1e3
 y1_var=5e-2
 dt = dt.seconds
@@ -159,7 +160,7 @@ steps = Y.shape[0]
 N_basis_fcn = 15
 basis_fcn, sd = generate_Hilbert_BasisFunction(N_basis_fcn, jnp.array([-0.5, 2.4]), 2.4/N_basis_fcn, 5)
 
-GP_prior_C1R1 = list(prior_mniw_2naturalPara(
+GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((2, N_basis_fcn)),
     np.diag(sd),
     np.diag([1, 1]),
@@ -172,22 +173,25 @@ GP_prior_C1R1 = list(prior_mniw_2naturalPara(
 
 def Battery_APF(Y=Y):
     
+    print("\n=== Online Algorithm ===")
+    
     # time series for plot
     Sigma_X = np.zeros((steps,N_particles))
     Sigma_Y = np.zeros((steps,N_particles))
     Sigma_C1R1 = np.zeros((steps,N_particles,2))
-
-    Mean_C1R1 = np.zeros((steps, 2, N_basis_fcn))
-    Col_Cov_C1R1 = np.zeros((steps, N_basis_fcn, N_basis_fcn))
-    Row_Scale_C1R1 = np.zeros((steps, 2, 2))
-    df_C1R1 = np.zeros((steps,))
     
     # variable for sufficient statistics
-    GP_stats_C1R1 = [
+    GP_stats = [
         np.zeros((N_particles, N_basis_fcn, 2)),
         np.zeros((N_particles, N_basis_fcn, N_basis_fcn)),
         np.zeros((N_particles, 2, 2)),
         np.zeros((N_particles,))
+    ]
+    GP_stats_logging = [
+        np.zeros((steps, N_basis_fcn, 2)),
+        np.zeros((steps, N_basis_fcn, N_basis_fcn)),
+        np.zeros((steps, 2, 2)),
+        np.zeros((steps,))
     ]
     
     # initial values for states
@@ -200,10 +204,16 @@ def Battery_APF(Y=Y):
     phi_0 = jax.vmap(
         functools.partial(basis_fcn)
         )(Sigma_X[0])
-    GP_stats_C1R1 = list(jax.vmap(prior_mniw_calcStatistics)(
+    GP_stats = list(jax.vmap(prior_mniw_calcStatistics)(
         Sigma_C1R1[0,...],
         phi_0
     ))
+    
+    # logging
+    GP_stats_logging[0][0] = np.einsum('n...,n->...', GP_stats[0], weights[0])
+    GP_stats_logging[1][0] = np.einsum('n...,n->...', GP_stats[1], weights[0])
+    GP_stats_logging[2][0] = np.einsum('n...,n->...', GP_stats[2], weights[0])
+    GP_stats_logging[3][0] = np.einsum('n...,n->...', GP_stats[3], weights[0])
     
     
     # simulation loop
@@ -212,17 +222,17 @@ def Battery_APF(Y=Y):
         ### Step 1: Propagate GP parameters in time
         
         # apply forgetting operator to statistics for t-1 -> t
-        GP_stats_C1R1[0] *= forget_factor
-        GP_stats_C1R1[1] *= forget_factor
-        GP_stats_C1R1[2] *= forget_factor
-        GP_stats_C1R1[3] *= forget_factor
+        GP_stats[0] *= forget_factor
+        GP_stats[1] *= forget_factor
+        GP_stats[2] *= forget_factor
+        GP_stats[3] *= forget_factor
             
         # calculate parameters of GP from prior and sufficient statistics
-        GP_para_C1R1 = list(jax.vmap(prior_mniw_2naturalPara_inv)(
-            GP_prior_C1R1[0] + GP_stats_C1R1[0],
-            GP_prior_C1R1[1] + GP_stats_C1R1[1],
-            GP_prior_C1R1[2] + GP_stats_C1R1[2],
-            GP_prior_C1R1[3] + GP_stats_C1R1[3]
+        GP_para = list(jax.vmap(prior_mniw_2naturalPara_inv)(
+            GP_prior[0] + GP_stats[0],
+            GP_prior[1] + GP_stats[1],
+            GP_prior[2] + GP_stats[2],
+            GP_prior[3] + GP_stats[3]
         ))
         
         
@@ -244,10 +254,10 @@ def Battery_APF(Y=Y):
         C1R1_aux = jax.vmap(
             functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
             )(
-                mean=GP_para_C1R1[0],
-                col_cov=GP_para_C1R1[1],
-                row_scale=GP_para_C1R1[2],
-                df=GP_para_C1R1[3],
+                mean=GP_para[0],
+                col_cov=GP_para[1],
+                row_scale=GP_para[2],
+                df=GP_para[3],
                 y1=Sigma_C1R1[i-1,...],
                 basis1=phi_0,
                 basis2=phi_1
@@ -294,10 +304,10 @@ def Battery_APF(Y=Y):
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
             )(
-                mean=GP_para_C1R1[0][idx],
-                col_cov=GP_para_C1R1[1][idx],
-                row_scale=GP_para_C1R1[2][idx],
-                df=GP_para_C1R1[3][idx],
+                mean=GP_para[0][idx],
+                col_cov=GP_para[1][idx],
+                row_scale=GP_para[2][idx],
+                df=GP_para[3][idx],
                 y1=Sigma_C1R1[i-1,idx],
                 basis1=phi_0,
                 basis2=phi_1
@@ -321,10 +331,10 @@ def Battery_APF(Y=Y):
             Sigma_C1R1[i],
             phi_1
         ))
-        GP_stats_C1R1[0] = GP_stats_C1R1[0][idx] + T_0
-        GP_stats_C1R1[1] = GP_stats_C1R1[1][idx] + T_1
-        GP_stats_C1R1[2] = GP_stats_C1R1[2][idx] + T_2
-        GP_stats_C1R1[3] = GP_stats_C1R1[3][idx] + T_3
+        GP_stats[0] = GP_stats[0][idx] + T_0
+        GP_stats[1] = GP_stats[1][idx] + T_1
+        GP_stats[2] = GP_stats[2][idx] + T_2
+        GP_stats[3] = GP_stats[3][idx] + T_3
         
         # calculate new weights
         Sigma_Y[i] = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=Sigma_X[i])
@@ -337,23 +347,106 @@ def Battery_APF(Y=Y):
         
         
         # logging
-        GP_para_logging_C1R1 = prior_mniw_2naturalPara_inv(
-            GP_prior_C1R1[0] + np.einsum('n...,n->...', GP_stats_C1R1[0], weights[i]),
-            GP_prior_C1R1[1] + np.einsum('n...,n->...', GP_stats_C1R1[1], weights[i]),
-            GP_prior_C1R1[2] + np.einsum('n...,n->...', GP_stats_C1R1[2], weights[i]),
-            GP_prior_C1R1[3] + np.einsum('n...,n->...', GP_stats_C1R1[3], weights[i])
-        )
-        Mean_C1R1[i] = GP_para_logging_C1R1[0]
-        Col_Cov_C1R1[i] = GP_para_logging_C1R1[1]
-        Row_Scale_C1R1[i] = GP_para_logging_C1R1[2]
-        df_C1R1[i] = GP_para_logging_C1R1[3]
+        GP_stats_logging[0][i] = np.einsum('n...,n->...', GP_stats[0], weights[0])
+        GP_stats_logging[1][i] = np.einsum('n...,n->...', GP_stats[1], weights[0])
+        GP_stats_logging[2][i] = np.einsum('n...,n->...', GP_stats[2], weights[0])
+        GP_stats_logging[3][i] = np.einsum('n...,n->...', GP_stats[3], weights[0])
         
         #abort
         if np.any(np.isnan(weights[i])):
             print("Particle degeneration at new weights")
             break
     
-    return Sigma_X, Sigma_C1R1, Sigma_Y, weights, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R1, df_C1R1
+    return Sigma_X, Sigma_C1R1, Sigma_Y, weights, GP_stats_logging
+
+
+
+#### This section defines a function to run the offline version of the algorithm
+
+def Battery_PGAS():
+    
+    print("\n=== Offline Algorithm ===")
+    
+    Sigma_X = np.zeros((steps,N_PGAS_iter))
+    Sigma_C1R1 = np.zeros((steps,N_PGAS_iter,2))
+    Sigma_Y = np.zeros((steps,N_PGAS_iter,))
+    weights = np.ones((steps,N_PGAS_iter))/N_PGAS_iter
+
+    # variable for sufficient statistics
+    GP_stats = [
+        np.zeros((N_PGAS_iter, N_basis_fcn, 2)),
+        np.zeros((N_PGAS_iter, N_basis_fcn, N_basis_fcn)),
+        np.zeros((N_PGAS_iter, 2, 2)),
+        np.zeros((N_PGAS_iter,))
+    ]
+
+    # set initial reference using APF
+    print(f"Setting initial reference trajectory")
+    GP_para = prior_mniw_2naturalPara_inv(
+        GP_prior[0],
+        GP_prior[1],
+        GP_prior[2],
+        GP_prior[3]
+    )
+    Sigma_X[:,0], Sigma_C1R1[:,0], Sigma_Y[:,0] = Battery_CPFAS_Kernel(
+            x_ref=None,
+            C1R1_ref=None,
+            Mean_C1R1=GP_para[0], 
+            Col_Cov_C1R1=GP_para[1], 
+            Row_Scale_C1R1=GP_para[2], 
+            df_C1R1=GP_para[3])
+        
+        
+    # make proposal for distribution of F_sd using new proposals of trajectories
+    phi = jax.vmap(basis_fcn)(Sigma_X[:,0])
+    T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+            Sigma_C1R1[:,0],
+            phi
+        )
+    GP_stats[0][0] = np.sum(T_0, axis=0)
+    GP_stats[1][0] = np.sum(T_1, axis=0)
+    GP_stats[2][0] = np.sum(T_2, axis=0)
+    GP_stats[3][0] = np.sum(T_3, axis=0)
+
+
+
+    ### Run PGAS
+    for k in range(1, N_PGAS_iter):
+        print(f"Starting iteration {k}")
+            
+        # calculate parameters of GP from prior and sufficient statistics
+        GP_para = list(prior_mniw_2naturalPara_inv(
+            GP_prior[0] + GP_stats[0][k-1],
+            GP_prior[1] + GP_stats[1][k-1],
+            GP_prior[2] + GP_stats[2][k-1],
+            GP_prior[3] + GP_stats[3][k-1]
+        ))
+        
+        
+        
+        # sample new proposal for trajectories using CPF with AS
+        Sigma_X[:,k], Sigma_C1R1[:,k], Sigma_Y[:,k] = Battery_CPFAS_Kernel(
+            x_ref=Sigma_X[:,k-1],
+            C1R1_ref=Sigma_C1R1[:,k-1],
+            Mean_C1R1=GP_para[0], 
+            Col_Cov_C1R1=GP_para[1], 
+            Row_Scale_C1R1=GP_para[2], 
+            df_C1R1=GP_para[3])
+        
+        
+        # make proposal for distribution of F_sd using new proposals of trajectories
+        phi = jax.vmap(basis_fcn)(Sigma_X[:,k])
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+                Sigma_C1R1[:,k],
+                phi
+            )
+        GP_stats[0][k] = np.sum(T_0, axis=0)
+        GP_stats[1][k] = np.sum(T_1, axis=0)
+        GP_stats[2][k] = np.sum(T_2, axis=0)
+        GP_stats[3][k] = np.sum(T_3, axis=0)
+        
+    
+    return Sigma_X, Sigma_C1R1, Sigma_Y, weights, GP_stats
 
 
 
@@ -361,8 +454,8 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
     
     # time series for plot
     Sigma_X = np.zeros((steps,N_particles))
-    Sigma_Y = np.zeros((steps,N_particles))
     Sigma_C1R1 = np.zeros((steps,N_particles,2))
+    Sigma_Y = np.zeros((steps,N_particles))
     ancestor_idx = np.zeros((steps-1,N_particles))
     
     # initial values for states
@@ -548,11 +641,14 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
     x_traj[-1] = Sigma_X[-1, idx_traj]
     C1R1_traj = np.zeros((steps,2))
     C1R1_traj[-1] = Sigma_C1R1[-1, idx_traj]
+    y_traj = np.zeros((steps))
+    y_traj[-1] = Sigma_Y[-1, idx_traj]
     ancestry = np.zeros((steps,))
     ancestry[-1] = idx_traj
     for i in range(steps-2, -1, -1): # run backward in time
         ancestry[i] = ancestor_idx[i, int(ancestry[i+1])]
         x_traj[i] = Sigma_X[i, int(ancestry[i])]
         C1R1_traj[i] = Sigma_C1R1[i, int(ancestry[i])]
+        y_traj[i] = Sigma_Y[i, int(ancestry[i])]
     
-    return x_traj, C1R1_traj
+    return x_traj, C1R1_traj, y_traj
