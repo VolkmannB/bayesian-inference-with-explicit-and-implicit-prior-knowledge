@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from src.Vehicle import Vehicle_simulation, Vehicle_APF, basis_fcn, mu_y
 from src.Vehicle import time, steps, GP_prior_f
 from src.Publication_Plotting import plot_Data, apply_basic_formatting
-from src.Publication_Plotting import plot_fcn_error_1D, imes_blue
+from src.Publication_Plotting import plot_fcn_error_1D, imes_blue, imes_orange
 from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPara_inv
 
 
@@ -76,17 +76,17 @@ del data
 # Convert sufficient statistics to standard parameters
 (offline_GP_Mean_f, offline_GP_Col_Cov_f, 
  offline_GP_Row_Scale_f, offline_GP_df_f) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior_stats[0] + offline_T0_f,
-    GP_prior_stats[1] + offline_T1_f,
-    GP_prior_stats[2] + offline_T2_f,
-    GP_prior_stats[3] + offline_T3_f
+    GP_prior_stats[0] + np.cumsum(offline_T0_f, axis=0),
+    GP_prior_stats[1] + np.cumsum(offline_T1_f, axis=0),
+    GP_prior_stats[2] + np.cumsum(offline_T2_f, axis=0),
+    GP_prior_stats[3] + np.cumsum(offline_T3_f, axis=0)
 )
 (offline_GP_Mean_r, offline_GP_Col_Cov_r, 
  offline_GP_Row_Scale_r, offline_GP_df_r) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior_stats[0] + offline_T0_r,
-    GP_prior_stats[1] + offline_T1_r,
-    GP_prior_stats[2] + offline_T2_r,
-    GP_prior_stats[3] + offline_T3_r
+    GP_prior_stats[0] + np.cumsum(offline_T0_r, axis=0),
+    GP_prior_stats[1] + np.cumsum(offline_T1_r, axis=0),
+    GP_prior_stats[2] + np.cumsum(offline_T2_r, axis=0),
+    GP_prior_stats[3] + np.cumsum(offline_T3_r, axis=0)
 )
 del offline_T0_f, offline_T1_f, offline_T2_f, offline_T3_f
 del offline_T0_r, offline_T1_r, offline_T2_r, offline_T3_r
@@ -153,8 +153,10 @@ index = (np.array(range(N_slices))+1)/N_slices*(N_PGAS_iter-1)
 
 
 # function value from GP
-fcn_mean = np.zeros((N_PGAS_iter, alpha_plot.shape[0]))
-fcn_var = np.zeros((N_PGAS_iter, alpha_plot.shape[0]))
+fcn_mean_f = np.zeros((N_PGAS_iter, alpha_plot.shape[0]))
+fcn_var_f = np.zeros((N_PGAS_iter, alpha_plot.shape[0]))
+fcn_mean_r = np.zeros((N_PGAS_iter, alpha_plot.shape[0]))
+fcn_var_r = np.zeros((N_PGAS_iter, alpha_plot.shape[0]))
 for i in tqdm(range(0, N_PGAS_iter), desc='Calculating fcn value and var'):
     mean, col_scale, row_scale, _ = prior_mniw_Predictive(
         mean=offline_GP_Mean_f[i], 
@@ -162,17 +164,26 @@ for i in tqdm(range(0, N_PGAS_iter), desc='Calculating fcn value and var'):
         row_scale=offline_GP_Row_Scale_f[i], 
         df=offline_GP_df_f[i], 
         basis=basis_plot)
-    fcn_var[i,:] = np.diag(col_scale-1) * row_scale[0,0]
-    fcn_mean[i] = mean
+    fcn_var_f[i,:] = np.diag(col_scale-1) * row_scale[0,0]
+    fcn_mean_f[i] = mean
+    
+    mean, col_scale, row_scale, _ = prior_mniw_Predictive(
+        mean=offline_GP_Mean_r[i], 
+        col_cov=offline_GP_Col_Cov_r[i], 
+        row_scale=offline_GP_Row_Scale_r[i], 
+        df=offline_GP_df_r[i], 
+        basis=basis_plot)
+    fcn_var_r[i,:] = np.diag(col_scale-1) * row_scale[0,0]
+    fcn_mean_r[i] = mean
 
 # generate plot
 for i in index:
     fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
         alpha_plot, 
-        Mean=fcn_mean[int(i)], 
-        Std=np.sqrt(fcn_var[int(i)]),
-        X_stats=offline_Sigma_alpha_f[:,int(i)], 
-        X_weights=offline_weights[:,int(i)])
+        Mean=fcn_mean_f[int(i)], 
+        Std=np.sqrt(fcn_var_f[int(i)]),
+        X_stats=offline_Sigma_alpha_f[:,:int(i)], 
+        X_weights=offline_weights[:,:int(i)])
     ax_fcn_e[0][-1].set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
     ax_fcn_e[0][-1].plot(alpha_plot, mu_true_plot, color='red', linestyle=':')
         
@@ -182,23 +193,38 @@ for i in index:
 
 
 # plot weighted RMSE of GP over entire function space
-fcn_var = fcn_var + 1e-4 # to avoid dividing by zero
-v1 = np.sum(1/fcn_var, axis=-1)
-wRMSE = np.sqrt(v1/(v1**2 - v1) * jnp.sum((fcn_mean - mu_true_plot) ** 2 / fcn_var, axis=-1))
+w = 1 / fcn_var_f
+w = w / np.sum(w, axis=-1, keepdims=True)
+v1 = np.sum(w, axis=-1)
+v2 = np.sum(w**2, axis=-1)
+wRMSE_f = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean_f - mu_true_plot)**2 * w, axis=-1))
+
+w = 1 / fcn_var_r
+w = w / np.sum(w, axis=-1, keepdims=True)
+v1 = np.sum(w, axis=-1)
+v2 = np.sum(w**2, axis=-1)
+wRMSE_r = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean_r - mu_true_plot)**2 * w, axis=-1))
+
 fig_RMSE, ax_RMSE = plt.subplots(1,1, layout='tight')
 ax_RMSE.plot(
     range(0,N_PGAS_iter),
-    wRMSE,
+    wRMSE_f,
     color=imes_blue
+)
+ax_RMSE.plot(
+    range(0,N_PGAS_iter),
+    wRMSE_r,
+    color=imes_orange
 )
 ax_RMSE.set_ylabel(r"wRMSE")
 ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
 ax_RMSE.set_ylim(0)
 
 for i in index:
-    ax_RMSE.plot([int(i), int(i)], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
+    ax_RMSE.plot([int(i), int(i)], [0, wRMSE_f[int(i)]*1.5], color="black", linewidth=0.8)
     
-wRMSE_offline_final = wRMSE[-1]
+wRMSE_offline_f = wRMSE_f[-1]
+wRMSE_offline_r = wRMSE_r[-1]
     
     
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
@@ -230,8 +256,10 @@ index = (np.array(range(N_slices))+1)/N_slices*(steps-1)
 
 
 # function value from GP
-fcn_mean = np.zeros((steps, alpha_plot.shape[0]))
-fcn_var = np.zeros((steps, alpha_plot.shape[0]))
+fcn_mean_f = np.zeros((steps, alpha_plot.shape[0]))
+fcn_var_f = np.zeros((steps, alpha_plot.shape[0]))
+fcn_mean_r = np.zeros((steps, alpha_plot.shape[0]))
+fcn_var_r = np.zeros((steps, alpha_plot.shape[0]))
 for i in tqdm(range(0, steps), desc='Calculating fcn value and var'):
     mean, col_scale, row_scale, _ = prior_mniw_Predictive(
         mean=online_GP_Mean_f[i], 
@@ -239,15 +267,24 @@ for i in tqdm(range(0, steps), desc='Calculating fcn value and var'):
         row_scale=online_GP_Row_Scale_f[i], 
         df=online_GP_df_f[i], 
         basis=basis_plot)
-    fcn_var[i,:] = np.diag(col_scale-1) * row_scale[0,0]
-    fcn_mean[i] = mean
+    fcn_var_f[i,:] = np.diag(col_scale-1) * row_scale[0,0]
+    fcn_mean_f[i] = mean
+    
+    mean, col_scale, row_scale, _ = prior_mniw_Predictive(
+        mean=online_GP_Mean_r[i], 
+        col_cov=online_GP_Col_Cov_r[i], 
+        row_scale=online_GP_Row_Scale_r[i], 
+        df=online_GP_df_r[i], 
+        basis=basis_plot)
+    fcn_var_r[i,:] = np.diag(col_scale-1) * row_scale[0,0]
+    fcn_mean_r[i] = mean
 
 # generate plot
 for i in index:
     fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
         alpha_plot, 
-        Mean=fcn_mean[int(i)], 
-        Std=np.sqrt(fcn_var[int(i)]),
+        Mean=fcn_mean_f[int(i)], 
+        Std=np.sqrt(fcn_var_f[int(i)]),
         X_stats=online_Sigma_alpha_f[:int(i)], 
         X_weights=online_weights[:int(i)])
     ax_fcn_e[0][-1].set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
@@ -259,14 +296,28 @@ for i in index:
 
 
 # plot weighted RMSE of GP over entire function space
-fcn_var = fcn_var + 1e-4 # to avoid dividing by zero
-v1 = np.sum(1/fcn_var, axis=-1)
-wRMSE = np.sqrt(v1/(v1**2 - v1) * jnp.sum((fcn_mean - mu_true_plot) ** 2 / fcn_var, axis=-1))
+w = 1 / fcn_var_f
+w = w / np.sum(w, axis=-1, keepdims=True)
+v1 = np.sum(w, axis=-1)
+v2 = np.sum(w**2, axis=-1)
+wRMSE_f = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean_f - mu_true_plot)**2 * w, axis=-1))
+
+w = 1 / fcn_var_r
+w = w / np.sum(w, axis=-1, keepdims=True)
+v1 = np.sum(w, axis=-1)
+v2 = np.sum(w**2, axis=-1)
+wRMSE_r = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean_r - mu_true_plot)**2 * w, axis=-1))
+
 fig_RMSE, ax_RMSE = plt.subplots(1,1, layout='tight')
 ax_RMSE.plot(
     time,
-    wRMSE,
+    wRMSE_f,
     color=imes_blue
+)
+ax_RMSE.plot(
+    time,
+    wRMSE_r,
+    color=imes_orange
 )
 ax_RMSE.set_ylabel(r"wRMSE")
 ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
@@ -275,11 +326,11 @@ ax_RMSE.set_ylim(0)
 # plot convergence wRMSE of offline algorithm
 ax_RMSE.plot(
     [time[0], time[-1]], 
-    [wRMSE_offline_final, wRMSE_offline_final], 
+    [wRMSE_offline_f, wRMSE_offline_f], 
     color='red', linestyle=':')
 
 for i in index:
-    ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
+    ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE_f[int(i)]*1.5], color="black", linewidth=0.8)
     
     
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
