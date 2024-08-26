@@ -5,7 +5,8 @@ import jax
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import ScalarFormatter, LogLocator
 import matplotlib
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 
 from src.BayesianInferrence import prior_mniw_Predictive
@@ -356,9 +357,9 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
     
     
     if norm=='log':
-        normalizer = matplotlib.colors.LogNorm()
+        normalizer = matplotlib.colors.LogNorm(vmin=1e-2, vmax=1e2)
     else:
-        normalizer = matplotlib.colors.Normalize()
+        normalizer = matplotlib.colors.Normalize(vmin=0.01, vmax=100)
     
     # plot triangulized mesh
     cntr = ax.tripcolor(
@@ -399,8 +400,24 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
     # ax_histy.set_xlabel(r"\# $\mathrm{Data}$")
 
     # add colorbar
-    fig.colorbar(cntr, ax=ax_histy)
+
+    # Create an axis on the top of `ax`
+    # divider = make_axes_locatable(ax)
+    # cax = divider.append_axes("left", size="5%", pad=0.05)
+
+    # Create inset axes for the colorbar
+    cax = inset_axes(ax, width="3%", height="80%", loc='upper left',
+                    bbox_to_anchor=(0, -0.08, 1, 1), bbox_transform=ax.transAxes, borderpad=0.1)
+    cbar = fig.colorbar(cntr, cax=cax)
     
+    # Get current colorbar tick labels
+    ticks = np.array([1e-2,1e0,1e2])
+    tick_labels = ['$10^{-2}$','$\mathrm{Err}$','$10^{2}$']
+
+    # Set the new tick labels
+    cbar.set_ticks(ticks)
+    cbar.set_ticklabels(tick_labels)
+
     return fig, [ax, ax_histx, ax_histy]
 
 
