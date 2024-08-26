@@ -162,9 +162,10 @@ rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
+N_PGAS_iter = 5
 forget_factor = 0.999
 dt = 0.01
-t_end = 40.0
+t_end = 100.0
 time = np.arange(0.0, t_end, dt)
 steps = len(time)
 y1_var = 3e-2
@@ -245,10 +246,14 @@ def Vehicle_simulation():
     # time series for plot
     X = np.zeros((steps,2)) # sim
     Y = np.zeros((steps,3))
-    Mu_true = np.zeros((steps,2)) # sim
+    mu_f = np.zeros((steps,))
+    mu_r = np.zeros((steps,))
     
     # initial value
     X[0,...] = x0
+    alpha_f, alpha_r = f_alpha(X[0], ctrl_input[0])
+    mu_f[0] = mu_y(alpha_f)
+    mu_r[0] = mu_y(alpha_r)
         
         
     # simulation loop
@@ -256,26 +261,23 @@ def Vehicle_simulation():
         
         ####### Model simulation
         alpha_f, alpha_r = f_alpha(X[i-1], ctrl_input[i-1])
-        mu_f = mu_y(alpha_f)
-        mu_r = mu_y(alpha_r)
-        X[i] = f_x(X[i-1], ctrl_input[i-1], mu_f, mu_r, dt) + w()
+        mu_f[i] = mu_y(alpha_f)
+        mu_r[i] = mu_y(alpha_r)
+        X[i] = f_x(X[i-1], ctrl_input[i-1], mu_f[i], mu_r[i], dt) + w()
         
-        Mu_true[i] = np.array([mu_f,mu_r])
-
         alpha_f, alpha_r = f_alpha(X[i], ctrl_input[i])
-        mu_f = mu_y(alpha_f)
-        mu_r = mu_y(alpha_r)
-        Y[i] = f_y(X[i], ctrl_input[i], mu_f, mu_r) + e()
-
-
+        Y[i] = f_y(X[i], ctrl_input[i], mu_y(alpha_f), mu_y(alpha_r)) + e()
     
-    return X, Y, Mu_true
+    
+    return X, Y, mu_f, mu_r
 
 
 
 #### This section defines a function to run the online version of the algorithm
 
 def Vehicle_APF(Y):
+    
+    print("\n=== Online Algorithm ===")
     
     #variables for logging
     Sigma_X = np.zeros((steps,N_particles,2))
@@ -284,18 +286,6 @@ def Vehicle_APF(Y):
     Sigma_alpha_f = np.zeros((steps,N_particles))
     Sigma_mu_r = np.zeros((steps,N_particles))
     Sigma_alpha_r = np.zeros((steps,N_particles))
-
-    # front tire
-    Mean_f = np.zeros((steps, 1, N_basis_fcn))
-    Col_Cov_f = np.zeros((steps, N_basis_fcn, N_basis_fcn))
-    Row_Scale_f = np.zeros((steps, 1, 1))
-    df_f = np.zeros((steps,))
-
-    # rear tire
-    Mean_r = np.zeros((steps, 1, N_basis_fcn))
-    Col_Cov_r = np.zeros((steps, N_basis_fcn, N_basis_fcn))
-    Row_Scale_r = np.zeros((steps, 1, 1))
-    df_r = np.zeros((steps,))
     
     # parameters for the sufficient statistics
     GP_stats_f = [
@@ -309,6 +299,18 @@ def Vehicle_APF(Y):
         np.zeros((N_particles, N_basis_fcn, N_basis_fcn)),
         np.zeros((N_particles, 1, 1)),
         np.zeros((N_particles,))
+    ]
+    GP_stats_f_logging = [
+        np.zeros((steps, N_basis_fcn, 1)),
+        np.zeros((steps, N_basis_fcn, N_basis_fcn)),
+        np.zeros((steps, 1, 1)),
+        np.zeros((steps,))
+    ]
+    GP_stats_r_logging = [
+        np.zeros((steps, N_basis_fcn, 1)),
+        np.zeros((steps, N_basis_fcn, N_basis_fcn)),
+        np.zeros((steps, 1, 1)),
+        np.zeros((steps,))
     ]
     
     # initial values for states
@@ -333,9 +335,20 @@ def Vehicle_APF(Y):
         phi_r
     ))
     
+    # logging
+    GP_stats_f_logging[0][0] = np.einsum('n...,n->...', GP_stats_f[0], weights[0])
+    GP_stats_f_logging[1][0] = np.einsum('n...,n->...', GP_stats_f[1], weights[0])
+    GP_stats_f_logging[2][0] = np.einsum('n...,n->...', GP_stats_f[2], weights[0])
+    GP_stats_f_logging[3][0] = np.einsum('n...,n->...', GP_stats_f[3], weights[0])
+    
+    GP_stats_r_logging[0][0] = np.einsum('n...,n->...', GP_stats_r[0], weights[0])
+    GP_stats_r_logging[1][0] = np.einsum('n...,n->...', GP_stats_r[1], weights[0])
+    GP_stats_r_logging[2][0] = np.einsum('n...,n->...', GP_stats_r[2], weights[0])
+    GP_stats_r_logging[3][0] = np.einsum('n...,n->...', GP_stats_r[3], weights[0])
     
     
-    for i in tqdm(range(1,steps), desc="Running Online Algorithm"):
+    
+    for i in tqdm(range(1,steps), desc="Running APF Algorithm"):
         
         ### Step 1: Propagate GP parameters in time
         
@@ -549,27 +562,15 @@ def Vehicle_APF(Y):
         
         
         # logging
-        GP_para_logging = prior_mniw_2naturalPara_inv(
-            GP_prior_f[0] + np.einsum('n...,n->...', GP_stats_f[0], weights[i]),
-            GP_prior_f[1] + np.einsum('n...,n->...', GP_stats_f[1], weights[i]),
-            GP_prior_f[2] + np.einsum('n...,n->...', GP_stats_f[2], weights[i]),
-            GP_prior_f[3] + np.einsum('n...,n->...', GP_stats_f[3], weights[i])
-        )
-        Mean_f[i] = GP_para_logging[0]
-        Col_Cov_f[i] = GP_para_logging[1]
-        Row_Scale_f[i] = GP_para_logging[2]
-        df_f[i] = GP_para_logging[3]
+        GP_stats_f_logging[0][i] = np.einsum('n...,n->...', GP_stats_f[0], weights[0])
+        GP_stats_f_logging[1][i] = np.einsum('n...,n->...', GP_stats_f[1], weights[0])
+        GP_stats_f_logging[2][i] = np.einsum('n...,n->...', GP_stats_f[2], weights[0])
+        GP_stats_f_logging[3][i] = np.einsum('n...,n->...', GP_stats_f[3], weights[0])
         
-        GP_para_logging = prior_mniw_2naturalPara_inv(
-            GP_prior_r[0] + np.einsum('n...,n->...', GP_stats_r[0], weights[i]),
-            GP_prior_r[1] + np.einsum('n...,n->...', GP_stats_r[1], weights[i]),
-            GP_prior_r[2] + np.einsum('n...,n->...', GP_stats_r[2], weights[i]),
-            GP_prior_r[3] + np.einsum('n...,n->...', GP_stats_r[3], weights[i])
-        )
-        Mean_r[i] = GP_para_logging[0]
-        Col_Cov_r[i] = GP_para_logging[1]
-        Row_Scale_r[i] = GP_para_logging[2]
-        df_r[i] = GP_para_logging[3]
+        GP_stats_r_logging[0][i] = np.einsum('n...,n->...', GP_stats_r[0], weights[0])
+        GP_stats_r_logging[1][i] = np.einsum('n...,n->...', GP_stats_r[1], weights[0])
+        GP_stats_r_logging[2][i] = np.einsum('n...,n->...', GP_stats_r[2], weights[0])
+        GP_stats_r_logging[3][i] = np.einsum('n...,n->...', GP_stats_r[3], weights[0])
         
         Sigma_alpha_f[i], Sigma_alpha_r[i] = jax.vmap(
             functools.partial(f_alpha, u=ctrl_input[i])
@@ -577,13 +578,176 @@ def Vehicle_APF(Y):
             x=Sigma_X[i]
         )
         
-    return Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_alpha_f, Sigma_alpha_r, weights, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r
+    return Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_alpha_f, Sigma_alpha_r, weights, GP_stats_f_logging, GP_stats_r_logging
 
 
 
 #### This section defines a function to run the offline version of the algorithm
 
+def Vehicle_PGAS(Y):
+    """
+    This function runs the PGAS algorithm.
+
+    Args:
+        Y (Array): Measurements
+    """
+    print("\n=== Offline Algorithm ===")
+    
+    Sigma_X = np.zeros((steps,N_PGAS_iter,2))
+    Sigma_mu_f = np.zeros((steps,N_PGAS_iter))
+    Sigma_mu_r = np.zeros((steps,N_PGAS_iter))
+    weights = np.ones((steps,N_PGAS_iter))/N_PGAS_iter
+    Sigma_alpha_f = np.zeros((steps,N_PGAS_iter))
+    Sigma_alpha_r = np.zeros((steps,N_PGAS_iter))
+
+
+    # variable for sufficient statistics
+    GP_stats_f = [
+        np.zeros((N_PGAS_iter, N_basis_fcn, 1)),
+        np.zeros((N_PGAS_iter, N_basis_fcn, N_basis_fcn)),
+        np.zeros((N_PGAS_iter, 1, 1)),
+        np.zeros((N_PGAS_iter,))
+    ]
+    GP_stats_r = [
+        np.zeros((N_PGAS_iter, N_basis_fcn, 1)),
+        np.zeros((N_PGAS_iter, N_basis_fcn, N_basis_fcn)),
+        np.zeros((N_PGAS_iter, 1, 1)),
+        np.zeros((N_PGAS_iter,))
+    ]
+
+
+    # set initial reference using APF
+    print(f"Setting initial reference trajectory")
+    GP_para_f = prior_mniw_2naturalPara_inv(
+        GP_prior_f[0],
+        GP_prior_f[1],
+        GP_prior_f[2],
+        GP_prior_f[3]
+    )
+    GP_para_r = prior_mniw_2naturalPara_inv(
+        GP_prior_r[0],
+        GP_prior_r[1],
+        GP_prior_r[2],
+        GP_prior_r[3]
+    )
+    Sigma_X[:,0], Sigma_mu_f[:,0], Sigma_mu_r[:,0] = Vehicle_CPFAS_Kernel(
+            Y=Y, 
+            x_ref=None, 
+            mu_f_ref=None, 
+            mu_r_ref=None, 
+            Mean_f=GP_para_f[0], 
+            Col_Cov_f=GP_para_f[1], 
+            Row_Scale_f=GP_para_f[2], 
+            df_f=GP_para_f[3], 
+            Mean_r=GP_para_r[0], 
+            Col_Cov_r=GP_para_r[1], 
+            Row_Scale_r=GP_para_r[2], 
+            df_r=GP_para_r[3]
+            )
+        
+        
+    # make proposal for distribution of mu_f using new proposals of trajectories
+    phi = jax.vmap(features_MTF_front)(Sigma_X[:,0], ctrl_input)
+    T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+            Sigma_mu_f[:,0],
+            phi
+        )
+    GP_stats_f[0][0] = np.sum(T_0, axis=0)
+    GP_stats_f[1][0] = np.sum(T_1, axis=0)
+    GP_stats_f[2][0] = np.sum(T_2, axis=0)
+    GP_stats_f[3][0] = np.sum(T_3, axis=0)
+
+    # make proposal for distribution of mu_r using new proposals of trajectories
+    phi = jax.vmap(features_MTF_rear)(Sigma_X[:,0], ctrl_input)
+    T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+            Sigma_mu_r[:,0],
+            phi
+        )
+    GP_stats_r[0][0] = np.sum(T_0, axis=0)
+    GP_stats_r[1][0] = np.sum(T_1, axis=0)
+    GP_stats_r[2][0] = np.sum(T_2, axis=0)
+    GP_stats_r[3][0] = np.sum(T_3, axis=0)
+
+
+
+    ### Run PGAS
+    for k in range(1, N_PGAS_iter):
+        print(f"Starting iteration {k}")
+            
+        # calculate parameters of GP from prior and sufficient statistics
+        GP_para_f = list(prior_mniw_2naturalPara_inv(
+            GP_prior_f[0] + GP_stats_f[0][k-1],
+            GP_prior_f[1] + GP_stats_f[1][k-1],
+            GP_prior_f[2] + GP_stats_f[2][k-1],
+            GP_prior_f[3] + GP_stats_f[3][k-1]
+        ))
+        
+        GP_para_r = list(prior_mniw_2naturalPara_inv(
+            GP_prior_r[0] + GP_stats_r[0][k-1],
+            GP_prior_r[1] + GP_stats_r[1][k-1],
+            GP_prior_r[2] + GP_stats_r[2][k-1],
+            GP_prior_r[3] + GP_stats_r[3][k-1]
+        ))
+        
+        
+        
+        # sample new proposal for trajectories using CPF with AS
+        Sigma_X[:,k], Sigma_mu_f[:,k], Sigma_mu_r[:,k] = Vehicle_CPFAS_Kernel(
+            Y=Y, 
+            x_ref=Sigma_X[:,k-1], 
+            mu_f_ref=Sigma_mu_f[:,k-1], 
+            mu_r_ref=Sigma_mu_r[:,k-1], 
+            Mean_f=GP_para_f[0], 
+            Col_Cov_f=GP_para_f[1], 
+            Row_Scale_f=GP_para_f[2], 
+            df_f=GP_para_f[3], 
+            Mean_r=GP_para_r[0], 
+            Col_Cov_r=GP_para_r[1], 
+            Row_Scale_r=GP_para_r[2], 
+            df_r=GP_para_r[3]
+            )
+        Sigma_alpha_f[:,k], Sigma_alpha_r[:,k] = jax.vmap(
+            functools.partial(f_alpha)
+            )(
+            x=Sigma_X[:,k],
+            u=ctrl_input
+        )
+        
+        
+        # make proposal for distribution of mu_f using new proposals of trajectories
+        phi = jax.vmap(features_MTF_front)(Sigma_X[:,k], ctrl_input)
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+                Sigma_mu_f[:,k],
+                phi
+            )
+        GP_stats_f[0][k] = np.sum(T_0, axis=0)
+        GP_stats_f[1][k] = np.sum(T_1, axis=0)
+        GP_stats_f[2][k] = np.sum(T_2, axis=0)
+        GP_stats_f[3][k] = np.sum(T_3, axis=0)
+        
+        # make proposal for distribution of mu_r using new proposals of trajectories
+        phi = jax.vmap(features_MTF_rear)(Sigma_X[:,k], ctrl_input)
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+                Sigma_mu_r[:,k],
+                phi
+            )
+        GP_stats_r[0][k] = np.sum(T_0, axis=0)
+        GP_stats_r[1][k] = np.sum(T_1, axis=0)
+        GP_stats_r[2][k] = np.sum(T_2, axis=0)
+        GP_stats_r[3][k] = np.sum(T_3, axis=0)
+        
+        
+    
+    return Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_alpha_f, Sigma_alpha_r, weights, GP_stats_f, GP_stats_r
+    
+    
+
 def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r):
+    """
+    This function runs the CPFAS kernel for the PGAS algorithm to generate new 
+    proposals for the state trajectory. It is a conditional auxiliary particle 
+    filter. 
+    """
     
     #variables for logging
     Sigma_X = np.zeros((steps,N_particles,2))

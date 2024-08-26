@@ -251,14 +251,14 @@ def plot_Data(Particles, weights, Reference, time, dpi=150):
     
     for i in range(N_dim):
         
-        axes[i].plot(time, Reference[:,i], color=imes_blue)
-        axes[i].plot(time, mean[:,i], color=imes_orange, linestyle='--')
+        axes[i].plot(time, mean[:,i], color=imes_blue)
+        axes[i].plot(time, Reference[:,i], color='red', linestyle='--')
         
         axes[i].fill_between(
                 time, 
                 mean[:,i] - 3*std[:,i], 
                 mean[:,i] + 3*std[:,i], 
-                facecolor=imes_orange, 
+                facecolor=imes_blue, 
                 edgecolor=None, 
                 alpha=0.2
                 )
