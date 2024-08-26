@@ -15,7 +15,7 @@ from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPar
 fig_overall, axs_overall = plt.subplots(3, 3, gridspec_kw={'height_ratios': [1.5, 1, 1]}, layout='tight', sharex='col')
 
 fontsize_overall = 8
-fontsize_miniplots = 6
+fontsize_miniplots = 8
 figsize_miniplots = 4 #cm
 dpi_miniplots = 300
 
@@ -107,7 +107,12 @@ for i in index:
         max_x=250, max_y=100)
     # ax_fcn_e[0].set_xlabel(r"$s$ $\mathrm{in}$ $\mathrm{m}$")
     # ax_fcn_e[0].set_ylabel(r"$\dot{s}$ $\mathrm{in}$ $\mathrm{m/s}$")
-        
+
+    ax_fcn_e[0].set_yticks([-4,0,4],['$-4$',r'$s$','$4$'])
+    ax_fcn_e[0].set_xticks([-4,0,4],['$-4$',r'$\dot{s}$','$4$'])
+    ax_fcn_e[1].text(5.2,75,r'$\# \mathrm{Data}$')
+    # ax_fcn_e[2].set_yticklabels([])
+
     apply_basic_formatting(fig_fcn_e, width=figsize_miniplots, aspect_ratio=1, font_size=fontsize_miniplots)
     # fig_fcn_e.tight_layout()
     fig_fcn_e.savefig(f"SingleMassOscillator_APF_Fsd_fcn_{np.round(time[int(i)],3)}.png",dpi=dpi_miniplots, bbox_inches='tight')
@@ -153,8 +158,8 @@ for i in [0,1]:
     else:
         col = imes_green
 
-    axs_overall[i+1,0].plot(time, Reference[:,variables[i]], color='k')
-    axs_overall[i+1,0].plot(time, mean[:,variables[i]], color=col, linestyle='--')
+    
+    axs_overall[i+1,0].plot(time, mean[:,variables[i]], color=col, linestyle='-')
     
     axs_overall[i+1,0].fill_between(
             time, 
@@ -164,6 +169,8 @@ for i in [0,1]:
             edgecolor=None, 
             alpha=0.2
             )
+    axs_overall[i+1,0].plot(time, Reference[:,variables[i]], color='k', linestyle=':')
+
     
     # set limits
     axs_overall[i+1,0].set_xlim(np.min(time), np.max(time))
@@ -275,6 +282,9 @@ for i in index:
     # ax_fcn_e[0][-1].set_xlabel(r"$\alpha$ $\mathrm{in}$ $\mathrm{rad}$")
     # ax_fcn_e[0][-1].set_ylabel(r"$\mu_f$ $\mathrm{in}$ $[-]$")
     ax_fcn_e[0][-1].set_ylim(-1.2,1.2)
+    ax_fcn_e[0][-1].set_yticks([-1,0,1],['$-1$',r'$\mu_f$','$1$'])
+    ax_fcn_e[0][-1].set_xticks([-0.2,0,0.2],['$-0.2$',r'$\alpha (\dot{\phi})$','$0.2$'])
+    ax_fcn_e[1].text(0.14,35,r'$\# \mathrm{Data}$')
     # ax_fcn_e[1].set_ylabel(r"\# $\mathrm{Data}$")
     ax_fcn_e[0][-1].plot(alpha, mu_f_true, color='k', linestyle=':')
         
@@ -333,9 +343,8 @@ for i in [0,1]:
     else:
         col = imes_green
 
-    axs_overall[i+1,1].plot(time, Reference[:,variables[i]], color='k')
-    axs_overall[i+1,1].plot(time, mean[:,variables[i]], color=col, linestyle='--')
     
+    axs_overall[i+1,1].plot(time, mean[:,variables[i]], color=col, linestyle='-')
     axs_overall[i+1,1].fill_between(
             time, 
             mean[:,variables[i]] - 3*std[:,variables[i]], 
@@ -344,6 +353,7 @@ for i in [0,1]:
             edgecolor=None, 
             alpha=0.2
             )
+    axs_overall[i+1,1].plot(time, Reference[:,variables[i]], color='k', linestyle=':')
     
     # set limits
     axs_overall[i+1,1].set_xlim(np.min(time), np.max(time))
@@ -421,6 +431,9 @@ for i in index:
     # ax_fcn_e[0][-1].set_xlabel(r"$U$ $\mathrm{in}$ $\mathrm{V}$")
     # ax_fcn_e[0][-1].set_ylabel(r"$C_1$ $\mathrm{in}$ $\mathrm{F}$")
     ax_fcn_e[0][-1].set_ylim(0,2200)
+    ax_fcn_e[0][-1].set_yticks([0,1000,2000],['$0$',r'$C_1$','$2000$'])
+    ax_fcn_e[0][-1].set_xticks([0,1,2],['$0$',r'$U$','$2$'])
+    ax_fcn_e[1].text(0.1,1700,r'$\# \mathrm{Data}$')
     # ax_fcn_e[1].set_ylabel(r"\# $\mathrm{Data}$")
 
     # ax_fcn_e[0][1].set_xlabel(r"$U$ $\mathrm{in}$ $\mathrm{V}$")
@@ -493,7 +506,7 @@ for i in variables:
         col = imes_green
 
     # axs_overall[i+1,0].plot(time, Reference[:,i], color=imes_blue)
-    axs_overall[i+1,2].plot(time, mean[:,variables[i]], color=col, linestyle='--')
+    axs_overall[i+1,2].plot(time, mean[:,variables[i]], color=col, linestyle='-')
     
     axs_overall[i+1,2].fill_between(
             time, 
