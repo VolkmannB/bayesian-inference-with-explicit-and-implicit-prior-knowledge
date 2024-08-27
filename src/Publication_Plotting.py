@@ -5,7 +5,8 @@ import jax
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import ScalarFormatter, LogLocator
 import matplotlib
-
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 
 from src.BayesianInferrence import prior_mniw_Predictive
@@ -250,14 +251,14 @@ def plot_Data(Particles, weights, Reference, time, dpi=150):
     
     for i in range(N_dim):
         
-        axes[i].plot(time, mean[:,i], color=imes_blue)
-        axes[i].plot(time, Reference[:,i], color='red', linestyle='--')
+        axes[i].plot(time, Reference[:,i], color=imes_blue)
+        axes[i].plot(time, mean[:,i], color=imes_orange, linestyle='--')
         
         axes[i].fill_between(
                 time, 
                 mean[:,i] - 3*std[:,i], 
                 mean[:,i] + 3*std[:,i], 
-                facecolor=imes_blue, 
+                facecolor=imes_orange, 
                 edgecolor=None, 
                 alpha=0.2
                 )
@@ -337,7 +338,7 @@ def plot_PGAS_iterrations(Trajectories, time, iter_idx, dpi=150):
 
 
 
-def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150):
+def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150, max_x=None, max_y=None):
     
     fig = plt.figure(dpi=dpi)
     gs = fig.add_gridspec(2, 2,  width_ratios=(5, 1), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
@@ -356,9 +357,9 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
     
     
     if norm=='log':
-        normalizer = matplotlib.colors.LogNorm()
+        normalizer = matplotlib.colors.LogNorm(vmin=1e-2, vmax=1e2)
     else:
-        normalizer = matplotlib.colors.Normalize()
+        normalizer = matplotlib.colors.Normalize(vmin=0.01, vmax=100)
     
     # plot triangulized mesh
     cntr = ax.tripcolor(
@@ -389,14 +390,39 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
         log=False,
         orientation='horizontal',)
     
-    # add colorbar
-    fig.colorbar(cntr, ax=ax_histy)
+    if max_x is not None:
+        ax_histx.set_ylim(0,max_x)
+    # ax_histx.set_ylabel(r"\# $\mathrm{Data}$")
+
     
+    if max_y is not None:
+        ax_histy.set_xlim(0,max_y)
+    # ax_histy.set_xlabel(r"\# $\mathrm{Data}$")
+
+    # add colorbar
+
+    # Create an axis on the top of `ax`
+    # divider = make_axes_locatable(ax)
+    # cax = divider.append_axes("left", size="5%", pad=0.05)
+
+    # Create inset axes for the colorbar
+    cax = inset_axes(ax, width="3%", height="80%", loc='upper left',
+                    bbox_to_anchor=(0, -0.08, 1, 1), bbox_transform=ax.transAxes, borderpad=0.1)
+    cbar = fig.colorbar(cntr, cax=cax)
+    
+    # Get current colorbar tick labels
+    ticks = np.array([1e-2,1e0,1e2])
+    tick_labels = ['$10^{-2}$','$\mathrm{Err}$','$10^{2}$']
+
+    # Set the new tick labels
+    cbar.set_ticks(ticks)
+    cbar.set_ticklabels(tick_labels)
+
     return fig, [ax, ax_histx, ax_histy]
 
 
 
-def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150):
+def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150, max_hist=None):
     
     Mean = np.atleast_2d(Mean)
     Std = np.atleast_2d(Std)
@@ -443,5 +469,8 @@ def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150):
         bottom=False, 
         top=False, 
         labelbottom=False)
+    
+    if max_hist is not None:
+        ax_histx.set_ylim(0,max_hist)
     
     return fig, [ax, ax_histx]
