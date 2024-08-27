@@ -57,7 +57,7 @@ def f_y(x, I, R_0=R_0, V_0=V_0):
 
 
 @jax.jit
-def log_likelihood(obs_x, obs_C1R1, x_mean, x_1, C1R1_1, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R1, df_C1R1):
+def log_likelihood(obs_x, obs_C1R1, x_mean, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R1, df_C1R1):
     
     # log likelihood of state x
     l_x = log_likelihood_Normal(obs_x, x_mean, Q)
@@ -69,7 +69,6 @@ def log_likelihood(obs_x, obs_C1R1, x_mean, x_1, C1R1_1, Mean_C1R1, Col_Cov_C1R1
         col_cov=Col_Cov_C1R1,
         row_scale=Row_Scale_C1R1,
         df=df_C1R1,
-        y1=C1R1_1,
         basis=basis
         )
     
@@ -581,7 +580,7 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
                     Col_Cov_C1R1=Col_Cov_C1R1, 
                     Row_Scale_C1R1=Row_Scale_C1R1, 
                     df_C1R1=df_C1R1)
-                )(x_mean=Sigma_X_mean, x_1=Sigma_X[i-1], C1R1_1=Sigma_C1R1[i-1])
+                )(x_mean=Sigma_X_mean)
             weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
             
             # sample an ancestor index for reference trajectory
