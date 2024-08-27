@@ -11,7 +11,7 @@ from src.BayesianInferrence import generate_Hilbert_BasisFunction
 from src.BayesianInferrence import prior_mniw_2naturalPara
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
-from src.BayesianInferrence import prior_mniw_CondPredictive
+from src.BayesianInferrence import prior_mniw_Predictive
 from src.Filtering import systematic_SISR, log_likelihood_Normal, log_likelihood_Multivariate_t
 
 
@@ -63,17 +63,14 @@ def log_likelihood(obs_x, obs_C1R1, x_mean, x_1, C1R1_1, Mean_C1R1, Col_Cov_C1R1
     l_x = log_likelihood_Normal(obs_x, x_mean, Q)
     
     # log likelihood of force F_sd from conditional predictive PDF
-    phi_1 = basis_fcn(x_1)
-    phi_2 = basis_fcn(obs_x)
-    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_CondPredictive(
-        y1_var=y1_var,
+    basis = basis_fcn(obs_x)
+    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_Predictive(
         mean=Mean_C1R1,
         col_cov=Col_Cov_C1R1,
         row_scale=Row_Scale_C1R1,
         df=df_C1R1,
         y1=C1R1_1,
-        basis1=phi_1,
-        basis2=phi_2
+        basis=basis
         )
     
     l_F = log_likelihood_Multivariate_t(
@@ -119,7 +116,7 @@ rng = np.random.default_rng(16723573)
 N_particles = 100
 N_PGAS_iter = 5
 forget_factor = 1 - 1/1e3
-y1_var=5e-2
+burnin_iter = 100
 dt = dt.seconds
 
 
@@ -221,11 +218,14 @@ def Battery_APF(Y=Y):
         
         ### Step 1: Propagate GP parameters in time
         
+        # calculate effective forgetting factor
+        f_forget = np.minimum((forget_factor-0.2)*(1-i/burnin_iter) + forget_factor*i/burnin_iter, forget_factor)
+        
         # apply forgetting operator to statistics for t-1 -> t
-        GP_stats[0] *= forget_factor
-        GP_stats[1] *= forget_factor
-        GP_stats[2] *= forget_factor
-        GP_stats[3] *= forget_factor
+        GP_stats[0] *= f_forget
+        GP_stats[1] *= f_forget
+        GP_stats[2] *= f_forget
+        GP_stats[3] *= f_forget
             
         # calculate parameters of GP from prior and sufficient statistics
         GP_para = list(jax.vmap(prior_mniw_2naturalPara_inv)(
@@ -249,18 +249,15 @@ def Battery_APF(Y=Y):
             )
         
         # create auxiliary variable for C1, R1 and R0
-        phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1])
-        phi_1 = jax.vmap(functools.partial(basis_fcn))(x_aux)
+        basis = jax.vmap(functools.partial(basis_fcn))(x_aux)
         C1R1_aux = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
+            functools.partial(prior_mniw_Predictive)
             )(
                 mean=GP_para[0],
                 col_cov=GP_para[1],
                 row_scale=GP_para[2],
                 df=GP_para[3],
-                y1=Sigma_C1R1[i-1,...],
-                basis1=phi_0,
-                basis2=phi_1
+                basis=basis
         )[0]
         
         # calculate first stage weights
@@ -297,20 +294,17 @@ def Battery_APF(Y=Y):
         
         ## sample proposal for alpha and beta at time t
         # evaluate basis functions
-        phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1,idx])
-        phi_1 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i])
+        basis = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i])
         
         # calculate conditional predictive distribution for C1 and R1
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
+            functools.partial(prior_mniw_Predictive)
             )(
                 mean=GP_para[0][idx],
                 col_cov=GP_para[1][idx],
                 row_scale=GP_para[2][idx],
                 df=GP_para[3][idx],
-                y1=Sigma_C1R1[i-1,idx],
-                basis1=phi_0,
-                basis2=phi_1
+                basis=basis
         )
         
         # generate samples
@@ -329,7 +323,7 @@ def Battery_APF(Y=Y):
         # Update the sufficient statistics of GP with new proposal
         T_0, T_1, T_2, T_3 = list(jax.vmap(prior_mniw_calcStatistics)(
             Sigma_C1R1[i],
-            phi_1
+            basis
         ))
         GP_stats[0] = GP_stats[0][idx] + T_0
         GP_stats[1] = GP_stats[1][idx] + T_1
@@ -486,20 +480,16 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
             )
         
         # create auxiliary variable for C1, R1 and R0
-        phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1])
-        phi_1 = jax.vmap(functools.partial(basis_fcn))(x_aux)
+        basis = jax.vmap(functools.partial(basis_fcn))(x_aux)
         C1R1_aux = jax.vmap(
             functools.partial(
-                prior_mniw_CondPredictive, 
-                y1_var=y1_var,
+                prior_mniw_Predictive, 
                 mean=Mean_C1R1,
                 col_cov=Col_Cov_C1R1,
                 row_scale=Row_Scale_C1R1,
                 df=df_C1R1)
             )(
-                y1=Sigma_C1R1[i-1,...],
-                basis1=phi_0,
-                basis2=phi_1
+                basis=basis
         )[0]
         
         # calculate first stage weights
@@ -546,22 +536,18 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
         
         ## sample proposal for alpha and beta at time t
         # evaluate basis functions
-        phi_0 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i-1,idx])
-        phi_1 = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i])
+        basis = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i])
         
         # calculate conditional predictive distribution for C1 and R1
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(
-                prior_mniw_CondPredictive, 
-                y1_var=y1_var,
+                prior_mniw_Predictive, 
                 mean=Mean_C1R1,
                 col_cov=Col_Cov_C1R1,
                 row_scale=Row_Scale_C1R1,
                 df=df_C1R1)
             )(
-                y1=Sigma_C1R1[i-1,idx],
-                basis1=phi_0,
-                basis2=phi_1
+                basis=basis
         )
         
         # generate samples

@@ -135,15 +135,16 @@ del col_scale_prior, row_scale_prior, GP_prior
 
 # plot the state estimations
 fig_X, axes_X = plot_Data(
-    Particles=np.concatenate([offline_Sigma_X, offline_Sigma_mu_f[...,None]], axis=-1),
+    Particles=np.concatenate([offline_Sigma_X, offline_Sigma_mu_f[...,None], offline_Sigma_mu_r[...,None]], axis=-1),
     weights=offline_weights,
-    Reference=np.concatenate([X, mu_f[...,None]], axis=-1),
+    Reference=np.concatenate([X, mu_f[...,None], mu_r[...,None]], axis=-1),
     time=time
 )
 axes_X[0].set_ylabel(r"$\psi$ in $\mathrm{rad/s}$")
 axes_X[1].set_ylabel(r"$v_y$ in $\mathrm{m/s}$")
 axes_X[2].set_ylabel(r"$\mu_\mathrm{f}$")
-axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
+axes_X[3].set_ylabel(r"$\mu_\mathrm{r}$")
+axes_X[3].set_xlabel(r"Time in $\mathrm{s}$")
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
 fig_X.savefig("Vehicle_PGAS_X.svg", bbox_inches='tight')
 
@@ -238,9 +239,9 @@ fig_RMSE.savefig("Vehicle_PGAS_muf_wRMSE.svg", bbox_inches='tight')
 
 # plot the state estimations
 fig_X, axes_X = plot_Data(
-    Particles=np.concatenate([online_Sigma_X, online_Sigma_mu_f[...,None]], axis=-1),
+    Particles=np.concatenate([online_Sigma_X, online_Sigma_mu_f[...,None], online_Sigma_mu_r[...,None]], axis=-1),
     weights=online_weights,
-    Reference=np.concatenate([X, mu_f[...,None]], axis=-1),
+    Reference=np.concatenate([X, mu_f[...,None], mu_r[...,None]], axis=-1),
     time=time
 )
 axes_X[0].set_ylabel(r"$\psi$ in $\mathrm{rad/s}$")

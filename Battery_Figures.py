@@ -149,10 +149,10 @@ for i in index:
 
 # plot the state estimations
 fig_X, axes_X = plot_Data(
-    Particles=online_Sigma_Y[...,None],
-    weights=online_weights,
-    Reference=Y,
-    time=time
+    Particles=online_Sigma_Y[1:,...,None],
+    weights=online_weights[1:],
+    Reference=Y[1:],
+    time=time[1:]
 )
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
 axes_X[0].set_xlabel(r"Time in $\mathrm{s}$")

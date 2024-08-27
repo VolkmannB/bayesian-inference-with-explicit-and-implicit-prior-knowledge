@@ -10,7 +10,7 @@ from src.BayesianInferrence import generate_Hilbert_BasisFunction
 from src.BayesianInferrence import prior_mniw_2naturalPara
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
-from src.BayesianInferrence import prior_mniw_CondPredictive
+from src.BayesianInferrence import prior_mniw_Predictive
 from src.Filtering import systematic_SISR, log_likelihood_Normal, log_likelihood_Multivariate_t
 
 
@@ -63,23 +63,19 @@ def f_y(x):
 
 
 @jax.jit
-def log_likelihood(obs_x, obs_F, x_mean, x_1, F_1, Mean_F, Col_cov_F, Row_scale_F, df_F):
+def log_likelihood(obs_x, obs_F, x_mean, Mean_F, Col_cov_F, Row_scale_F, df_F):
     
     # log likelihood of state x
     l_x = log_likelihood_Normal(obs_x, x_mean, Q)
     
     # log likelihood of force F_sd from conditional predictive PDF
-    phi_1 = basis_fcn(x_1)
-    phi_2 = basis_fcn(obs_x)
-    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_CondPredictive(
-        y1_var=y1_var,
+    basis = basis_fcn(obs_x)
+    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_Predictive(
         mean=Mean_F,
         col_cov=Col_cov_F,
         row_scale=Row_scale_F,
         df=df_F,
-        y1=F_1,
-        basis1=phi_1,
-        basis2=phi_2
+        basis=basis,
         )
     
     l_F = log_likelihood_Multivariate_t(
@@ -100,13 +96,13 @@ rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
-N_PGAS_iter = 200
+N_PGAS_iter = 5
 t_end = 100.0
 dt = 0.01
 forget_factor = 0.999
+burnin_iter = 100
 time = np.arange(0.0,t_end,dt)
 steps = len(time)
-y1_var=3e-2
 
 # initial system state
 x0 = np.array([0.0, 0.0])
@@ -136,7 +132,7 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
     num_fcn=N_basis_fcn, 
     domain_boundary=np.array([[-7.5, 7.5],[-7.5, 7.5]]), 
     lengthscale=7.5*2/N_basis_fcn, 
-    scale=60
+    scale=120
     )
 
 
@@ -145,7 +141,7 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
 GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
-    np.eye(1)*10,
+    np.eye(1),
     0
 ))
 
@@ -231,11 +227,14 @@ def SingleMassOscillator_APF(Y):
         
         ### Step 1: Propagate GP parameters in time
         
+        # calculate effective forgetting factor
+        f_forget = np.minimum((forget_factor-0.2)*(1-i/burnin_iter) + forget_factor*i/burnin_iter, forget_factor)
+        
         # apply forgetting operator to statistics for t-1 -> t
-        GP_stats[0] *= forget_factor
-        GP_stats[1] *= forget_factor
-        GP_stats[2] *= forget_factor
-        GP_stats[3] *= forget_factor
+        GP_stats[0] *= f_forget
+        GP_stats[1] *= f_forget
+        GP_stats[2] *= f_forget
+        GP_stats[3] *= f_forget
         
         # calculate parameters of GP from prior and sufficient statistics
         GP_para = list(jax.vmap(prior_mniw_2naturalPara_inv)(
@@ -289,20 +288,17 @@ def SingleMassOscillator_APF(Y):
         
         ## sample from proposal for F at time t
         # evaluate basis functions for all particles
-        phi_x0 = jax.vmap(basis_fcn)(Sigma_X[i-1,idx])
-        phi_x1 = jax.vmap(basis_fcn)(Sigma_X[i])
+        basis = jax.vmap(basis_fcn)(Sigma_X[i])
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
+            functools.partial(prior_mniw_Predictive)
             )(
                 mean=GP_para[0][idx],
                 col_cov=GP_para[1][idx],
                 row_scale=GP_para[2][idx],
                 df=GP_para[3][idx],
-                y1=Sigma_F[i-1,idx],
-                basis1=phi_x0,
-                basis2=phi_x1
+                basis=basis
         )
         
         # generate samples
@@ -314,7 +310,7 @@ def SingleMassOscillator_APF(Y):
         # Update the sufficient statistics of GP with new proposal
         T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
             Sigma_F[i],
-            phi_x1
+            basis
         )
         GP_stats[0] = GP_stats[0][idx] + T_0
         GP_stats[1] = GP_stats[1][idx] + T_1
@@ -527,23 +523,19 @@ def SingleMassOscillator_CPFAS_Kernel(
         
         ## sample from proposal for F at time t
         # evaluate basis functions for all particles
-        phi_x0 = jax.vmap(basis_fcn)(Sigma_X[i-1,idx])
-        phi_x1 = jax.vmap(basis_fcn)(Sigma_X[i])
+        basis = jax.vmap(basis_fcn)(Sigma_X[i])
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(
-                prior_mniw_CondPredictive, 
-                y1_var=y1_var,
+                prior_mniw_Predictive, 
                 mean=Mean_F,
                 col_cov=Col_Cov_F,
                 row_scale=Row_Scale_F,
                 df=df_F
                 )
             )(
-            y1=Sigma_F[i-1,idx],
-            basis1=phi_x0,
-            basis2=phi_x1
+            basis=basis
         )
         
         # generate samples
@@ -572,7 +564,7 @@ def SingleMassOscillator_CPFAS_Kernel(
                     Col_cov_F=Col_Cov_F, 
                     Row_scale_F=Row_Scale_F, 
                     df_F=df_F)
-                )(x_mean=Sigma_X_mean, x_1=Sigma_X[i-1], F_1=Sigma_F[i-1])
+                )(x_mean=Sigma_X_mean)
             weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
             
             # sample an ancestor index for reference trajectory
