@@ -3,14 +3,16 @@ import jax
 import jax.numpy as jnp
 import functools
 from tqdm import tqdm
+import os
 
 
 from src.BayesianInferrence import generate_Hilbert_BasisFunction
 from src.BayesianInferrence import prior_mniw_2naturalPara
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
-from src.BayesianInferrence import prior_mniw_CondPredictive
+from src.BayesianInferrence import prior_mniw_Predictive
 from src.Filtering import systematic_SISR, log_likelihood_Normal, log_likelihood_Multivariate_t
+
 
 
 #### This section defines the state space model
@@ -100,25 +102,21 @@ def f_y(x, u, mu_yf, mu_yr, m=m, l_f=l_f, l_r=l_r, g=g, mu_x=mu_x, mu=mu, B=B, C
 
 
 @jax.jit
-def log_likelihood(obs_x, obs_mu_f, obs_mu_r, x_mean, x_1, mu_f_1, mu_r_1, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r):
+def log_likelihood(obs_x, obs_mu_f, obs_mu_r, x_mean, ctrl_input, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r):
     
     # log likelihood of state x
     l_x = log_likelihood_Normal(obs_x, x_mean, Q)
     
     
-    
+    alpha_f, alpha_r = f_alpha(obs_x, ctrl_input)
     # log likelihood of mu_f from conditional predictive PDF
-    phi_1 = basis_fcn(x_1)
-    phi_2 = basis_fcn(obs_x)
-    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_CondPredictive(
-        y1_var=y1_var,
+    basis = basis_fcn(alpha_f)
+    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_Predictive(
         mean=Mean_f,
         col_cov=Col_Cov_f,
         row_scale=Row_Scale_f,
         df=df_f,
-        y1=mu_f_1,
-        basis1=phi_1,
-        basis2=phi_2
+        basis=basis
         )
     
     l_muf = log_likelihood_Multivariate_t(
@@ -131,17 +129,13 @@ def log_likelihood(obs_x, obs_mu_f, obs_mu_r, x_mean, x_1, mu_f_1, mu_r_1, Mean_
     
     
     # log likelihood of mu_f from conditional predictive PDF
-    phi_1 = basis_fcn(x_1)
-    phi_2 = basis_fcn(obs_x)
-    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_CondPredictive(
-        y1_var=y1_var,
+    basis = basis_fcn(alpha_r)
+    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_Predictive(
         mean=Mean_r,
         col_cov=Col_Cov_r,
         row_scale=Row_Scale_r,
         df=df_r,
-        y1=mu_r_1,
-        basis1=phi_1,
-        basis2=phi_2
+        basis=basis
         )
     
     l_mur = log_likelihood_Multivariate_t(
@@ -164,11 +158,11 @@ rng = np.random.default_rng(16723573)
 N_particles = 200
 N_PGAS_iter = 5
 forget_factor = 0.999
+burnin_iter = 100
 dt = 0.01
 t_end = 100.0
 time = np.arange(0.0, t_end, dt)
 steps = len(time)
-y1_var = 3e-2
 
 # initial system state
 x0 = np.array([0.0, 0.0])
@@ -177,7 +171,6 @@ P0 = np.diag([1e-4, 1e-4])
 # noise
 R = np.diag([0.01/180*np.pi, 1e-1, 1e-3])
 Q = np.diag([1e-9, 1e-9])
-R_y = 1e1
 w = lambda n=1: rng.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
 e = lambda n=1: rng.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
@@ -198,7 +191,7 @@ basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
     np.array([-30/180*jnp.pi, 30/180*jnp.pi]), 
     lengthscale, 
-    50
+    500
     )
 
 @jax.jit
@@ -225,7 +218,7 @@ def features_MTF_rear(x, u, l_r=l_r):
 GP_prior_f = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(spectral_density),
-    np.eye(1)*1e-1,
+    np.eye(1)*1e-2,
     0
 ))
 
@@ -233,7 +226,7 @@ GP_prior_f = list(prior_mniw_2naturalPara(
 GP_prior_r = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.eye(N_basis_fcn),
-    np.eye(1)*1e-1,
+    np.eye(1)*1e-2,
     0
 ))
 
@@ -352,15 +345,18 @@ def Vehicle_APF(Y):
         
         ### Step 1: Propagate GP parameters in time
         
+        # calculate effective forgetting factor
+        f_forget = np.minimum((forget_factor-0.2)*(1-i/burnin_iter) + forget_factor*i/burnin_iter, forget_factor)
+        
         # apply forgetting operator to statistics for t-1 -> t
-        GP_stats_f[0] *= forget_factor
-        GP_stats_f[1] *= forget_factor
-        GP_stats_f[2] *= forget_factor
-        GP_stats_f[3] *= forget_factor
-        GP_stats_r[0] *= forget_factor
-        GP_stats_r[1] *= forget_factor
-        GP_stats_r[2] *= forget_factor
-        GP_stats_r[3] *= forget_factor
+        GP_stats_f[0] *= f_forget
+        GP_stats_f[1] *= f_forget
+        GP_stats_f[2] *= f_forget
+        GP_stats_f[3] *= f_forget
+        GP_stats_r[0] *= f_forget
+        GP_stats_r[1] *= f_forget
+        GP_stats_r[2] *= f_forget
+        GP_stats_r[3] *= f_forget
             
         # calculate parameters of GP from prior and sufficient statistics
         GP_para_f = list(jax.vmap(prior_mniw_2naturalPara_inv)(
@@ -389,41 +385,31 @@ def Vehicle_APF(Y):
         )
         
         # create auxiliary variable for mu front
-        phi_f0 = jax.vmap(
-            functools.partial(features_MTF_front, u=ctrl_input[i-1])
-            )(Sigma_X[i-1])
-        phi_f1 = jax.vmap(
+        basis = jax.vmap(
             functools.partial(features_MTF_front, u=ctrl_input[i])
             )(x_aux)
         mu_f_aux = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+            functools.partial(prior_mniw_Predictive)
             )(
                 mean=GP_para_f[0],
                 col_cov=GP_para_f[1],
                 row_scale=GP_para_f[2],
                 df=GP_para_f[3],
-                y1=Sigma_mu_f[i-1],
-                basis1=phi_f0,
-                basis2=phi_f1
+                basis=basis
         )[0]
         
         # create auxiliary variable for mu rear
-        phi_r0 = jax.vmap(
-            functools.partial(features_MTF_rear, u=ctrl_input[i-1])
-            )(Sigma_X[i-1])
-        phi_r1 = jax.vmap(
+        basis = jax.vmap(
             functools.partial(features_MTF_rear, u=ctrl_input[i])
             )(x_aux)
         mu_r_aux = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=3e-2)
+            functools.partial(prior_mniw_Predictive)
             )(
                 mean=GP_para_r[0],
                 col_cov=GP_para_r[1],
                 row_scale=GP_para_r[2],
                 df=GP_para_r[3],
-                y1=Sigma_mu_r[i-1],
-                basis1=phi_r0,
-                basis2=phi_r1
+                basis=basis
         )[0]
         
         # calculate first stage weights
@@ -465,24 +451,19 @@ def Vehicle_APF(Y):
         
         ## sample proposal for mu front at time t
         # evaluate basis functions
-        phi_f0 = jax.vmap(
-            functools.partial(features_MTF_front, u=ctrl_input[i-1])
-            )(Sigma_X[i-1,idx])
-        phi_f1 = jax.vmap(
+        basis_f = jax.vmap(
             functools.partial(features_MTF_front, u=ctrl_input[i])
             )(Sigma_X[i])
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
+            functools.partial(prior_mniw_Predictive)
             )(
                 mean=GP_para_f[0][idx],
                 col_cov=GP_para_f[1][idx],
                 row_scale=GP_para_f[2][idx],
                 df=GP_para_f[3][idx],
-                y1=Sigma_mu_f[i-1,idx],
-                basis1=phi_f0,
-                basis2=phi_f1
+                basis=basis_f
         )
             
         # generate samples
@@ -493,24 +474,19 @@ def Vehicle_APF(Y):
         
         ## sample proposal for mu rear at time t
         # evaluate basis fucntions
-        phi_r0 = jax.vmap(
-            functools.partial(features_MTF_rear, u=ctrl_input[i-1])
-            )(Sigma_X[i-1,idx])
-        phi_r1 = jax.vmap(
+        basis_r = jax.vmap(
             functools.partial(features_MTF_rear, u=ctrl_input[i])
             )(Sigma_X[i])
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, y1_var=y1_var)
+            functools.partial(prior_mniw_Predictive)
             )(
                 mean=GP_para_r[0][idx],
                 col_cov=GP_para_r[1][idx],
                 row_scale=GP_para_r[2][idx],
                 df=GP_para_r[3][idx],
-                y1=Sigma_mu_r[i-1,idx],
-                basis1=phi_r0,
-                basis2=phi_r1
+                basis=basis_r
         )
             
         # generate samples
@@ -524,7 +500,7 @@ def Vehicle_APF(Y):
         # Update the sufficient statistics of GP with new proposal
         T_0, T_1, T_2, T_3 = list(jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_f[i],
-            phi_f1
+            basis_f
         ))
         GP_stats_f[0] = GP_stats_f[0][idx] + T_0
         GP_stats_f[1] = GP_stats_f[1][idx] + T_1
@@ -533,7 +509,7 @@ def Vehicle_APF(Y):
         
         T_0, T_1, T_2, T_3 = list(jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_r[i],
-            phi_r1
+            basis_r
         ))
         GP_stats_r[0] = GP_stats_r[0][idx] + T_0
         GP_stats_r[1] = GP_stats_r[1][idx] + T_1
@@ -784,43 +760,31 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Sc
         )
         
         # create auxiliary variable for mu front
-        phi_f0 = jax.vmap(
-            functools.partial(features_MTF_front, u=ctrl_input[i-1])
-            )(Sigma_X[i-1])
-        phi_f1 = jax.vmap(
+        basis = jax.vmap(
             functools.partial(features_MTF_front, u=ctrl_input[i])
             )(x_aux)
         mu_f_aux = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, 
-                y1_var=y1_var, 
+            functools.partial(prior_mniw_Predictive, 
                 mean=Mean_f,
                 col_cov=Col_Cov_f,
                 row_scale=Row_Scale_f,
                 df=df_f)
             )(
-                y1=Sigma_mu_f[i-1],
-                basis1=phi_f0,
-                basis2=phi_f1
+                basis=basis
         )[0]
         
         # create auxiliary variable for mu rear
-        phi_r0 = jax.vmap(
-            functools.partial(features_MTF_rear, u=ctrl_input[i-1])
-            )(Sigma_X[i-1])
-        phi_r1 = jax.vmap(
+        basis = jax.vmap(
             functools.partial(features_MTF_rear, u=ctrl_input[i])
             )(x_aux)
         mu_r_aux = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, 
-                y1_var=y1_var,
+            functools.partial(prior_mniw_Predictive, 
                 mean=Mean_r,
                 col_cov=Col_Cov_r,
                 row_scale=Row_Scale_r,
                 df=df_r)
             )(
-                y1=Sigma_mu_r[i-1],
-                basis1=phi_r0,
-                basis2=phi_r1
+                basis=basis
         )[0]
         
         # calculate first stage weights
@@ -871,25 +835,19 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Sc
         
         ## sample proposal for mu front at time t
         # evaluate basis functions
-        phi_f0 = jax.vmap(
-            functools.partial(features_MTF_front, u=ctrl_input[i-1])
-            )(Sigma_X[i-1,idx])
-        phi_f1 = jax.vmap(
+        basis = jax.vmap(
             functools.partial(features_MTF_front, u=ctrl_input[i])
             )(Sigma_X[i])
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, 
-                y1_var=y1_var,
+            functools.partial(prior_mniw_Predictive, 
                 mean=Mean_f,
                 col_cov=Col_Cov_f,
                 row_scale=Row_Scale_f,
                 df=df_f)
             )(
-                y1=Sigma_mu_f[i-1,idx],
-                basis1=phi_f0,
-                basis2=phi_f1
+                basis=basis
         )
             
         # generate samples
@@ -905,25 +863,19 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Sc
         
         ## sample proposal for mu rear at time t
         # evaluate basis fucntions
-        phi_r0 = jax.vmap(
-            functools.partial(features_MTF_rear, u=ctrl_input[i-1])
-            )(Sigma_X[i-1,idx])
-        phi_r1 = jax.vmap(
+        basis = jax.vmap(
             functools.partial(features_MTF_rear, u=ctrl_input[i])
             )(Sigma_X[i])
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_CondPredictive, 
-                y1_var=y1_var,
+            functools.partial(prior_mniw_Predictive, 
                 mean=Mean_r,
                 col_cov=Col_Cov_r,
                 row_scale=Row_Scale_r,
                 df=df_r)
             )(
-                y1=Sigma_mu_r[i-1,idx],
-                basis1=phi_r0,
-                basis2=phi_r1
+                basis=basis
         )
             
         # generate samples
@@ -948,6 +900,7 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Sc
                     obs_x=Sigma_X[i,-1], 
                     obs_mu_f=Sigma_mu_f[i,-1], 
                     obs_mu_r=Sigma_mu_r[i,-1], 
+                    ctrl_input=ctrl_input[i],
                     Mean_f=Mean_f, 
                     Col_Cov_f=Col_Cov_f, 
                     Row_Scale_f=Row_Scale_f, 
@@ -957,10 +910,7 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Sc
                     Row_Scale_r=Row_Scale_r, 
                     df_r=df_r)
                 )(
-                    x_mean=Sigma_X_mean, 
-                    x_1=Sigma_X[i-1], 
-                    mu_f_1=Sigma_mu_f[i-1], 
-                    mu_r_1=Sigma_mu_r[i-1]
+                    x_mean=Sigma_X_mean
                     )
             weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
             
