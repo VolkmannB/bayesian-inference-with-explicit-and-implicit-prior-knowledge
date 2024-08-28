@@ -96,9 +96,9 @@ rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
-N_PGAS_iter = 5
+N_PGAS_iter = 400
 t_end = 100.0
-dt = 0.01
+dt = 0.02
 forget_factor = 0.999
 burnin_iter = 100
 time = np.arange(0.0,t_end,dt)
@@ -177,8 +177,6 @@ def SingleMassOscillator_simulation():
 #### This section defines a function to run the online version of the algorithm
 
 def SingleMassOscillator_APF(Y):
-    
-    print("\n=== Online Algorithm ===")
     
     # Particle trajectories
     Sigma_X = np.zeros((steps, N_particles, 2))
@@ -349,7 +347,6 @@ def SingleMassOscillator_PGAS(Y):
     Args:
         Y (Array): Measurements
     """
-    print("\n=== Offline Algorithm ===")
     
     Sigma_X = np.zeros((steps,N_PGAS_iter,2))
     Sigma_F = np.zeros((steps,N_PGAS_iter))
@@ -363,22 +360,12 @@ def SingleMassOscillator_PGAS(Y):
         np.zeros((N_PGAS_iter,))
     ]
 
-    # set initial reference using CPFAS Kernel without reference
+    # set initial reference using filtering distribution from APF
     print(f"Setting initial reference trajectory")
-    GP_para = prior_mniw_2naturalPara_inv(
-        GP_prior[0],
-        GP_prior[1],
-        GP_prior[2],
-        GP_prior[3]
-    )
-    Sigma_X[:,0], Sigma_F[:,0] = SingleMassOscillator_CPFAS_Kernel(
-            Y=Y,
-            x_ref=None,
-            F_ref=None,
-            Mean_F=GP_para[0], 
-            Col_Cov_F=GP_para[1], 
-            Row_Scale_F=GP_para[2], 
-            df_F=GP_para[3])
+    init_X, init_F, init_w, _ = SingleMassOscillator_APF(Y)
+    idx = np.searchsorted(np.cumsum(init_w[-1]), rng.random())
+    Sigma_X[:,0] = init_X[:,idx]
+    Sigma_F[:,0] = init_F[:,idx]
         
         
     # make proposal for distribution of F_sd using new proposals of trajectories
@@ -397,26 +384,19 @@ def SingleMassOscillator_PGAS(Y):
     ### Run PGAS
     for k in range(1, N_PGAS_iter):
         print(f"Starting iteration {k}")
-            
-        # calculate parameters of GP from prior and sufficient statistics
-        GP_para = list(prior_mniw_2naturalPara_inv(
-            GP_prior[0] + GP_stats[0][k-1],
-            GP_prior[1] + GP_stats[1][k-1],
-            GP_prior[2] + GP_stats[2][k-1],
-            GP_prior[3] + GP_stats[3][k-1]
-        ))
-        
-        
         
         # sample new proposal for trajectories using CPF with AS
         Sigma_X[:,k], Sigma_F[:,k] = SingleMassOscillator_CPFAS_Kernel(
             Y=Y,
             x_ref=Sigma_X[:,k-1],
             F_ref=Sigma_F[:,k-1],
-            Mean_F=GP_para[0], 
-            Col_Cov_F=GP_para[1], 
-            Row_Scale_F=GP_para[2], 
-            df_F=GP_para[3])
+            GP_stats_ref=[
+                GP_stats[0][k-1],
+                GP_stats[1][k-1],
+                GP_stats[2][k-1],
+                GP_stats[3][k-1]
+                ]
+            )
         
         
         # make proposal for distribution of F_sd using new proposals of trajectories
@@ -439,10 +419,7 @@ def SingleMassOscillator_CPFAS_Kernel(
     Y, 
     x_ref, 
     F_ref, 
-    Mean_F, 
-    Col_Cov_F, 
-    Row_Scale_F, 
-    df_F
+    GP_stats_ref
     ):
     """
     This function runs the CPFAS kernel for the PGAS algorithm to generate new 
@@ -460,10 +437,24 @@ def SingleMassOscillator_CPFAS_Kernel(
     ## set initial values
     Sigma_X[0,...] = rng.multivariate_normal(x0, P0, (N_particles,)) 
     Sigma_F[0,...] = rng.normal(0, P0_F, (N_particles,))
+    Sigma_X[0,-1] = x_ref[0]
+    Sigma_F[0,-1] = F_ref[0]
+        
+    # calculate ancestor statistics
+    GP_stats_ancestor = [
+        np.zeros((N_particles, N_basis_fcn, 1)),
+        np.zeros((N_particles, N_basis_fcn, N_basis_fcn)),
+        np.zeros((N_particles, 1, 1)),
+        np.zeros((N_particles,))
+    ]
     
-    if x_ref is not None:
-        Sigma_X[0,-1] = x_ref[0]
-        Sigma_F[0,-1] = F_ref[0]
+    # calculate parameters for reference model
+    Mean, Col_Cov, Row_Scale, df = prior_mniw_2naturalPara_inv(
+        GP_prior[0] + GP_stats_ref[0],
+        GP_prior[1] + GP_stats_ref[1],
+        GP_prior[2] + GP_stats_ref[2],
+        GP_prior[3] + GP_stats_ref[3],
+    )
     
     
     
@@ -499,8 +490,7 @@ def SingleMassOscillator_CPFAS_Kernel(
         idx[idx >= N_particles] = N_particles - 1 
         
         # let reference trajectory survive
-        if x_ref is not None:
-            idx[-1] = N_particles - 1
+        idx[-1] = N_particles - 1
         
         
         
@@ -518,8 +508,7 @@ def SingleMassOscillator_CPFAS_Kernel(
         Sigma_X[i] = Sigma_X_mean + w_x
         
         # set reference trajectory for state x
-        if x_ref is not None:
-            Sigma_X[i,-1] = x_ref[i]
+        Sigma_X[i,-1] = x_ref[i]
         
         ## sample from proposal for F at time t
         # evaluate basis functions for all particles
@@ -529,10 +518,10 @@ def SingleMassOscillator_CPFAS_Kernel(
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(
                 prior_mniw_Predictive, 
-                mean=Mean_F,
-                col_cov=Col_Cov_F,
-                row_scale=Row_Scale_F,
-                df=df_F
+                mean=Mean,
+                col_cov=Col_Cov,
+                row_scale=Row_Scale,
+                df=df
                 )
             )(
             basis=basis
@@ -545,38 +534,78 @@ def SingleMassOscillator_CPFAS_Kernel(
         Sigma_F[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
         
         # set reference trajectory for F_sd
-        if x_ref is not None:
-            Sigma_F[i,-1] = F_ref[i]
+        Sigma_F[i,-1] = F_ref[i]
+        
+        
+        
+        ### Step 3: Update statistics
+        
+        # update ancestor statistics
+        basis = jax.vmap(basis_fcn)(Sigma_X[i-1,idx])
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+            Sigma_F[i-1,idx],
+            basis
+        )
+        GP_stats_ancestor[0] = np.array(GP_stats_ancestor[0][idx] + T_0)
+        GP_stats_ancestor[1] = np.array(GP_stats_ancestor[1][idx] + T_1)
+        GP_stats_ancestor[2] = np.array(GP_stats_ancestor[2][idx] + T_2)
+        GP_stats_ancestor[3] = np.array(GP_stats_ancestor[3][idx] + T_3)
+        
+        # update reference statistic
+        GP_stats_ref[0] = GP_stats_ref[0] - T_0[-1]
+        GP_stats_ref[1] = GP_stats_ref[1] - T_1[-1]
+        GP_stats_ref[2] = GP_stats_ref[2] - T_2[-1]
+        GP_stats_ref[3] = GP_stats_ref[3] - T_3[-1]
+        
+        # calculate models
+        Mean, Col_Cov, Row_Scale, df = jax.vmap(prior_mniw_2naturalPara_inv)(
+            GP_prior[0] + GP_stats_ref[0] + GP_stats_ancestor[0],
+            GP_prior[1] + GP_stats_ref[1] + GP_stats_ancestor[1],
+            GP_prior[2] + GP_stats_ref[2] + GP_stats_ancestor[2],
+            GP_prior[3] + GP_stats_ref[3] + GP_stats_ancestor[3],
+        )
         
         
         
         ### Step 3: Sample a new ancestor for the reference trajectory
         
-        if x_ref is not None:
+        # calculate ancestor weights
+        l_x = jax.vmap(
+            functools.partial(
+                log_likelihood, 
+                obs_x=Sigma_X[i,-1], 
+                obs_F=Sigma_F[i,-1])
+            )(
+                x_mean=Sigma_X_mean, 
+                Mean_F=Mean, 
+                Col_cov_F=Col_Cov, 
+                Row_scale_F=Row_Scale, 
+                df_F=df
+                )
+        weights_ancestor = weights[i-1] * np.exp(l_x)
+        
+        # sample an ancestor index for reference trajectory
+        if np.isclose(np.sum(weights_ancestor), 0):
+            ref_idx = N_particles - 1
+        else:
+            weights_ancestor /= np.sum(weights_ancestor)
+            u = rng.random()
+            ref_idx = np.searchsorted(np.cumsum(weights_ancestor), u)
+        
+        # set ancestor index
+        idx[-1] = ref_idx
             
-            # calculate ancestor weights
-            l_x = jax.vmap(
-                functools.partial(
-                    log_likelihood, 
-                    obs_x=Sigma_X[i,-1], 
-                    obs_F=Sigma_F[i,-1], 
-                    Mean_F=Mean_F, 
-                    Col_cov_F=Col_Cov_F, 
-                    Row_scale_F=Row_Scale_F, 
-                    df_F=df_F)
-                )(x_mean=Sigma_X_mean)
-            weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
-            
-            # sample an ancestor index for reference trajectory
-            if np.isclose(np.sum(weights_ancestor), 0):
-                ref_idx = N_particles - 1
-            else:
-                weights_ancestor /= np.sum(weights_ancestor)
-                u = rng.random()
-                ref_idx = np.searchsorted(np.cumsum(weights_ancestor), u)
-            
-            # set ancestor index
-            idx[-1] = ref_idx
+        # set new reference model
+        Mean = Mean[idx[-1]]
+        Col_Cov = Col_Cov[idx[-1]]
+        Row_Scale = Row_Scale[idx[-1]]
+        df = df[idx[-1]]
+        
+        # copy ancestor statistics
+        GP_stats_ancestor[0][-1] = GP_stats_ancestor[0][idx[-1]]
+        GP_stats_ancestor[1][-1] = GP_stats_ancestor[1][idx[-1]]
+        GP_stats_ancestor[2][-1] = GP_stats_ancestor[2][idx[-1]]
+        GP_stats_ancestor[3][-1] = GP_stats_ancestor[3][idx[-1]]
         
         # save genealogy
         ancestor_idx[i-1] = idx

@@ -1,17 +1,11 @@
 import numpy as np
 import jax
 import jax.numpy as jnp
-import functools
 from tqdm import tqdm
 import scipy.io
 
-
-
 import matplotlib.pyplot as plt
 
-
-
-from src.SingleMassOscillator import F_spring, F_damper
 from src.Publication_Plotting import plot_fcn_error_2D
 from src.Publication_Plotting import plot_Data, apply_basic_formatting, imes_blue
 from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPara_inv
