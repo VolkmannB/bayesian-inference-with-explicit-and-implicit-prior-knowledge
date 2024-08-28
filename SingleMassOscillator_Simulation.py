@@ -24,6 +24,7 @@ X, Y, F_sd = SingleMassOscillator_simulation()
 
 ################################################################################
 ### Offline Algorithm
+print("\n=== Offline Algorithm ===")
 
 # Run PGAS
 (offline_Sigma_X, offline_Sigma_F, 
@@ -35,6 +36,7 @@ del offline_GP_stats
 
 ################################################################################
 ### Online Algorithm
+print("\n=== Online Algorithm ===")
 
 # Run auxiliary Particle filter
 (online_Sigma_X, online_Sigma_F, 
