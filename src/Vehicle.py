@@ -414,7 +414,7 @@ def Vehicle_APF(Y):
         
         #abort
         if np.any(np.isnan(weights_aux)):
-            ValueError("Particle degeneration at auxiliary weights")
+            raise ValueError("Particle degeneration at auxiliary weights")
         
         # draw new indices
         u = rng.random()
@@ -521,7 +521,7 @@ def Vehicle_APF(Y):
         
         #abort
         if np.any(np.isnan(log_weights[i])):
-            ValueError("Particle degeneration at new weights")
+            raise ValueError("Particle degeneration at new weights")
         
         
         
@@ -814,7 +814,7 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_
         
         #abort
         if np.any(np.isnan(weights_aux)):
-            ValueError("Particle degeneration at auxiliary weights")
+            raise ValueError("Particle degeneration at auxiliary weights")
         
         # draw new indices
         idx = np.array(systematic_SISR(rng.random(), weights_aux))
@@ -993,7 +993,7 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_
         
         #abort
         if np.any(np.isnan(log_weights[i])):
-            ValueError("Particle degeneration at new weights")
+            raise ValueError("Particle degeneration at new weights")
     
     
     
