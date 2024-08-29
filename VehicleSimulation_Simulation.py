@@ -3,8 +3,6 @@ import jax.numpy as jnp
 import functools
 import scipy.io
 
-
-
 from src.Vehicle import Vehicle_simulation, mu_y, basis_fcn
 from src.Vehicle import time, Vehicle_PGAS
 from src.Vehicle import GP_prior_f, GP_prior_r, Vehicle_APF
@@ -20,6 +18,7 @@ X, Y, mu_f, mu_r = Vehicle_simulation()
 
 ################################################################################
 # Offline Algorithm
+print("\n=== Offline Algorithm ===")
 
 (
     offline_Sigma_X, 
@@ -40,6 +39,7 @@ del offline_GP_stats_r
 
 ################################################################################
 # Online Algorithm
+print("\n=== Online Algorithm ===")
 
 (
     online_Sigma_X, 
@@ -100,12 +100,16 @@ mdict = {
     'alpha_plot': alpha_plot,
     'basis_plot': basis_plot,
     'mu_true_plot': mu_true_plot,
-    'prior_T0': GP_prior_f[0],
-    'prior_T1': GP_prior_f[1],
-    'prior_T2': GP_prior_f[2],
-    'prior_T3': GP_prior_f[3],
+    'prior_T0_f': GP_prior_f[0],
+    'prior_T1_f': GP_prior_f[1],
+    'prior_T2_f': GP_prior_f[2],
+    'prior_T3_f': GP_prior_f[3],
+    'prior_T0_r': GP_prior_r[0],
+    'prior_T1_r': GP_prior_r[1],
+    'prior_T2_r': GP_prior_r[2],
+    'prior_T3_r': GP_prior_r[3],
     'X': X,
     'mu_f': mu_f,
     'mu_r': mu_r
 }
-scipy.io.savemat('Vehicle.mat', mdict)
+scipy.io.savemat('plots\Vehicle.mat', mdict)
