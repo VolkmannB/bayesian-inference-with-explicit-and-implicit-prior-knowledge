@@ -567,7 +567,7 @@ def SingleMassOscillator_CPFAS_Kernel(
         
         
         
-        ### Step 3: Sample a new ancestor for the reference trajectory
+        ### Step 4: Sample a new ancestor for the reference trajectory
         
         # calculate ancestor weights
         l_x = jax.vmap(
@@ -593,7 +593,7 @@ def SingleMassOscillator_CPFAS_Kernel(
             ref_idx = np.searchsorted(np.cumsum(weights_ancestor), u)
         
         # set ancestor index
-        idx[-1] = ref_idx
+        idx[-1] = idx[ref_idx]
             
         # set new reference model
         Mean = Mean[idx[-1]]

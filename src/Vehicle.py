@@ -11,7 +11,8 @@ from src.BayesianInferrence import prior_mniw_2naturalPara
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
 from src.BayesianInferrence import prior_mniw_Predictive
-from src.Filtering import systematic_SISR, log_likelihood_Normal, log_likelihood_Multivariate_t
+from src.Filtering import systematic_SISR, log_likelihood_Normal
+from src.Filtering import log_likelihood_Multivariate_t, reconstruct_trajectory
 
 
 
@@ -159,7 +160,7 @@ N_particles = 200
 N_PGAS_iter = 5
 forget_factor = 0.999
 burnin_iter = 100
-dt = 0.01
+dt = 0.02
 t_end = 100.0
 time = np.arange(0.0, t_end, dt)
 steps = len(time)
@@ -177,7 +178,7 @@ e = lambda n=1: rng.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
 # control input to the vehicle as [steering angle, longitudinal velocity]
 ctrl_input = np.zeros((steps,2))
-ctrl_input[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * 0.5*(np.tanh(0.2*(time-15))-np.tanh(0.2*(time-75)))
+ctrl_input[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * 0.5*(np.tanh(0.2*(time-t_end*0.15))-np.tanh(0.2*(time-t_end*0.75)))
 ctrl_input[:,1] = 11.0
 
 
@@ -193,24 +194,6 @@ basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
     lengthscale, 
     500
     )
-
-@jax.jit
-def features_MTF_front(x, u, l_f=l_f):
-    
-    vx = u[1]
-    vy = x[1] + x[0]*l_f
-    alpha = u[0] - jnp.arctan(vy/vx)
-    
-    return basis_fcn(alpha)
-
-@jax.jit
-def features_MTF_rear(x, u, l_r=l_r):
-    
-    vx = u[1]
-    vy = x[1] - x[0]*l_r
-    alpha = -jnp.arctan(vy/vx)
-    
-    return basis_fcn(alpha)
 
 
 
@@ -270,15 +253,14 @@ def Vehicle_simulation():
 
 def Vehicle_APF(Y):
     
-    print("\n=== Online Algorithm ===")
-    
     #variables for logging
     Sigma_X = np.zeros((steps,N_particles,2))
     Sigma_Y = np.zeros((steps,N_particles,2))
     Sigma_mu_f = np.zeros((steps,N_particles))
-    Sigma_alpha_f = np.zeros((steps,N_particles))
     Sigma_mu_r = np.zeros((steps,N_particles))
+    Sigma_alpha_f = np.zeros((steps,N_particles))
     Sigma_alpha_r = np.zeros((steps,N_particles))
+    log_weights = np.zeros((steps,N_particles))
     
     # parameters for the sufficient statistics
     GP_stats_f = [
@@ -310,34 +292,39 @@ def Vehicle_APF(Y):
     Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N_particles,))
     Sigma_mu_f[0,...] = np.random.normal(0, 1e-2, (N_particles,))
     Sigma_mu_r[0,...] = np.random.normal(0, 1e-2, (N_particles,))
-    weights = np.ones((steps,N_particles))/N_particles
+    
+    Sigma_alpha_f[0], Sigma_alpha_r[0] = jax.vmap(
+        functools.partial(f_alpha, u=ctrl_input[0])
+        )(
+            Sigma_X[0]
+            )
+        
     
     # update GP
-    phi_f = jax.vmap(
-        functools.partial(features_MTF_front, u=ctrl_input[0])
-        )(Sigma_X[0])
-    phi_r = jax.vmap(
-        functools.partial(features_MTF_rear, u=ctrl_input[0])
-        )(Sigma_X[0])
+    basis = jax.vmap(basis_fcn)(Sigma_mu_f[0])
     GP_stats_f = list(jax.vmap(prior_mniw_calcStatistics)(
         Sigma_mu_f[0,...],
-        phi_f
+        basis
     ))
+    
+    basis = jax.vmap(basis_fcn)(Sigma_mu_r[0])
     GP_stats_r = list(jax.vmap(prior_mniw_calcStatistics)(
         Sigma_mu_r[0,...],
-        phi_r
+        basis
     ))
     
     # logging
-    GP_stats_f_logging[0][0] = np.einsum('n...,n->...', GP_stats_f[0], weights[0])
-    GP_stats_f_logging[1][0] = np.einsum('n...,n->...', GP_stats_f[1], weights[0])
-    GP_stats_f_logging[2][0] = np.einsum('n...,n->...', GP_stats_f[2], weights[0])
-    GP_stats_f_logging[3][0] = np.einsum('n...,n->...', GP_stats_f[3], weights[0])
+    weights = np.exp(log_weights[0] - np.max(log_weights[0]))
+    weights /= np.sum(weights)
+    GP_stats_f_logging[0][0] = np.einsum('n...,n->...', GP_stats_f[0], weights)
+    GP_stats_f_logging[1][0] = np.einsum('n...,n->...', GP_stats_f[1], weights)
+    GP_stats_f_logging[2][0] = np.einsum('n...,n->...', GP_stats_f[2], weights)
+    GP_stats_f_logging[3][0] = np.einsum('n...,n->...', GP_stats_f[3], weights)
     
-    GP_stats_r_logging[0][0] = np.einsum('n...,n->...', GP_stats_r[0], weights[0])
-    GP_stats_r_logging[1][0] = np.einsum('n...,n->...', GP_stats_r[1], weights[0])
-    GP_stats_r_logging[2][0] = np.einsum('n...,n->...', GP_stats_r[2], weights[0])
-    GP_stats_r_logging[3][0] = np.einsum('n...,n->...', GP_stats_r[3], weights[0])
+    GP_stats_r_logging[0][0] = np.einsum('n...,n->...', GP_stats_r[0], weights)
+    GP_stats_r_logging[1][0] = np.einsum('n...,n->...', GP_stats_r[1], weights)
+    GP_stats_r_logging[2][0] = np.einsum('n...,n->...', GP_stats_r[2], weights)
+    GP_stats_r_logging[3][0] = np.einsum('n...,n->...', GP_stats_r[3], weights)
     
     
     
@@ -383,11 +370,14 @@ def Vehicle_APF(Y):
             mu_yf=Sigma_mu_f[i-1], 
             mu_yr=Sigma_mu_r[i-1]
         )
+        alpha_f_aux, alpha_r_aux = jax.vmap(
+            functools.partial(f_alpha, u=ctrl_input[i])
+            )(
+                x_aux
+                )
         
         # create auxiliary variable for mu front
-        basis = jax.vmap(
-            functools.partial(features_MTF_front, u=ctrl_input[i])
-            )(x_aux)
+        basis = jax.vmap(basis_fcn)(alpha_f_aux)
         mu_f_aux = jax.vmap(
             functools.partial(prior_mniw_Predictive)
             )(
@@ -399,9 +389,7 @@ def Vehicle_APF(Y):
         )[0]
         
         # create auxiliary variable for mu rear
-        basis = jax.vmap(
-            functools.partial(features_MTF_rear, u=ctrl_input[i])
-            )(x_aux)
+        basis = jax.vmap(basis_fcn)(alpha_r_aux)
         mu_r_aux = jax.vmap(
             functools.partial(prior_mniw_Predictive)
             )(
@@ -420,13 +408,13 @@ def Vehicle_APF(Y):
                 mu_yf=mu_f_aux, 
                 mu_yr=mu_r_aux)
         l_y_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
-        weights_aux = weights[i-1] * np.exp(l_y_aux)
+        log_weights_aux = log_weights[i-1] + l_y_aux
+        weights_aux = np.exp(log_weights_aux - np.max(log_weights_aux))
         weights_aux = weights_aux/np.sum(weights_aux)
         
         #abort
         if np.any(np.isnan(weights_aux)):
-            print("Particle degeneration at auxiliary weights")
-            break
+            ValueError("Particle degeneration at auxiliary weights")
         
         # draw new indices
         u = rng.random()
@@ -449,11 +437,15 @@ def Vehicle_APF(Y):
                 mu_yr=Sigma_mu_r[i-1,idx]
                 ) + w_x
         
+        Sigma_alpha_f[i], Sigma_alpha_r[i] = jax.vmap(
+            functools.partial(f_alpha, u=ctrl_input[i])
+            )(
+                Sigma_X[i]
+                )
+        
         ## sample proposal for mu front at time t
         # evaluate basis functions
-        basis_f = jax.vmap(
-            functools.partial(features_MTF_front, u=ctrl_input[i])
-            )(Sigma_X[i])
+        basis_f = jax.vmap(basis_fcn)(Sigma_alpha_f[i])
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
@@ -474,9 +466,7 @@ def Vehicle_APF(Y):
         
         ## sample proposal for mu rear at time t
         # evaluate basis fucntions
-        basis_r = jax.vmap(
-            functools.partial(features_MTF_rear, u=ctrl_input[i])
-            )(Sigma_X[i])
+        basis_r = jax.vmap(basis_fcn)(Sigma_alpha_r[i])
         
         # calculate conditional predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
@@ -498,19 +488,19 @@ def Vehicle_APF(Y):
             
         
         # Update the sufficient statistics of GP with new proposal
-        T_0, T_1, T_2, T_3 = list(jax.vmap(prior_mniw_calcStatistics)(
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_f[i],
             basis_f
-        ))
+        )
         GP_stats_f[0] = GP_stats_f[0][idx] + T_0
         GP_stats_f[1] = GP_stats_f[1][idx] + T_1
         GP_stats_f[2] = GP_stats_f[2][idx] + T_2
         GP_stats_f[3] = GP_stats_f[3][idx] + T_3
         
-        T_0, T_1, T_2, T_3 = list(jax.vmap(prior_mniw_calcStatistics)(
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_r[i],
             basis_r
-        ))
+        )
         GP_stats_r[0] = GP_stats_r[0][idx] + T_0
         GP_stats_r[1] = GP_stats_r[1][idx] + T_1
         GP_stats_r[2] = GP_stats_r[2][idx] + T_2
@@ -527,32 +517,35 @@ def Vehicle_APF(Y):
                 mu_yr=Sigma_mu_r[i])
         Sigma_Y[i] = sigma_y[:,:2]
         l_y = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(sigma_y)
-        weights[i] = np.exp(l_y - l_y_aux[idx])
-        weights[i] = weights[i]/np.sum(weights[i])
+        log_weights[i] = l_y - l_y_aux[idx]
         
         #abort
-        if np.any(np.isnan(weights[i])):
-            print("Particle degeneration at new weights")
-            break
+        if np.any(np.isnan(log_weights[i])):
+            ValueError("Particle degeneration at new weights")
         
         
         
         # logging
-        GP_stats_f_logging[0][i] = np.einsum('n...,n->...', GP_stats_f[0], weights[0])
-        GP_stats_f_logging[1][i] = np.einsum('n...,n->...', GP_stats_f[1], weights[0])
-        GP_stats_f_logging[2][i] = np.einsum('n...,n->...', GP_stats_f[2], weights[0])
-        GP_stats_f_logging[3][i] = np.einsum('n...,n->...', GP_stats_f[3], weights[0])
+        weights = np.exp(log_weights[i] - np.max(log_weights[i]))
+        weights /= np.sum(weights)
+        GP_stats_f_logging[0][i] = np.einsum('n...,n->...', GP_stats_f[0], weights)
+        GP_stats_f_logging[1][i] = np.einsum('n...,n->...', GP_stats_f[1], weights)
+        GP_stats_f_logging[2][i] = np.einsum('n...,n->...', GP_stats_f[2], weights)
+        GP_stats_f_logging[3][i] = np.einsum('n...,n->...', GP_stats_f[3], weights)
         
-        GP_stats_r_logging[0][i] = np.einsum('n...,n->...', GP_stats_r[0], weights[0])
-        GP_stats_r_logging[1][i] = np.einsum('n...,n->...', GP_stats_r[1], weights[0])
-        GP_stats_r_logging[2][i] = np.einsum('n...,n->...', GP_stats_r[2], weights[0])
-        GP_stats_r_logging[3][i] = np.einsum('n...,n->...', GP_stats_r[3], weights[0])
+        GP_stats_r_logging[0][i] = np.einsum('n...,n->...', GP_stats_r[0], weights)
+        GP_stats_r_logging[1][i] = np.einsum('n...,n->...', GP_stats_r[1], weights)
+        GP_stats_r_logging[2][i] = np.einsum('n...,n->...', GP_stats_r[2], weights)
+        GP_stats_r_logging[3][i] = np.einsum('n...,n->...', GP_stats_r[3], weights)
+    
+    
+    
+    # normalize weights
+    log_weights -= np.max(log_weights, axis=-1, keepdims=True)
+    weights = np.exp(log_weights)
+    weights /= np.sum(weights, axis=-1, keepdims=True)
         
-        Sigma_alpha_f[i], Sigma_alpha_r[i] = jax.vmap(
-            functools.partial(f_alpha, u=ctrl_input[i])
-            )(
-            x=Sigma_X[i]
-        )
+        
         
     return Sigma_X, Sigma_mu_f, Sigma_mu_r, Sigma_alpha_f, Sigma_alpha_r, weights, GP_stats_f_logging, GP_stats_r_logging
 
@@ -567,14 +560,13 @@ def Vehicle_PGAS(Y):
     Args:
         Y (Array): Measurements
     """
-    print("\n=== Offline Algorithm ===")
     
     Sigma_X = np.zeros((steps,N_PGAS_iter,2))
     Sigma_mu_f = np.zeros((steps,N_PGAS_iter))
     Sigma_mu_r = np.zeros((steps,N_PGAS_iter))
-    weights = np.ones((steps,N_PGAS_iter))/N_PGAS_iter
     Sigma_alpha_f = np.zeros((steps,N_PGAS_iter))
     Sigma_alpha_r = np.zeros((steps,N_PGAS_iter))
+    weights = np.ones((steps,N_PGAS_iter))/N_PGAS_iter
 
 
     # variable for sufficient statistics
@@ -594,50 +586,31 @@ def Vehicle_PGAS(Y):
 
     # set initial reference using APF
     print(f"Setting initial reference trajectory")
-    GP_para_f = prior_mniw_2naturalPara_inv(
-        GP_prior_f[0],
-        GP_prior_f[1],
-        GP_prior_f[2],
-        GP_prior_f[3]
-    )
-    GP_para_r = prior_mniw_2naturalPara_inv(
-        GP_prior_r[0],
-        GP_prior_r[1],
-        GP_prior_r[2],
-        GP_prior_r[3]
-    )
-    Sigma_X[:,0], Sigma_mu_f[:,0], Sigma_mu_r[:,0] = Vehicle_CPFAS_Kernel(
-            Y=Y, 
-            x_ref=None, 
-            mu_f_ref=None, 
-            mu_r_ref=None, 
-            Mean_f=GP_para_f[0], 
-            Col_Cov_f=GP_para_f[1], 
-            Row_Scale_f=GP_para_f[2], 
-            df_f=GP_para_f[3], 
-            Mean_r=GP_para_r[0], 
-            Col_Cov_r=GP_para_r[1], 
-            Row_Scale_r=GP_para_r[2], 
-            df_r=GP_para_r[3]
-            )
+    init_X, init_mu_f, init_mu_r, init_alpha_f, init_alpha_r, init_w, _, _ = Vehicle_APF(Y)
+    idx = np.searchsorted(np.cumsum(init_w[-1]), rng.random())
+    Sigma_X[:,0] = init_X[:,idx]
+    Sigma_mu_f[:,0] = init_mu_f[:,idx]
+    Sigma_mu_r[:,0] = init_mu_r[:,idx]
+    Sigma_alpha_f[:,0] = init_alpha_f[:,idx]
+    Sigma_alpha_r[:,0] = init_alpha_r[:,idx]
         
         
-    # make proposal for distribution of mu_f using new proposals of trajectories
-    phi = jax.vmap(features_MTF_front)(Sigma_X[:,0], ctrl_input)
+    # set initial statistic for mu_f
+    basis = jax.vmap(basis_fcn)(Sigma_mu_f[:,0])
     T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_f[:,0],
-            phi
+            basis
         )
     GP_stats_f[0][0] = np.sum(T_0, axis=0)
     GP_stats_f[1][0] = np.sum(T_1, axis=0)
     GP_stats_f[2][0] = np.sum(T_2, axis=0)
     GP_stats_f[3][0] = np.sum(T_3, axis=0)
 
-    # make proposal for distribution of mu_r using new proposals of trajectories
-    phi = jax.vmap(features_MTF_rear)(Sigma_X[:,0], ctrl_input)
+    # set initial statistic for mu_r
+    basis = jax.vmap(basis_fcn)(Sigma_mu_r[:,0])
     T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_r[:,0],
-            phi
+            basis
         )
     GP_stats_r[0][0] = np.sum(T_0, axis=0)
     GP_stats_r[1][0] = np.sum(T_1, axis=0)
@@ -649,52 +622,31 @@ def Vehicle_PGAS(Y):
     ### Run PGAS
     for k in range(1, N_PGAS_iter):
         print(f"Starting iteration {k}")
-            
-        # calculate parameters of GP from prior and sufficient statistics
-        GP_para_f = list(prior_mniw_2naturalPara_inv(
-            GP_prior_f[0] + GP_stats_f[0][k-1],
-            GP_prior_f[1] + GP_stats_f[1][k-1],
-            GP_prior_f[2] + GP_stats_f[2][k-1],
-            GP_prior_f[3] + GP_stats_f[3][k-1]
-        ))
-        
-        GP_para_r = list(prior_mniw_2naturalPara_inv(
-            GP_prior_r[0] + GP_stats_r[0][k-1],
-            GP_prior_r[1] + GP_stats_r[1][k-1],
-            GP_prior_r[2] + GP_stats_r[2][k-1],
-            GP_prior_r[3] + GP_stats_r[3][k-1]
-        ))
-        
-        
         
         # sample new proposal for trajectories using CPF with AS
-        Sigma_X[:,k], Sigma_mu_f[:,k], Sigma_mu_r[:,k] = Vehicle_CPFAS_Kernel(
+        Sigma_X[:,k], Sigma_mu_f[:,k], Sigma_mu_r[:,k], Sigma_alpha_f[:,k], Sigma_alpha_r[:,k] = Vehicle_CPFAS_Kernel(
             Y=Y, 
             x_ref=Sigma_X[:,k-1], 
             mu_f_ref=Sigma_mu_f[:,k-1], 
             mu_r_ref=Sigma_mu_r[:,k-1], 
-            Mean_f=GP_para_f[0], 
-            Col_Cov_f=GP_para_f[1], 
-            Row_Scale_f=GP_para_f[2], 
-            df_f=GP_para_f[3], 
-            Mean_r=GP_para_r[0], 
-            Col_Cov_r=GP_para_r[1], 
-            Row_Scale_r=GP_para_r[2], 
-            df_r=GP_para_r[3]
+            GP_stats_ref_f=[
+                GP_stats_f[0][k-1],
+                GP_stats_f[1][k-1],
+                GP_stats_f[2][k-1],
+                GP_stats_f[3][k-1]], 
+            GP_stats_ref_r=[
+                GP_stats_r[0][k-1],
+                GP_stats_r[1][k-1],
+                GP_stats_r[2][k-1],
+                GP_stats_r[3][k-1]]
             )
-        Sigma_alpha_f[:,k], Sigma_alpha_r[:,k] = jax.vmap(
-            functools.partial(f_alpha)
-            )(
-            x=Sigma_X[:,k],
-            u=ctrl_input
-        )
         
         
         # make proposal for distribution of mu_f using new proposals of trajectories
-        phi = jax.vmap(features_MTF_front)(Sigma_X[:,k], ctrl_input)
+        basis = jax.vmap(basis_fcn)(Sigma_alpha_f[:,k])
         T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
                 Sigma_mu_f[:,k],
-                phi
+                basis
             )
         GP_stats_f[0][k] = np.sum(T_0, axis=0)
         GP_stats_f[1][k] = np.sum(T_1, axis=0)
@@ -702,10 +654,10 @@ def Vehicle_PGAS(Y):
         GP_stats_f[3][k] = np.sum(T_3, axis=0)
         
         # make proposal for distribution of mu_r using new proposals of trajectories
-        phi = jax.vmap(features_MTF_rear)(Sigma_X[:,k], ctrl_input)
+        basis = jax.vmap(basis_fcn)(Sigma_alpha_r[:,k])
         T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
                 Sigma_mu_r[:,k],
-                phi
+                basis
             )
         GP_stats_r[0][k] = np.sum(T_0, axis=0)
         GP_stats_r[1][k] = np.sum(T_1, axis=0)
@@ -718,39 +670,98 @@ def Vehicle_PGAS(Y):
     
     
 
-def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Scale_f, df_f, Mean_r, Col_Cov_r, Row_Scale_r, df_r):
+def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_ref_r):
     """
     This function runs the CPFAS kernel for the PGAS algorithm to generate new 
     proposals for the state trajectory. It is a conditional auxiliary particle 
     filter. 
     """
     
-    #variables for logging
+    # variables for logging
     Sigma_X = np.zeros((steps,N_particles,2))
     Sigma_Y = np.zeros((steps,N_particles,2))
     Sigma_mu_f = np.zeros((steps,N_particles))
     Sigma_mu_r = np.zeros((steps,N_particles))
-    ancestor_idx = np.zeros((steps-1,N_particles))
+    Sigma_alpha_f = np.zeros((steps,N_particles))
+    Sigma_alpha_r = np.zeros((steps,N_particles))
+    ancestor_idx = np.zeros((steps-1,N_particles), dtype=np.int_)
     
     # initial values for states
-    Sigma_X[0,...] = np.random.multivariate_normal(x0, P0, (N_particles,))
-    Sigma_mu_f[0,...] = np.random.normal(0, 1e-2, (N_particles,))
-    Sigma_mu_r[0,...] = np.random.normal(0, 1e-2, (N_particles,))
-    weights = np.ones((steps,N_particles))/N_particles
+    Sigma_X[0] = np.random.multivariate_normal(x0, P0, (N_particles,))
+    Sigma_mu_f[0] = np.random.normal(0, 1e-2, (N_particles,))
+    Sigma_mu_r[0] = np.random.normal(0, 1e-2, (N_particles,))
     
-    if x_ref is not None:
-        Sigma_X[0,-1,...] = x_ref[0]
-        Sigma_mu_f[0,-1,...] = mu_f_ref[0]
-        Sigma_mu_r[0,-1,...] = mu_r_ref[0]
+    Sigma_X[0,-1] = x_ref[0]
+    Sigma_mu_f[0,-1] = mu_f_ref[0]
+    Sigma_mu_r[0,-1] = mu_r_ref[0]
+    
+    Sigma_alpha_f[0], Sigma_alpha_r[0] = jax.vmap(
+        functools.partial(f_alpha, u=ctrl_input[0])
+        )(
+            Sigma_X[0]
+            )
+        
+    log_weights = np.zeros((steps,N_particles))
+    
+    
+    ## split model into reference and ancestor statistics
+    alpha_f_ref, alpha_r_ref = f_alpha(x_ref[0], ctrl_input[0])
+    
+    # update reference statistic
+    basis = basis_fcn(alpha_f_ref)
+    T_0, T_1, T_2, T_3 = prior_mniw_calcStatistics(mu_f_ref[0], basis)
+    GP_stats_ref_f[0] = GP_stats_ref_f[0] - T_0
+    GP_stats_ref_f[1] = GP_stats_ref_f[1] - T_1
+    GP_stats_ref_f[2] = GP_stats_ref_f[2] - T_2
+    GP_stats_ref_f[3] = GP_stats_ref_f[3] - T_3
+    
+    # update reference statistic
+    basis = basis_fcn(alpha_r_ref)
+    T_0, T_1, T_2, T_3 = prior_mniw_calcStatistics(mu_r_ref[0], basis)
+    GP_stats_ref_r[0] = GP_stats_ref_r[0] - T_0
+    GP_stats_ref_r[1] = GP_stats_ref_r[1] - T_1
+    GP_stats_ref_r[2] = GP_stats_ref_r[2] - T_2
+    GP_stats_ref_r[3] = GP_stats_ref_r[3] - T_3
+    
+    
+    
+    # calculate ancestor statistics
+    basis = jax.vmap(basis_fcn)(Sigma_alpha_f[0])
+    GP_stats_ancestor_f = list(jax.vmap(prior_mniw_calcStatistics)(
+        Sigma_mu_f[0], 
+        basis
+    ))
+    
+    basis = jax.vmap(basis_fcn)(Sigma_alpha_r[0])
+    GP_stats_ancestor_r = list(jax.vmap(prior_mniw_calcStatistics)(
+        Sigma_mu_r[0], 
+        basis
+    ))
+    
     
     
     
     for i in tqdm(range(1,steps), desc="    Running CPF Kernel"):
+        
+        # calculate models
+        Mean_f, Col_Cov_f, Row_Scale_f, df_f = jax.vmap(prior_mniw_2naturalPara_inv)(
+            GP_prior_f[0] + GP_stats_ref_f[0] + GP_stats_ancestor_f[0],
+            GP_prior_f[1] + GP_stats_ref_f[1] + GP_stats_ancestor_f[1],
+            GP_prior_f[2] + GP_stats_ref_f[2] + GP_stats_ancestor_f[2],
+            GP_prior_f[3] + GP_stats_ref_f[3] + GP_stats_ancestor_f[3],
+        )
+        
+        Mean_r, Col_Cov_r, Row_Scale_r, df_r = jax.vmap(prior_mniw_2naturalPara_inv)(
+            GP_prior_r[0] + GP_stats_ref_r[0] + GP_stats_ancestor_r[0],
+            GP_prior_r[1] + GP_stats_ref_r[1] + GP_stats_ancestor_r[1],
+            GP_prior_r[2] + GP_stats_ref_r[2] + GP_stats_ancestor_r[2],
+            GP_prior_r[3] + GP_stats_ref_r[3] + GP_stats_ancestor_r[3],
+        )
             
             
             
-        ### Step 1: According to the algorithm of the auxiliary PF, resample 
-        # particles according to the first stage weights
+        ### Step 1: According to the algorithm of the auxiliary PF, sample 
+        # ancestor indices according to the first stage weights
         
         # create auxiliary variable for state x
         x_aux = jax.vmap(functools.partial(f_x, u=ctrl_input[i-1], dt=dt))(
@@ -758,219 +769,245 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, Mean_f, Col_Cov_f, Row_Sc
             mu_yf=Sigma_mu_f[i-1], 
             mu_yr=Sigma_mu_r[i-1]
         )
+        alpha_f_aux, alpha_r_aux = jax.vmap(
+            functools.partial(f_alpha, u=ctrl_input[i])
+            )(
+            x_aux
+        )
         
         # create auxiliary variable for mu front
-        basis = jax.vmap(
-            functools.partial(features_MTF_front, u=ctrl_input[i])
-            )(x_aux)
-        mu_f_aux = jax.vmap(
-            functools.partial(prior_mniw_Predictive, 
-                mean=Mean_f,
-                col_cov=Col_Cov_f,
-                row_scale=Row_Scale_f,
-                df=df_f)
-            )(
-                basis=basis
+        basis = jax.vmap(basis_fcn)(alpha_f_aux)
+        mu_f_aux = jax.vmap(functools.partial(prior_mniw_Predictive))(
+            basis=basis, 
+            mean=Mean_f,
+            col_cov=Col_Cov_f,
+            row_scale=Row_Scale_f,
+            df=df_f
         )[0]
         
         # create auxiliary variable for mu rear
-        basis = jax.vmap(
-            functools.partial(features_MTF_rear, u=ctrl_input[i])
-            )(x_aux)
-        mu_r_aux = jax.vmap(
-            functools.partial(prior_mniw_Predictive, 
-                mean=Mean_r,
-                col_cov=Col_Cov_r,
-                row_scale=Row_Scale_r,
-                df=df_r)
-            )(
-                basis=basis
+        basis = jax.vmap(basis_fcn)(alpha_r_aux)
+        mu_r_aux = jax.vmap(functools.partial(prior_mniw_Predictive))(
+            basis=basis, 
+            mean=Mean_r,
+            col_cov=Col_Cov_r,
+            row_scale=Row_Scale_r,
+            df=df_r
         )[0]
         
         # calculate first stage weights
         y_aux = jax.vmap(
             functools.partial(f_y, u=ctrl_input[i])
             )(
-                x=x_aux,
-                mu_yf=mu_f_aux, 
-                mu_yr=mu_r_aux)
-        l_y_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
-        weights_aux = weights[i-1] * np.exp(l_y_aux)
-        weights_aux = weights_aux/np.sum(weights_aux)
+            x=x_aux,
+            mu_yf=mu_f_aux, 
+            mu_yr=mu_r_aux
+        )
+        l_y_aux = jax.vmap(
+            functools.partial(log_likelihood_Normal, mean=Y[i], cov=R)
+            )(
+            y_aux
+        )
+        log_weights_aux = log_weights[i-1] + l_y_aux
+        weights_aux = np.exp(log_weights_aux - np.max(log_weights_aux))
+        weights_aux /= np.sum(weights_aux)
         
         #abort
         if np.any(np.isnan(weights_aux)):
-            print("Particle degeneration at auxiliary weights")
-            break
+            ValueError("Particle degeneration at auxiliary weights")
         
         # draw new indices
-        u = rng.random()
-        idx = np.array(systematic_SISR(u, weights_aux))
+        idx = np.array(systematic_SISR(rng.random(), weights_aux))
         # correct out of bounds indices from numerical errors
         idx[idx >= N_particles] = N_particles - 1
         
-        # let reference trajectory survive
-        if x_ref is not None:
-            idx[-1] = N_particles - 1
         
         
-        
-        ### Step 2: Make a proposal by generating samples from the hirachical 
-        # model
-        
-        # sample from proposal for x at time t
-        w_x = w((N_particles,))
-        Sigma_X_mean = jax.vmap(
-            functools.partial(f_x, u=ctrl_input[i-1], dt=dt)
+        ### Step 2: Sample a new ancestor for the reference trajectory
+         
+        # calculate ancestor weights
+        l_x = jax.vmap(
+            functools.partial(
+                log_likelihood, 
+                obs_x=x_ref[i], 
+                obs_mu_f=mu_f_ref[i], 
+                obs_mu_r=mu_r_ref[i], 
+                ctrl_input=ctrl_input[i])
             )(
-                x=Sigma_X[i-1,idx],
-                mu_yf=Sigma_mu_f[i-1,idx],
-                mu_yr=Sigma_mu_r[i-1,idx]
-                )
-        Sigma_X[i] = Sigma_X_mean + w_x
-        
-        # set reference trajectory for state x
-        if x_ref is not None:
-            Sigma_X[i,-1] = x_ref[i]
-        
-        ## sample proposal for mu front at time t
-        # evaluate basis functions
-        basis = jax.vmap(
-            functools.partial(features_MTF_front, u=ctrl_input[i])
-            )(Sigma_X[i])
-        
-        # calculate conditional predictive distribution
-        c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_Predictive, 
-                mean=Mean_f,
-                col_cov=Col_Cov_f,
-                row_scale=Row_Scale_f,
-                df=df_f)
-            )(
-                basis=basis
+            x_mean=x_aux,
+            Mean_f=Mean_f, 
+            Col_Cov_f=Col_Cov_f, 
+            Row_Scale_f=Row_Scale_f, 
+            df_f=df_f, 
+            Mean_r=Mean_r, 
+            Col_Cov_r=Col_Cov_r, 
+            Row_Scale_r=Row_Scale_r, 
+            df_r=df_r
         )
-            
-        # generate samples
-        c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
-        c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
-        t_samples = rng.standard_t(df=df)
-        Sigma_mu_f[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
+        log_weights_ancestor = log_weights_aux + l_x
+        weights_ancestor = np.exp(log_weights_ancestor - np.max(log_weights_ancestor))
+        weights_ancestor /= np.sum(weights_ancestor)
         
-        # set reference trajectory for mu_f
-        if x_ref is not None:
-            Sigma_mu_f[i,-1] = mu_f_ref[i]
-        
-        
-        ## sample proposal for mu rear at time t
-        # evaluate basis fucntions
-        basis = jax.vmap(
-            functools.partial(features_MTF_rear, u=ctrl_input[i])
-            )(Sigma_X[i])
-        
-        # calculate conditional predictive distribution
-        c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(prior_mniw_Predictive, 
-                mean=Mean_r,
-                col_cov=Col_Cov_r,
-                row_scale=Row_Scale_r,
-                df=df_r)
-            )(
-                basis=basis
-        )
-            
-        # generate samples
-        c_col_scale_chol = np.sqrt(np.squeeze(c_col_scale))
-        c_row_scale_chol = np.sqrt(np.squeeze(c_row_scale))
-        t_samples = rng.standard_t(df=df)
-        Sigma_mu_r[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
-        
-        # set reference trajectory for mu_r
-        if x_ref is not None:
-            Sigma_mu_r[i,-1] = mu_r_ref[i]
-        
-        
-        
-        ### Step 3: Sample a new ancestor for the reference trajectory
-        
-        if x_ref is not None:
-            # calculate ancestor weights
-            l_x = jax.vmap(
-                functools.partial(
-                    log_likelihood, 
-                    obs_x=Sigma_X[i,-1], 
-                    obs_mu_f=Sigma_mu_f[i,-1], 
-                    obs_mu_r=Sigma_mu_r[i,-1], 
-                    ctrl_input=ctrl_input[i],
-                    Mean_f=Mean_f, 
-                    Col_Cov_f=Col_Cov_f, 
-                    Row_Scale_f=Row_Scale_f, 
-                    df_f=df_f, 
-                    Mean_r=Mean_r, 
-                    Col_Cov_r=Col_Cov_r, 
-                    Row_Scale_r=Row_Scale_r, 
-                    df_r=df_r)
-                )(
-                    x_mean=Sigma_X_mean
-                    )
-            weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
-            
-            # sample an ancestor index for reference trajectory
-            if np.isclose(np.sum(weights_ancestor), 0):
-                ref_idx = N_particles - 1
-            else:
-                weights_ancestor /= np.sum(weights_ancestor)
-                u = rng.random()
-                ref_idx = np.searchsorted(np.cumsum(weights_ancestor), u)
-            
-            # set ancestor index
-            idx[-1] = ref_idx
+        # sample an ancestor index for reference trajectory
+        ref_idx = np.searchsorted(np.cumsum(weights_ancestor), rng.random())
+        if np.any(np.isnan(weights_ancestor)):
+            ref_idx = N_particles -1
+        idx[-1] = ref_idx
         
         # save genealogy
         ancestor_idx[i-1] = idx
         
         
         
-        ### Step 4: Calculate new weights
+        ### Step 3: Make a proposal by generating samples from the hirachical 
+        # model
+        
+        # sample from proposal for x at time t
+        w_x = w((N_particles,))
+        Sigma_X[i] = jax.vmap(
+            functools.partial(f_x, u=ctrl_input[i-1], dt=dt)
+            )(
+            x=Sigma_X[i-1,idx],
+            mu_yf=Sigma_mu_f[i-1,idx],
+            mu_yr=Sigma_mu_r[i-1,idx]
+        ) + w_x
+        
+        # set reference trajectory for state x
+        Sigma_X[i,-1] = x_ref[i]
+        
+        # calculate side slip angle
+        Sigma_alpha_f[i], Sigma_alpha_r[i] = jax.vmap(
+            functools.partial(f_alpha, u=ctrl_input[i])
+            )(
+            Sigma_X[i]
+        )
+        
+        ## sample proposal for mu front at time t
+        # evaluate basis functions
+        basis_f = jax.vmap(basis_fcn)(Sigma_alpha_f[i])
+        
+        # calculate predictive distribution
+        c_mean, c_col_scale, c_row_scale, df = jax.vmap(
+            functools.partial(prior_mniw_Predictive)
+            )(
+            basis=basis_f, 
+            mean=Mean_f[idx],
+            col_cov=Col_Cov_f[idx],
+            row_scale=Row_Scale_f[idx],
+            df=df_f[idx]
+        )
+            
+        # generate samples
+        c_col_scale_chol = np.squeeze(np.linalg.cholesky(c_col_scale))
+        c_row_scale_chol = np.squeeze(np.linalg.cholesky(c_row_scale))
+        t_samples = rng.standard_t(df=df)
+        Sigma_mu_f[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
+        
+        # set reference trajectory for mu_f
+        Sigma_mu_f[i,-1] = mu_f_ref[i]
+        
+        
+        ## sample proposal for mu rear at time t
+        # evaluate basis fucntions
+        basis_r = jax.vmap(basis_fcn)(Sigma_alpha_r[i])
+        
+        # calculate predictive distribution
+        c_mean, c_col_scale, c_row_scale, df = jax.vmap(
+            functools.partial(prior_mniw_Predictive)
+            )(
+            basis=basis_r, 
+            mean=Mean_r[idx],
+            col_cov=Col_Cov_r[idx],
+            row_scale=Row_Scale_r[idx],
+            df=df_r[idx]
+        )
+            
+        # generate samples
+        c_col_scale_chol = np.squeeze(np.linalg.cholesky(c_col_scale))
+        c_row_scale_chol = np.squeeze(np.linalg.cholesky(c_row_scale))
+        t_samples = rng.standard_t(df=df)
+        Sigma_mu_r[i] = c_mean + c_col_scale_chol * t_samples * c_row_scale_chol
+        
+        # set reference trajectory for mu_r
+        Sigma_mu_r[i,-1] = mu_r_ref[i]
+        
+        
+        
+        ### Step 4: Update reference statistic
+        
+        alpha_f_ref, alpha_r_ref = f_alpha(x_ref[i], ctrl_input[i])
+        
+        # update reference statistic
+        basis = basis_fcn(alpha_f_ref)
+        T_0, T_1, T_2, T_3 = prior_mniw_calcStatistics(mu_f_ref[i], basis)
+        GP_stats_ref_f[0] = GP_stats_ref_f[0] - T_0
+        GP_stats_ref_f[1] = GP_stats_ref_f[1] - T_1
+        GP_stats_ref_f[2] = GP_stats_ref_f[2] - T_2
+        GP_stats_ref_f[3] = GP_stats_ref_f[3] - T_3
+        
+        # update reference statistic
+        basis = basis_fcn(alpha_r_ref)
+        T_0, T_1, T_2, T_3 = prior_mniw_calcStatistics(mu_r_ref[i], basis)
+        GP_stats_ref_r[0] = GP_stats_ref_r[0] - T_0
+        GP_stats_ref_r[1] = GP_stats_ref_r[1] - T_1
+        GP_stats_ref_r[2] = GP_stats_ref_r[2] - T_2
+        GP_stats_ref_r[3] = GP_stats_ref_r[3] - T_3
+        
+        
+        
+        ### Step 5: Update Hyperparameters
+        
+        # update ancestor statistics for mu_f
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+            Sigma_mu_f[i],
+            basis_f
+        )
+        GP_stats_ancestor_f[0] = GP_stats_ancestor_f[0][idx] + T_0
+        GP_stats_ancestor_f[1] = GP_stats_ancestor_f[1][idx] + T_1
+        GP_stats_ancestor_f[2] = GP_stats_ancestor_f[2][idx] + T_2
+        GP_stats_ancestor_f[3] = GP_stats_ancestor_f[3][idx] + T_3
+        
+        # update ancestor statistics for mu_r
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+            Sigma_mu_r[i],
+            basis_r
+        )
+        GP_stats_ancestor_r[0] = GP_stats_ancestor_r[0][idx] + T_0
+        GP_stats_ancestor_r[1] = GP_stats_ancestor_r[1][idx] + T_1
+        GP_stats_ancestor_r[2] = GP_stats_ancestor_r[2][idx] + T_2
+        GP_stats_ancestor_r[3] = GP_stats_ancestor_r[3][idx] + T_3
+        
+        
+        
+        ### Step 6: Calculate new weights
         sigma_y = jax.vmap(
             functools.partial(f_y, u=ctrl_input[i])
             )(
-                x=Sigma_X[i],
-                mu_yf=Sigma_mu_f[i], 
-                mu_yr=Sigma_mu_r[i])
+            x=Sigma_X[i],
+            mu_yf=Sigma_mu_f[i], 
+            mu_yr=Sigma_mu_r[i]
+        )
         Sigma_Y[i] = sigma_y[:,:2]
         l_y = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(sigma_y)
-        weights[i] = np.exp(l_y - l_y_aux[idx])
-        weights[i] = weights[i]/np.sum(weights[i])
+        log_weights[i] = l_y - l_y_aux[idx]
         
         #abort
-        if np.any(np.isnan(weights[i])):
-            print("Particle degeneration at new weights")
-            break
+        if np.any(np.isnan(log_weights[i])):
+            ValueError("Particle degeneration at new weights")
     
     
     
-    ### Step 5: sample a new trajectory to return
+    ### Step 7: sample a new trajectory to return
     
     # draw trajectory index
-    u = rng.random()
-    idx_traj = np.searchsorted(np.cumsum(weights[i]), u)
+    weights = np.exp(log_weights[-1] - np.max(log_weights[-1]))
+    weights /= np.sum(weights)
+    idx_traj = np.searchsorted(np.cumsum(weights), rng.random())
     
-    # reconstruct trajectory from genealogy
-    x_traj = np.zeros((steps,2))
-    x_traj[-1] = Sigma_X[-1, idx_traj]
-    
-    mu_f_traj = np.zeros((steps,))
-    mu_f_traj[-1] = Sigma_mu_f[-1, idx_traj]
-    
-    mu_r_traj = np.zeros((steps,))
-    mu_r_traj[-1] = Sigma_mu_r[-1, idx_traj]
-    
-    ancestry = np.zeros((steps,))
-    ancestry[-1] = idx_traj
-    for i in range(steps-2, -1, -1): # run backward in time
-        ancestry[i] = ancestor_idx[i, int(ancestry[i+1])]
-        x_traj[i] = Sigma_X[i, int(ancestry[i])]
-        mu_f_traj[i] = Sigma_mu_f[i, int(ancestry[i])]
-        mu_r_traj[i] = Sigma_mu_r[i, int(ancestry[i])]
+    x_traj = reconstruct_trajectory(Sigma_X, ancestor_idx, idx_traj)
+    mu_f_traj = reconstruct_trajectory(Sigma_mu_f, ancestor_idx, idx_traj)
+    mu_r_traj = reconstruct_trajectory(Sigma_mu_r, ancestor_idx, idx_traj)
+    alpha_f_traj = reconstruct_trajectory(Sigma_alpha_f, ancestor_idx, idx_traj)
+    alpha_r_traj = reconstruct_trajectory(Sigma_alpha_r, ancestor_idx, idx_traj)
         
-    return x_traj, mu_f_traj, mu_r_traj
+    return x_traj, mu_f_traj, mu_r_traj, alpha_f_traj, alpha_r_traj

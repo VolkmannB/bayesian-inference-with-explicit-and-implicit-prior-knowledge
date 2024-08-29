@@ -135,3 +135,24 @@ def log_likelihood_Multivariate_t(observed, mean, scale, df):
     log_likelihood = -0.5 * (df + p) * jnp.log(1 + (1 / df) * m_squared)
     
     return log_likelihood
+
+
+
+def reconstruct_trajectory(Particles, ancestry, idx):
+    
+    Particles = np.atleast_3d(Particles)
+    
+    n_steps = Particles.shape[0]
+    n_dim = Particles.shape[-1]
+    traj = np.zeros((n_steps, n_dim))
+    
+    ancestor_idx = np.zeros((n_steps,))
+    ancestor_idx[-1] = idx
+    
+    traj[-1] = Particles[-1, idx]
+    for i in range(n_steps-2, -1, -1): # run backward in time
+        
+        ancestor_idx[i] = ancestry[i, int(ancestor_idx[i+1])]
+        traj[i] = Particles[i, int(ancestor_idx[i])]
+        
+    return np.squeeze(traj)
