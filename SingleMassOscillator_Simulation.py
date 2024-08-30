@@ -87,4 +87,4 @@ mdict = {
     'X': X,
     'F_sd': F_sd
 }
-scipy.io.savemat('SingleMassOscillator.mat', mdict)
+scipy.io.savemat('plots\SingleMassOscillator.mat', mdict)
