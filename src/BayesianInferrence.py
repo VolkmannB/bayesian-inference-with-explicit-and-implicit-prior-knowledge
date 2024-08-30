@@ -21,11 +21,10 @@ def prior_mniw_2naturalPara(mean, col_cov, row_scale, df):
     mean = jnp.atleast_2d(mean)
     row_scale = jnp.atleast_2d(row_scale)
 
-    col_cov_chol = jnp.linalg.cholesky(col_cov)
-    temp = jsc.linalg.cho_solve(
-        (col_cov_chol, True), 
+    temp = jnp.linalg.solve(
+        col_cov, 
         jnp.hstack([mean.T, jnp.eye(col_cov.shape[0])])
-        )
+    )
     
     eta_0 = temp[:,:mean.shape[0]]
     eta_1 = temp[:,mean.shape[0]:]
@@ -36,11 +35,10 @@ def prior_mniw_2naturalPara(mean, col_cov, row_scale, df):
 @jax.jit
 def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
     
-    eta_1_chol = jnp.linalg.cholesky(eta_1)
-    temp = jsc.linalg.cho_solve(
-        (eta_1_chol, True), 
+    temp = jnp.linalg.solve(
+        eta_1, 
         jnp.hstack([eta_0, jnp.eye(eta_1.shape[0])])
-        )
+    )
     
     mean = temp[:,:eta_0.shape[1]].T
     col_cov = temp[:,eta_0.shape[1]:]
