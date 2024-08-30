@@ -75,4 +75,4 @@ mdict = {
     'offset_R1': offset_R1,
     'Y': Y
 }
-scipy.io.savemat('Battery.mat', mdict)
+scipy.io.savemat('plots\Battery.mat', mdict)
