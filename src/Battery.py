@@ -12,7 +12,8 @@ from src.BayesianInferrence import prior_mniw_2naturalPara
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
 from src.BayesianInferrence import prior_mniw_Predictive
-from src.Filtering import systematic_SISR, log_likelihood_Normal, log_likelihood_Multivariate_t
+from src.Filtering import systematic_SISR, log_likelihood_Normal
+from src.Filtering import log_likelihood_Multivariate_t, reconstruct_trajectory
 
 
 
@@ -57,18 +58,18 @@ def f_y(x, I, R_0=R_0, V_0=V_0):
 
 
 @jax.jit
-def log_likelihood(obs_x, obs_C1R1, x_mean, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R1, df_C1R1):
+def log_likelihood(obs_x, obs_C1R1, x_mean, Mean, Col_Cov, Row_Scale, df):
     
     # log likelihood of state x
     l_x = log_likelihood_Normal(obs_x, x_mean, Q)
     
-    # log likelihood of force F_sd from conditional predictive PDF
+    # log likelihood from predictive PDF
     basis = basis_fcn(obs_x)
     c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_Predictive(
-        mean=Mean_C1R1,
-        col_cov=Col_Cov_C1R1,
-        row_scale=Row_Scale_C1R1,
-        df=df_C1R1,
+        mean=Mean,
+        col_cov=Col_Cov,
+        row_scale=Row_Scale,
+        df=df,
         basis=basis
         )
     
@@ -114,7 +115,7 @@ rng = np.random.default_rng(16723573)
 # sim para
 N_particles = 100
 N_PGAS_iter = 5
-forget_factor = 1 - 1/1e3
+forget_factor = 0.999
 burnin_iter = 100
 dt = dt.seconds
 
@@ -169,12 +170,11 @@ GP_prior = list(prior_mniw_2naturalPara(
 
 def Battery_APF(Y=Y):
     
-    print("\n=== Online Algorithm ===")
-    
     # time series for plot
     Sigma_X = np.zeros((steps,N_particles))
     Sigma_Y = np.zeros((steps,N_particles))
     Sigma_C1R1 = np.zeros((steps,N_particles,2))
+    log_weights = np.zeros((steps,N_particles))
     
     # variable for sufficient statistics
     GP_stats = [
@@ -194,26 +194,27 @@ def Battery_APF(Y=Y):
     Sigma_X[0,...] = rng.multivariate_normal(x0, P0, (N_particles,)).flatten()
     Sigma_C1R1[0,:,0] = rng.uniform(cl_C1, cu_C1, (N_particles,))
     Sigma_C1R1[0,:,1] = rng.uniform(cl_R1, cu_R1, (N_particles,))
-    weights = np.ones((steps,N_particles))/N_particles
 
     # update GP
-    phi_0 = jax.vmap(
+    basis = jax.vmap(
         functools.partial(basis_fcn)
         )(Sigma_X[0])
     GP_stats = list(jax.vmap(prior_mniw_calcStatistics)(
         Sigma_C1R1[0,...],
-        phi_0
+        basis
     ))
     
     # logging
-    GP_stats_logging[0][0] = np.einsum('n...,n->...', GP_stats[0], weights[0])
-    GP_stats_logging[1][0] = np.einsum('n...,n->...', GP_stats[1], weights[0])
-    GP_stats_logging[2][0] = np.einsum('n...,n->...', GP_stats[2], weights[0])
-    GP_stats_logging[3][0] = np.einsum('n...,n->...', GP_stats[3], weights[0])
+    weights = np.exp(log_weights[0] - np.max(log_weights[0]))
+    weights /= np.sum(weights)
+    GP_stats_logging[0][0] = np.einsum('n...,n->...', GP_stats[0], weights)
+    GP_stats_logging[1][0] = np.einsum('n...,n->...', GP_stats[1], weights)
+    GP_stats_logging[2][0] = np.einsum('n...,n->...', GP_stats[2], weights)
+    GP_stats_logging[3][0] = np.einsum('n...,n->...', GP_stats[3], weights)
     
     
     # simulation loop
-    for i in tqdm(range(1, steps), desc="Running Online Algorithm"):
+    for i in tqdm(range(1, steps), desc="Running APF Algorithm"):
         
         ### Step 1: Propagate GP parameters in time
         
@@ -241,30 +242,36 @@ def Battery_APF(Y=Y):
         
         # create auxiliary variable for state x
         x_aux = jax.vmap(
-            functools.partial(f_x, I=ctrl_input[i-1], dt=dt))(
-                x=Sigma_X[i-1],
-                C_1=Sigma_C1R1[i-1,...,0],
-                R_1=Sigma_C1R1[i-1,...,1]
-            )
+            functools.partial(f_x, I=ctrl_input[i-1], dt=dt)
+            )(
+            x=Sigma_X[i-1],
+            C_1=Sigma_C1R1[i-1,...,0],
+            R_1=Sigma_C1R1[i-1,...,1]
+        )
         
         # create auxiliary variable for C1, R1 and R0
         basis = jax.vmap(functools.partial(basis_fcn))(x_aux)
         C1R1_aux = jax.vmap(
             functools.partial(prior_mniw_Predictive)
             )(
-                mean=GP_para[0],
-                col_cov=GP_para[1],
-                row_scale=GP_para[2],
-                df=GP_para[3],
-                basis=basis
+            mean=GP_para[0],
+            col_cov=GP_para[1],
+            row_scale=GP_para[2],
+            df=GP_para[3],
+            basis=basis
         )[0]
         
         # calculate first stage weights
         y_aux = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=x_aux)
-        l_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
-        l_C0_clip = np.all(np.vstack([cl_C1 <= C1R1_aux[:,0], C1R1_aux[:,0] <= cu_C1]), axis=0)
-        l_R0_clip = np.all(np.vstack([cl_R1 <= C1R1_aux[:,1], C1R1_aux[:,1] <= cu_R1]), axis=0)
-        weights_aux = weights[i-1] * np.exp(l_fy) * l_C0_clip * l_R0_clip
+        l_fy_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
+        
+        l_C0_clip_aux = np.all(np.vstack([cl_C1 >= C1R1_aux[:,0], C1R1_aux[:,0] >= cu_C1]), axis=0)
+        l_C0_clip_aux = np.array(l_C0_clip_aux, dtype=np.float_) * -500
+        l_R0_clip_aux = np.all(np.vstack([cl_R1 >= C1R1_aux[:,1], C1R1_aux[:,1] >= cu_R1]), axis=0)
+        l_R0_clip_aux = np.array(l_R0_clip_aux, dtype=np.float_) * -500
+        
+        log_weights_aux = log_weights[i-1] + l_fy_aux + l_C0_clip_aux + l_R0_clip_aux
+        weights_aux = np.exp(log_weights_aux - np.max(log_weights_aux))
         weights_aux = weights_aux/np.sum(weights_aux)
         
         #abort
@@ -273,9 +280,9 @@ def Battery_APF(Y=Y):
             break
         
         # draw new indices
-        u = rng.random()
-        idx = np.array(systematic_SISR(u, weights_aux))
-        idx[idx >= N_particles] = N_particles - 1 # correct out of bounds indices from numerical errors
+        idx = np.array(systematic_SISR(rng.random(), weights_aux))
+        # correct out of bounds indices from numerical errors
+        idx[idx >= N_particles] = N_particles - 1 
         
         
         
@@ -283,13 +290,13 @@ def Battery_APF(Y=Y):
         # model
         
         # sample from proposal for x at time t
-        w_x = w((N_particles,)).flatten()
         Sigma_X[i] = jax.vmap(
-            functools.partial(f_x, I=ctrl_input[i-1], dt=dt))(
-                x=Sigma_X[i-1,idx],
-                C_1=Sigma_C1R1[i-1,idx,0],
-                R_1=Sigma_C1R1[i-1,idx,1]
-            ) + w_x
+            functools.partial(f_x, I=ctrl_input[i-1], dt=dt)
+            )(
+            x=Sigma_X[i-1,idx],
+            C_1=Sigma_C1R1[i-1,idx,0],
+            R_1=Sigma_C1R1[i-1,idx,1]
+        ) + w((N_particles,)).flatten()
         
         ## sample proposal for alpha and beta at time t
         # evaluate basis functions
@@ -299,11 +306,11 @@ def Battery_APF(Y=Y):
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(prior_mniw_Predictive)
             )(
-                mean=GP_para[0][idx],
-                col_cov=GP_para[1][idx],
-                row_scale=GP_para[2][idx],
-                df=GP_para[3][idx],
-                basis=basis
+            mean=GP_para[0][idx],
+            col_cov=GP_para[1][idx],
+            row_scale=GP_para[2][idx],
+            df=GP_para[3][idx],
+            basis=basis
         )
         
         # generate samples
@@ -311,11 +318,11 @@ def Battery_APF(Y=Y):
         c_row_scale_chol = np.linalg.cholesky(c_row_scale)
         t_samples = rng.standard_t(df=df, size=(1,2,N_particles)).T
         Sigma_C1R1[i] = c_mean + np.squeeze(np.einsum(
-                '...ij,...jk,...kf->...if', 
-                c_row_scale_chol, 
-                t_samples, 
-                c_col_scale_chol
-            ))
+            '...ij,...jk,...kf->...if', 
+            c_row_scale_chol, 
+            t_samples, 
+            c_col_scale_chol
+        ))
             
             
         
@@ -331,24 +338,36 @@ def Battery_APF(Y=Y):
         
         # calculate new weights
         Sigma_Y[i] = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=Sigma_X[i])
-        q_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(Sigma_Y[i])
-        q_C0_clip = np.all(np.vstack([cl_C1 <= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] <= cu_C1]), axis=0)
-        q_R0_clip = np.all(np.vstack([cl_R1 <= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] <= cu_R1]), axis=0)
-        weights[i] = np.exp(q_fy) * q_C0_clip * q_R0_clip / weights_aux[idx]
-        weights[i] = weights[i]/np.sum(weights[i])
+        l_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(Sigma_Y[i])
+        
+        l_C0_clip = np.all(np.vstack([cl_C1 >= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] >= cu_C1]), axis=0)
+        l_C0_clip = np.array(l_C0_clip, dtype=np.float_) * -500
+        l_R0_clip = np.all(np.vstack([cl_R1 >= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] >= cu_R1]), axis=0)
+        l_R0_clip = np.array(l_R0_clip, dtype=np.float_) * -500
+        
+        log_weights[i] = l_fy + l_C0_clip + l_R0_clip - l_fy_aux[idx] - l_C0_clip_aux[idx] - l_R0_clip_aux[idx]
         
         
         
         # logging
-        GP_stats_logging[0][i] = np.einsum('n...,n->...', GP_stats[0], weights[i])
-        GP_stats_logging[1][i] = np.einsum('n...,n->...', GP_stats[1], weights[i])
-        GP_stats_logging[2][i] = np.einsum('n...,n->...', GP_stats[2], weights[i])
-        GP_stats_logging[3][i] = np.einsum('n...,n->...', GP_stats[3], weights[i])
+        weights = np.exp(log_weights[i] - np.max(log_weights[i]))
+        weights /= np.sum(weights)
+        GP_stats_logging[0][i] = np.einsum('n...,n->...', GP_stats[0], weights)
+        GP_stats_logging[1][i] = np.einsum('n...,n->...', GP_stats[1], weights)
+        GP_stats_logging[2][i] = np.einsum('n...,n->...', GP_stats[2], weights)
+        GP_stats_logging[3][i] = np.einsum('n...,n->...', GP_stats[3], weights)
         
         #abort
-        if np.any(np.isnan(weights[i])):
+        if np.any(np.isnan(log_weights[i])):
             print("Particle degeneration at new weights")
             break
+    
+    
+    
+    # normalize weights
+    log_weights -= np.max(log_weights, axis=-1, keepdims=True)
+    weights = np.exp(log_weights)
+    weights /= np.sum(weights, axis=-1, keepdims=True)
     
     return Sigma_X, Sigma_C1R1, Sigma_Y, weights, GP_stats_logging
 
@@ -357,8 +376,6 @@ def Battery_APF(Y=Y):
 #### This section defines a function to run the offline version of the algorithm
 
 def Battery_PGAS():
-    
-    print("\n=== Offline Algorithm ===")
     
     Sigma_X = np.zeros((steps,N_PGAS_iter))
     Sigma_C1R1 = np.zeros((steps,N_PGAS_iter,2))
@@ -375,19 +392,11 @@ def Battery_PGAS():
 
     # set initial reference using APF
     print(f"Setting initial reference trajectory")
-    GP_para = prior_mniw_2naturalPara_inv(
-        GP_prior[0],
-        GP_prior[1],
-        GP_prior[2],
-        GP_prior[3]
-    )
-    Sigma_X[:,0], Sigma_C1R1[:,0], Sigma_Y[:,0] = Battery_CPFAS_Kernel(
-            x_ref=None,
-            C1R1_ref=None,
-            Mean_C1R1=GP_para[0], 
-            Col_Cov_C1R1=GP_para[1], 
-            Row_Scale_C1R1=GP_para[2], 
-            df_C1R1=GP_para[3])
+    init_X, init_C1R1, _, init_w, _ = Battery_APF()
+    idx = np.searchsorted(np.cumsum(init_w[-1]), rng.random())
+    Sigma_X[:,0] = init_X[:,idx]
+    Sigma_C1R1[:,0] = init_C1R1[:,idx]
+    
         
         
     # make proposal for distribution of F_sd using new proposals of trajectories
@@ -421,10 +430,13 @@ def Battery_PGAS():
         Sigma_X[:,k], Sigma_C1R1[:,k], Sigma_Y[:,k] = Battery_CPFAS_Kernel(
             x_ref=Sigma_X[:,k-1],
             C1R1_ref=Sigma_C1R1[:,k-1],
-            Mean_C1R1=GP_para[0], 
-            Col_Cov_C1R1=GP_para[1], 
-            Row_Scale_C1R1=GP_para[2], 
-            df_C1R1=GP_para[3])
+            GP_stats_ref=[
+                GP_stats[0][k-1],
+                GP_stats[1][k-1],
+                GP_stats[2][k-1],
+                GP_stats[3][k-1]
+            ]
+        )
         
         
         # make proposal for distribution of F_sd using new proposals of trajectories
@@ -443,60 +455,91 @@ def Battery_PGAS():
 
 
 
-def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R1, df_C1R1, Y=Y):
+def Battery_CPFAS_Kernel(x_ref, C1R1_ref, GP_stats_ref, Y=Y):
     
     # time series for plot
     Sigma_X = np.zeros((steps,N_particles))
     Sigma_C1R1 = np.zeros((steps,N_particles,2))
     Sigma_Y = np.zeros((steps,N_particles))
     ancestor_idx = np.zeros((steps-1,N_particles))
+    log_weights = np.zeros((steps,N_particles))
     
     # initial values for states
     Sigma_X[0,...] = rng.multivariate_normal(x0, P0, (N_particles,)).flatten()
     Sigma_C1R1[0,:,0] = rng.uniform(cl_C1, cu_C1, (N_particles,))
     Sigma_C1R1[0,:,1] = rng.uniform(cl_R1, cu_R1, (N_particles,))
-    weights = np.ones((steps,N_particles))/N_particles
     
-    if x_ref is not None:
-       Sigma_X[0,-1] = x_ref[0]
-       Sigma_C1R1[0,-1] = C1R1_ref[0]
+    Sigma_X[0,-1] = x_ref[0]
+    Sigma_C1R1[0,-1] = C1R1_ref[0]
+    
+    
+    
+    ## split model into reference and ancestor statistics
+    
+    # calculate ancestor statistics
+    basis = jax.vmap(basis_fcn)(Sigma_X[0,...])
+    GP_stats_ancestor = list(jax.vmap(prior_mniw_calcStatistics)(
+        Sigma_C1R1[0,...],
+        basis
+    ))
+    
+    # update reference statistic
+    basis = basis_fcn(x_ref[0])
+    T_0, T_1, T_2, T_3 = prior_mniw_calcStatistics(C1R1_ref[0], basis)
+    GP_stats_ref[0] -= T_0
+    GP_stats_ref[1] -= T_1
+    GP_stats_ref[2] -= T_2
+    GP_stats_ref[3] -= T_3
     
     
     # simulation loop
     for i in tqdm(range(1, steps), desc="    Running CPF Kernel"):
         
+        # calculate models
+        Mean, Col_Cov, Row_Scale, df = jax.vmap(prior_mniw_2naturalPara_inv)(
+            GP_prior[0] + GP_stats_ref[0] + GP_stats_ancestor[0],
+            GP_prior[1] + GP_stats_ref[1] + GP_stats_ancestor[1],
+            GP_prior[2] + GP_stats_ref[2] + GP_stats_ancestor[2],
+            GP_prior[3] + GP_stats_ref[3] + GP_stats_ancestor[3],
+        )
         
         
-        ### Step 1: According to the algorithm of the auxiliary PF, resample 
-        # particles according to the first stage weights
+        
+        ### Step 1: According to the algorithm of the auxiliary PF, sample new 
+        # ancestor indices according to the first stage weights
         
         # create auxiliary variable for state x
         x_aux = jax.vmap(
-            functools.partial(f_x, I=ctrl_input[i-1], dt=dt))(
-                x=Sigma_X[i-1],
-                C_1=Sigma_C1R1[i-1,...,0],
-                R_1=Sigma_C1R1[i-1,...,1]
-            )
+            functools.partial(f_x, I=ctrl_input[i-1], dt=dt)
+            )(
+            x=Sigma_X[i-1],
+            C_1=Sigma_C1R1[i-1,...,0],
+            R_1=Sigma_C1R1[i-1,...,1]
+        )
         
         # create auxiliary variable for C1, R1 and R0
         basis = jax.vmap(functools.partial(basis_fcn))(x_aux)
         C1R1_aux = jax.vmap(
-            functools.partial(
-                prior_mniw_Predictive, 
-                mean=Mean_C1R1,
-                col_cov=Col_Cov_C1R1,
-                row_scale=Row_Scale_C1R1,
-                df=df_C1R1)
+            functools.partial(prior_mniw_Predictive)
             )(
-                basis=basis
+            basis=basis, 
+            mean=Mean,
+            col_cov=Col_Cov,
+            row_scale=Row_Scale,
+            df=df
         )[0]
         
         # calculate first stage weights
         y_aux = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=x_aux)
-        l_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
-        l_C0_clip = np.all(np.vstack([cl_C1 <= C1R1_aux[:,0], C1R1_aux[:,0] <= cu_C1]), axis=0)
-        l_R0_clip = np.all(np.vstack([cl_R1 <= C1R1_aux[:,1], C1R1_aux[:,1] <= cu_R1]), axis=0)
-        weights_aux = weights[i-1] * l_fy * l_C0_clip * l_R0_clip
+        l_fy_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
+        
+        l_C0_clip_aux = np.all(np.vstack([cl_C1 >= C1R1_aux[:,0], C1R1_aux[:,0] >= cu_C1]), axis=0)
+        l_C0_clip_aux = np.array(l_C0_clip_aux, dtype=np.float_) * -500
+        l_R0_clip_aux = np.all(np.vstack([cl_R1 >= C1R1_aux[:,1], C1R1_aux[:,1] >= cu_R1]), axis=0)
+        l_R0_clip_aux = np.array(l_R0_clip_aux, dtype=np.float_) * -500
+        
+        log_weights_aux = log_weights[i-1] + l_fy_aux + l_C0_clip_aux + l_R0_clip_aux
+        weights_aux = np.exp(log_weights_aux - np.max(log_weights_aux))
         weights_aux = weights_aux/np.sum(weights_aux)
         
         #abort
@@ -507,46 +550,70 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
         # draw new indices
         u = rng.random()
         idx = np.array(systematic_SISR(u, weights_aux))
+        
         # correct out of bounds indices from numerical errors
         idx[idx >= N_particles] = N_particles - 1 
         
-        # let reference trajectory survive
-        if x_ref is not None:
-            idx[-1] = N_particles - 1
+        
+        
+        ### Step 2: Sample a new ancestor for the reference trajectory
+        
+        # calculate ancestor weights
+        l_x = jax.vmap(
+            functools.partial(
+            log_likelihood, 
+            obs_x=x_ref[i], 
+            obs_C1R1=C1R1_ref[i])
+            )(
+            x_mean=x_aux, 
+            Mean=Mean, 
+            Col_Cov=Col_Cov, 
+            Row_Scale=Row_Scale, 
+            df=df
+        )
+        log_weights_ancestor = log_weights_aux + l_x
+        weights_ancestor = np.exp(log_weights_ancestor - np.max(log_weights_ancestor))
+        weights_ancestor /= np.sum(weights_ancestor)
+        
+        # sample an ancestor index for reference trajectory
+        ref_idx = np.searchsorted(np.cumsum(weights_ancestor), rng.random())
+        
+        # set ancestor index
+        idx[-1] = ref_idx
+        
+        # save genealogy
+        ancestor_idx[i-1] = idx
         
         
         
-        ### Step 2: Make a proposal by generating samples from the hirachical 
+        ### Step 3: Make a proposal by generating samples from the hirachical 
         # model
         
         # sample from proposal for x at time t
-        w_x = w((N_particles,)).flatten()
-        Sigma_X_mean = jax.vmap(
-            functools.partial(f_x, I=ctrl_input[i-1], dt=dt))(
-                x=Sigma_X[i-1,idx],
-                C_1=Sigma_C1R1[i-1,idx,0],
-                R_1=Sigma_C1R1[i-1,idx,1]
-            )
-        Sigma_X[i] = Sigma_X_mean + w_x
+        Sigma_X[i] = jax.vmap(
+            functools.partial(f_x, I=ctrl_input[i-1], dt=dt)
+            )(
+            x=Sigma_X[i-1,idx],
+            C_1=Sigma_C1R1[i-1,idx,0],
+            R_1=Sigma_C1R1[i-1,idx,1]
+        ) + w((N_particles,)).flatten()
         
         # set reference trajectory for state x
-        if x_ref is not None:
-            Sigma_X[i,-1] = x_ref[i]
+        Sigma_X[i,-1] = x_ref[i]
         
-        ## sample proposal for alpha and beta at time t
+        ## sample proposal for C1 and R1
         # evaluate basis functions
         basis = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i])
         
-        # calculate conditional predictive distribution for C1 and R1
+        # calculate predictive distribution for C1 and R1
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
-            functools.partial(
-                prior_mniw_Predictive, 
-                mean=Mean_C1R1,
-                col_cov=Col_Cov_C1R1,
-                row_scale=Row_Scale_C1R1,
-                df=df_C1R1)
+            functools.partial(prior_mniw_Predictive)
             )(
-                basis=basis
+            basis=basis, 
+            mean=Mean[idx],
+            col_cov=Col_Cov[idx],
+            row_scale=Row_Scale[idx],
+            df=df[idx]
         )
         
         # generate samples
@@ -561,79 +628,62 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, Mean_C1R1, Col_Cov_C1R1, Row_Scale_C1R
             ))
         
         # set reference trajectory for C1 and R1
-        if x_ref is not None:
-            Sigma_C1R1[i,-1] = C1R1_ref[i]
-            
+        Sigma_C1R1[i,-1] = C1R1_ref[i]
         
         
-        ### Step 3: Sample a new ancestor for the reference trajectory
         
-        if x_ref is not None:
-            
-            # calculate ancestor weights
-            l_x = jax.vmap(
-                functools.partial(
-                    log_likelihood, 
-                    obs_x=Sigma_X[i,-1], 
-                    obs_C1R1=Sigma_C1R1[i,-1], 
-                    Mean_C1R1=Mean_C1R1, 
-                    Col_Cov_C1R1=Col_Cov_C1R1, 
-                    Row_Scale_C1R1=Row_Scale_C1R1, 
-                    df_C1R1=df_C1R1)
-                )(x_mean=Sigma_X_mean)
-            weights_ancestor = weights[i-1] * np.exp(l_x) # un-normalized
-            
-            # sample an ancestor index for reference trajectory
-            if np.isclose(np.sum(weights_ancestor), 0):
-                ref_idx = N_particles - 1
-            else:
-                weights_ancestor /= np.sum(weights_ancestor)
-                u = rng.random()
-                ref_idx = np.searchsorted(np.cumsum(weights_ancestor), u)
-            
-            # set ancestor index
-            idx[-1] = ref_idx
+        ### Step 4: Update reference statistic
+        basis_ref = basis_fcn(x_ref[i])
+        T_0, T_1, T_2, T_3 = prior_mniw_calcStatistics(
+            C1R1_ref[i],
+            basis_ref
+        )
+        GP_stats_ref[0] -= T_0
+        GP_stats_ref[1] -= T_1
+        GP_stats_ref[2] -= T_2
+        GP_stats_ref[3] -= T_3
         
-        # save genealogy
-        ancestor_idx[i-1] = idx
+        
+        
+        ### Step 5: Update hyperparameters
+        T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
+            Sigma_C1R1[i],
+            basis
+        )
+        GP_stats_ancestor[0] = GP_stats_ancestor[0][idx] + T_0
+        GP_stats_ancestor[1] = GP_stats_ancestor[1][idx] + T_1
+        GP_stats_ancestor[2] = GP_stats_ancestor[2][idx] + T_2
+        GP_stats_ancestor[3] = GP_stats_ancestor[3][idx] + T_3
         
             
         
-        ### Step 4: Calculate new weights (measurment update)
+        ### Step 6: Calculate new weights
         Sigma_Y[i] = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=Sigma_X[i])
-        q_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(Sigma_Y[i])
-        q_C0_clip = np.all(np.vstack([cl_C1 <= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] <= cu_C1]), axis=0)
-        q_R0_clip = np.all(np.vstack([cl_R1 <= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] <= cu_R1]), axis=0)
-        weights[i] = np.exp(q_fy) * q_C0_clip * q_R0_clip / weights_aux[idx]
-        weights[i] = weights[i]/np.sum(weights[i])
+        l_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(Sigma_Y[i])
         
+        l_C0_clip = np.all(np.vstack([cl_C1 >= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] >= cu_C1]), axis=0)
+        l_C0_clip = np.array(l_C0_clip, dtype=np.float_) * -500
+        l_R0_clip = np.all(np.vstack([cl_R1 >= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] >= cu_R1]), axis=0)
+        l_R0_clip = np.array(l_R0_clip, dtype=np.float_) * -500
         
+        log_weights[i] = l_fy + l_C0_clip + l_R0_clip - l_fy_aux[idx] - l_C0_clip_aux[idx] - l_R0_clip_aux[idx]
         
         #abort
-        if np.any(np.isnan(weights[i])):
+        if np.any(np.isnan(log_weights[i])):
             print("Particle degeneration at new weights")
             break
     
     
-    ### Step 5: sample a new trajectory to return
+    ### Step 7: sample a new trajectory to return
     
     # draw trajectory index
-    u = rng.random()
-    idx_traj = np.searchsorted(np.cumsum(weights[i]), u)
+    weights = np.exp(log_weights[-1] - np.max(log_weights[-1]))
+    weights /= np.sum(weights)
+    idx_traj = np.searchsorted(np.cumsum(weights), rng.random())
     
     # reconstruct trajectory from genealogy
-    x_traj = np.zeros((steps))
-    x_traj[-1] = Sigma_X[-1, idx_traj]
-    C1R1_traj = np.zeros((steps,2))
-    C1R1_traj[-1] = Sigma_C1R1[-1, idx_traj]
-    y_traj = np.zeros((steps))
-    y_traj[-1] = Sigma_Y[-1, idx_traj]
-    ancestry = np.zeros((steps,))
-    ancestry[-1] = idx_traj
-    for i in range(steps-2, -1, -1): # run backward in time
-        ancestry[i] = ancestor_idx[i, int(ancestry[i+1])]
-        x_traj[i] = Sigma_X[i, int(ancestry[i])]
-        C1R1_traj[i] = Sigma_C1R1[i, int(ancestry[i])]
-        y_traj[i] = Sigma_Y[i, int(ancestry[i])]
+    x_traj = reconstruct_trajectory(Sigma_X, ancestor_idx, idx_traj)
+    C1R1_traj = reconstruct_trajectory(Sigma_C1R1, ancestor_idx, idx_traj)
+    y_traj = reconstruct_trajectory(Sigma_Y, ancestor_idx, idx_traj)
     
     return x_traj, C1R1_traj, y_traj

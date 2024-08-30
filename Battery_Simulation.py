@@ -10,6 +10,7 @@ from src.Battery import Battery_APF, time
 
 ################################################################################
 ### Offline Algorithm
+print("\n=== Offline Algorithm ===")
 
 (
     offline_Sigma_X, 
@@ -25,6 +26,7 @@ del offline_GP_stats
 
 ################################################################################
 ### Online Algorithm
+print("\n=== Online Algorithm ===")
 
 (
     online_Sigma_X, 

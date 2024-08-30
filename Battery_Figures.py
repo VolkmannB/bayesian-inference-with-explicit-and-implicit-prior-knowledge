@@ -100,9 +100,9 @@ del col_scale_prior, row_scale_prior, GP_prior
 
 # plot the state estimations
 fig_X, axes_X = plot_Data(
-    Particles=offline_Sigma_Y[...,None],
+    Particles=np.concatenate([offline_Sigma_Y[...,None], offline_Sigma_C1R1], axis=-1),
     weights=offline_weights,
-    Reference=Y,
+    Reference=np.concatenate([Y[...,None], np.ones((Y.shape[0],2))*np.nan], axis=-1),
     time=time
 )
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
@@ -149,10 +149,10 @@ for i in index:
 
 # plot the state estimations
 fig_X, axes_X = plot_Data(
-    Particles=online_Sigma_Y[1:,...,None],
-    weights=online_weights[1:],
-    Reference=Y[1:],
-    time=time[1:]
+    Particles=np.concatenate([online_Sigma_Y[...,None], online_Sigma_C1R1], axis=-1),
+    weights=online_weights,
+    Reference=np.concatenate([Y[...,None], np.ones((Y.shape[0],2))*np.nan], axis=-1),
+    time=time
 )
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
 axes_X[0].set_xlabel(r"Time in $\mathrm{s}$")
