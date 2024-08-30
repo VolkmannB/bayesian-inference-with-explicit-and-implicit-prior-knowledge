@@ -18,7 +18,7 @@ from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPar
 N_slices = 2
 
 
-data = scipy.io.loadmat('Battery.mat')
+data = scipy.io.loadmat('plots\Battery.mat')
 
 
 offline_Sigma_X = data['offline_Sigma_X']
