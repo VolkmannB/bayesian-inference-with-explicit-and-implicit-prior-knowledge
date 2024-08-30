@@ -192,7 +192,7 @@ basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
     np.array([-30/180*jnp.pi, 30/180*jnp.pi]), 
     lengthscale, 
-    500
+    5
     )
 
 
@@ -201,7 +201,7 @@ basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
 GP_prior_f = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(spectral_density),
-    np.eye(1)*1e-2,
+    np.eye(1)*1e0,
     0
 ))
 
@@ -209,7 +209,7 @@ GP_prior_f = list(prior_mniw_2naturalPara(
 GP_prior_r = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.eye(N_basis_fcn),
-    np.eye(1)*1e-2,
+    np.eye(1)*1e0,
     0
 ))
 
@@ -645,9 +645,9 @@ def Vehicle_PGAS(Y):
         # make proposal for distribution of mu_f using new proposals of trajectories
         basis = jax.vmap(basis_fcn)(Sigma_alpha_f[:,k])
         T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
-                Sigma_mu_f[:,k],
-                basis
-            )
+            Sigma_mu_f[:,k],
+            basis
+        )
         GP_stats_f[0][k] = np.sum(T_0, axis=0)
         GP_stats_f[1][k] = np.sum(T_1, axis=0)
         GP_stats_f[2][k] = np.sum(T_2, axis=0)
@@ -656,9 +656,9 @@ def Vehicle_PGAS(Y):
         # make proposal for distribution of mu_r using new proposals of trajectories
         basis = jax.vmap(basis_fcn)(Sigma_alpha_r[:,k])
         T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
-                Sigma_mu_r[:,k],
-                basis
-            )
+            Sigma_mu_r[:,k],
+            basis
+        )
         GP_stats_r[0][k] = np.sum(T_0, axis=0)
         GP_stats_r[1][k] = np.sum(T_1, axis=0)
         GP_stats_r[2][k] = np.sum(T_2, axis=0)
@@ -685,6 +685,7 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_
     Sigma_alpha_f = np.zeros((steps,N_particles))
     Sigma_alpha_r = np.zeros((steps,N_particles))
     ancestor_idx = np.zeros((steps-1,N_particles), dtype=np.int_)
+    log_weights = np.zeros((steps,N_particles))
     
     # initial values for states
     Sigma_X[0] = np.random.multivariate_normal(x0, P0, (N_particles,))
@@ -698,10 +699,9 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_
     Sigma_alpha_f[0], Sigma_alpha_r[0] = jax.vmap(
         functools.partial(f_alpha, u=ctrl_input[0])
         )(
-            Sigma_X[0]
-            )
+        Sigma_X[0]
+    )
         
-    log_weights = np.zeros((steps,N_particles))
     
     
     ## split model into reference and ancestor statistics
@@ -710,18 +710,18 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_
     # update reference statistic
     basis = basis_fcn(alpha_f_ref)
     T_0, T_1, T_2, T_3 = prior_mniw_calcStatistics(mu_f_ref[0], basis)
-    GP_stats_ref_f[0] = GP_stats_ref_f[0] - T_0
-    GP_stats_ref_f[1] = GP_stats_ref_f[1] - T_1
-    GP_stats_ref_f[2] = GP_stats_ref_f[2] - T_2
-    GP_stats_ref_f[3] = GP_stats_ref_f[3] - T_3
+    GP_stats_ref_f[0] -= T_0
+    GP_stats_ref_f[1] -= T_1
+    GP_stats_ref_f[2] -= T_2
+    GP_stats_ref_f[3] -= T_3
     
     # update reference statistic
     basis = basis_fcn(alpha_r_ref)
     T_0, T_1, T_2, T_3 = prior_mniw_calcStatistics(mu_r_ref[0], basis)
-    GP_stats_ref_r[0] = GP_stats_ref_r[0] - T_0
-    GP_stats_ref_r[1] = GP_stats_ref_r[1] - T_1
-    GP_stats_ref_r[2] = GP_stats_ref_r[2] - T_2
-    GP_stats_ref_r[3] = GP_stats_ref_r[3] - T_3
+    GP_stats_ref_r[0] -= T_0
+    GP_stats_ref_r[1] -= T_1
+    GP_stats_ref_r[2] -= T_2
+    GP_stats_ref_r[3] -= T_3
     
     
     
@@ -810,6 +810,7 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_
         )
         log_weights_aux = log_weights[i-1] + l_y_aux
         weights_aux = np.exp(log_weights_aux - np.max(log_weights_aux))
+        weights_aux[np.isnan(weights_aux)] = 0
         weights_aux /= np.sum(weights_aux)
         
         #abort
