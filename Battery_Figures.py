@@ -108,7 +108,7 @@ fig_X, axes_X = plot_Data(
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
 axes_X[0].set_xlabel(r"Time in $\mathrm{s}$")
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
-fig_X.savefig("Battery_PGAS_Y.svg", bbox_inches='tight')
+fig_X.savefig("plots\Battery_PGAS_Y.svg", bbox_inches='tight')
 
 N_PGAS_iter = offline_Sigma_X.shape[1]
 index = (np.array(range(N_slices))+1)/N_slices*(N_PGAS_iter-1)
@@ -140,7 +140,7 @@ for i in index:
     ax_fcn_e[0][1].set_ylabel(r"$R_1$ in $\mathrm{\Omega}$")
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
-    fig_fcn_e.savefig(f"Battery_PGAS_C1R1_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"plots\Battery_PGAS_C1R1_fcn_{int(i)}.svg")
 
 
 
@@ -157,7 +157,7 @@ fig_X, axes_X = plot_Data(
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
 axes_X[0].set_xlabel(r"Time in $\mathrm{s}$")
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
-fig_X.savefig("Battery_APF_Y.svg", bbox_inches='tight')
+fig_X.savefig("plots\Battery_APF_Y.svg", bbox_inches='tight')
 
 steps = time.shape[0]
 index = (np.array(range(N_slices))+1)/N_slices*(steps-1)
@@ -189,7 +189,7 @@ for i in index:
     ax_fcn_e[0][1].set_ylabel(r"$R_1$ in $\mathrm{\Omega}$")
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
-    fig_fcn_e.savefig(f"Battery_APF_C1R1_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"plots\Battery_APF_C1R1_fcn_{int(i)}.svg")
     
 
 
@@ -227,7 +227,7 @@ for i in index:
     
     
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
-fig_RMSE.savefig("Vehicle_APF_C1R1_wRMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\Vehicle_APF_C1R1_wRMSE.svg", bbox_inches='tight')
 
 
 
