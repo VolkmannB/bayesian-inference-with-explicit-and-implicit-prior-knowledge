@@ -147,7 +147,7 @@ ax_RMSE.plot(
     color=imes_blue
 )
 ax_RMSE.set_ylabel(r"wRMSE")
-ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
+ax_RMSE.set_xlabel(r"Iterations")
 ax_RMSE.set_ylim(0)
 
 for i in index:
