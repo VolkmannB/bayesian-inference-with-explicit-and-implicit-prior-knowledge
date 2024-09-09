@@ -101,7 +101,6 @@ N_PGAS_iter = 5
 t_end = 100.0
 dt = 0.02
 forget_factor = 0.999
-burnin_iter = 100
 time = np.arange(0.0,t_end,dt)
 steps = len(time)
 
@@ -228,14 +227,11 @@ def SingleMassOscillator_APF(Y):
         
         ### Step 1: Propagate GP parameters in time
         
-        # calculate effective forgetting factor
-        f_forget = np.minimum((forget_factor-0.2)*(1-i/burnin_iter) + forget_factor*i/burnin_iter, forget_factor)
-        
         # apply forgetting operator to statistics for t-1 -> t
-        GP_stats[0] *= f_forget
-        GP_stats[1] *= f_forget
-        GP_stats[2] *= f_forget
-        GP_stats[3] *= f_forget
+        GP_stats[0] *= forget_factor
+        GP_stats[1] *= forget_factor
+        GP_stats[2] *= forget_factor
+        GP_stats[3] *= forget_factor
         
         # calculate parameters of GP from prior and sufficient statistics
         GP_para = list(jax.vmap(prior_mniw_2naturalPara_inv)(
