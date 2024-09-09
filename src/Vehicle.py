@@ -159,7 +159,6 @@ rng = np.random.default_rng(16723573)
 N_particles = 200
 N_PGAS_iter = 5
 forget_factor = 0.999
-burnin_iter = 100
 dt = 0.02
 t_end = 100.0
 time = np.arange(0.0, t_end, dt)
@@ -187,12 +186,12 @@ ctrl_input[:,1] = 11.0
 
 # basis functions for front and rear tire
 N_basis_fcn = 10
-lengthscale = 2 * 20/180*jnp.pi / N_basis_fcn
+lengthscale = 2 /180*jnp.pi
 basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
-    np.array([-30/180*jnp.pi, 30/180*jnp.pi]), 
+    np.array([-25/180*jnp.pi, 25/180*jnp.pi]), 
     lengthscale, 
-    5
+    50
     )
 
 
@@ -332,18 +331,15 @@ def Vehicle_APF(Y):
         
         ### Step 1: Propagate GP parameters in time
         
-        # calculate effective forgetting factor
-        f_forget = np.minimum((forget_factor-0.2)*(1-i/burnin_iter) + forget_factor*i/burnin_iter, forget_factor)
-        
         # apply forgetting operator to statistics for t-1 -> t
-        GP_stats_f[0] *= f_forget
-        GP_stats_f[1] *= f_forget
-        GP_stats_f[2] *= f_forget
-        GP_stats_f[3] *= f_forget
-        GP_stats_r[0] *= f_forget
-        GP_stats_r[1] *= f_forget
-        GP_stats_r[2] *= f_forget
-        GP_stats_r[3] *= f_forget
+        GP_stats_f[0] *= forget_factor
+        GP_stats_f[1] *= forget_factor
+        GP_stats_f[2] *= forget_factor
+        GP_stats_f[3] *= forget_factor
+        GP_stats_r[0] *= forget_factor
+        GP_stats_r[1] *= forget_factor
+        GP_stats_r[2] *= forget_factor
+        GP_stats_r[3] *= forget_factor
             
         # calculate parameters of GP from prior and sufficient statistics
         GP_para_f = list(jax.vmap(prior_mniw_2naturalPara_inv)(
