@@ -99,8 +99,8 @@ data = blocks[3]
 del blocks
 
 # resampling to uniform time steps
-dt = pd.Timedelta("1s")
-data = data.resample("5ms", origin="start").interpolate().resample("1s", origin="start").asfreq()
+dt = pd.Timedelta("5s")
+data = data.resample("5ms", origin="start").interpolate().resample(dt, origin="start").asfreq()
 
 # data = data.iloc[:2000]
 steps = data.shape[0]
@@ -115,8 +115,7 @@ rng = np.random.default_rng(16723573)
 # sim para
 N_particles = 100
 N_PGAS_iter = 5
-forget_factor = 0.999
-burnin_iter = 100
+forget_factor = 1
 dt = dt.seconds
 
 
@@ -125,8 +124,8 @@ l_C1, u_C1 = 2, 20
 l_R1, u_R1 = 5, 10
 
 # limits for clipping
-offset_C1 = (u_C1 - l_C1)/2
-offset_R1 = (u_R1 - l_R1)/2
+offset_C1 = (u_C1 + l_C1)/2
+offset_R1 = (u_R1 + l_R1)/2
 cl_C1, cu_C1 = l_C1 - offset_C1, u_C1 - offset_C1
 cl_R1, cu_R1 = l_R1 - offset_R1, u_R1 - offset_R1
 scale_C1 = 1e2
@@ -194,6 +193,7 @@ def Battery_APF(Y=Y):
     Sigma_X[0,...] = rng.multivariate_normal(x0, P0, (N_particles,)).flatten()
     Sigma_C1R1[0,:,0] = rng.uniform(cl_C1, cu_C1, (N_particles,))
     Sigma_C1R1[0,:,1] = rng.uniform(cl_R1, cu_R1, (N_particles,))
+    Sigma_Y[0] = jax.vmap(functools.partial(f_y, I=ctrl_input[0]))(x=Sigma_X[0])
 
     # update GP
     basis = jax.vmap(
@@ -389,9 +389,10 @@ def Battery_PGAS():
 
     # set initial reference using APF
     print(f"Setting initial reference trajectory")
-    init_X, init_C1R1, _, init_w, _ = Battery_APF()
+    init_X, init_C1R1, init_Y, init_w, _ = Battery_APF()
     idx = np.searchsorted(np.cumsum(init_w[-1]), rng.random())
     Sigma_X[:,0] = init_X[:,idx]
+    Sigma_Y[:,0] = init_Y[:,idx]
     Sigma_C1R1[:,0] = init_C1R1[:,idx]
     
         
@@ -412,16 +413,6 @@ def Battery_PGAS():
     ### Run PGAS
     for k in range(1, N_PGAS_iter):
         print(f"Starting iteration {k}")
-            
-        # calculate parameters of GP from prior and sufficient statistics
-        GP_para = list(prior_mniw_2naturalPara_inv(
-            GP_prior[0] + GP_stats[0][k-1],
-            GP_prior[1] + GP_stats[1][k-1],
-            GP_prior[2] + GP_stats[2][k-1],
-            GP_prior[3] + GP_stats[3][k-1]
-        ))
-        
-        
         
         # sample new proposal for trajectories using CPF with AS
         Sigma_X[:,k], Sigma_C1R1[:,k], Sigma_Y[:,k] = Battery_CPFAS_Kernel(
@@ -469,6 +460,8 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, GP_stats_ref, Y=Y):
     Sigma_X[0,-1] = x_ref[0]
     Sigma_C1R1[0,-1] = C1R1_ref[0]
     
+    Sigma_Y[0] = jax.vmap(functools.partial(f_y, I=ctrl_input[0]))(x=Sigma_X[0])
+    
     
     
     ## split model into reference and ancestor statistics
@@ -514,7 +507,7 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, GP_stats_ref, Y=Y):
             R_1=Sigma_C1R1[i-1,...,1]
         )
         
-        # create auxiliary variable for C1, R1 and R0
+        # create auxiliary variable for C1, R1
         basis = jax.vmap(functools.partial(basis_fcn))(x_aux)
         C1R1_aux = jax.vmap(
             functools.partial(prior_mniw_Predictive)
@@ -600,7 +593,7 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, GP_stats_ref, Y=Y):
         
         ## sample proposal for C1 and R1
         # evaluate basis functions
-        basis = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i])
+        basis = jax.vmap(basis_fcn)(Sigma_X[i])
         
         # calculate predictive distribution for C1 and R1
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(

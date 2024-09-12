@@ -77,36 +77,22 @@ del offline_T0, offline_T1, offline_T2, offline_T3
 del online_T0, online_T1, online_T2, online_T3
 
 
-# function values with GP prior
-GP_prior = prior_mniw_2naturalPara_inv(
-            GP_prior_stats[0],
-            GP_prior_stats[1],
-            GP_prior_stats[2],
-            GP_prior_stats[3]
-        )
-_, col_scale_prior, row_scale_prior, _ = prior_mniw_Predictive(
-    mean=GP_prior[0], 
-    col_cov=GP_prior[1], 
-    row_scale=GP_prior[2], 
-    df=GP_prior[3], 
-    basis=basis_plot)
-fcn_var_prior = np.diag(col_scale_prior-1) * row_scale_prior[0,0]
-del col_scale_prior, row_scale_prior, GP_prior
-
-
 
 ################################################################################
 # Plotting Offline
 
 # plot the state estimations
+offline_C1R1 = (offline_Sigma_C1R1 + np.array([offset_C1, offset_R1]) )* np.array([scale_C1, scale_R1])
 fig_X, axes_X = plot_Data(
-    Particles=np.concatenate([offline_Sigma_Y[...,None], offline_Sigma_C1R1], axis=-1),
+    Particles=np.concatenate([offline_Sigma_Y[...,None], offline_C1R1], axis=-1),
     weights=offline_weights,
     Reference=np.concatenate([Y[...,None], np.ones((Y.shape[0],2))*np.nan], axis=-1),
     time=time
 )
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
-axes_X[0].set_xlabel(r"Time in $\mathrm{s}$")
+axes_X[1].set_ylabel(r"$C_1$ in F")
+axes_X[2].set_ylabel(r"$R_1$ in $\Omega$")
+axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
 fig_X.savefig("plots\Battery_PGAS_Y.svg", bbox_inches='tight')
 
@@ -144,18 +130,35 @@ for i in index:
 
 
 
+# plot RMSE between observations and predictions
+RMSE = np.zeros((N_PGAS_iter,))
+for i in range(0, N_PGAS_iter):
+    RMSE[i] = np.sqrt(np.mean((Y - offline_Sigma_Y[:,i])**2))
+fig_RMSE, ax_RMSE = plt.subplots(1,1, layout='tight')
+ax_RMSE.plot(
+    range(0,N_PGAS_iter),
+    RMSE,
+    color=imes_blue
+)
+apply_basic_formatting(fig_RMSE, width=8, font_size=8)
+
+
+
 ################################################################################
 # Plotting Online
 
 # plot the state estimations
+online_C1R1 = (online_Sigma_C1R1 + np.array([offset_C1, offset_R1]) )* np.array([scale_C1, scale_R1])
 fig_X, axes_X = plot_Data(
-    Particles=np.concatenate([online_Sigma_Y[...,None], online_Sigma_C1R1], axis=-1),
+    Particles=np.concatenate([online_Sigma_Y[...,None], online_C1R1], axis=-1),
     weights=online_weights,
     Reference=np.concatenate([Y[...,None], np.ones((Y.shape[0],2))*np.nan], axis=-1),
     time=time
 )
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
-axes_X[0].set_xlabel(r"Time in $\mathrm{s}$")
+axes_X[1].set_ylabel(r"$C_1$ in F")
+axes_X[2].set_ylabel(r"$R_1$ in $\Omega$")
+axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
 fig_X.savefig("plots\Battery_APF_Y.svg", bbox_inches='tight')
 
@@ -180,7 +183,7 @@ for i in tqdm(range(0, steps), desc='Calculating fcn value and var'):
 for i in index:
     fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
         X_plot, 
-        Mean=fcn_var_online[int(i)], 
+        Mean=fcn_mean_online[int(i)], 
         Std=np.sqrt(fcn_var_online[int(i)]),
         X_stats=online_Sigma_X[:int(i)], 
         X_weights=online_weights[:int(i)])
