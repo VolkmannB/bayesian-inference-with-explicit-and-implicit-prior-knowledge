@@ -114,7 +114,7 @@ rng = np.random.default_rng(16723573)
 
 # sim para
 N_particles = 100
-N_PGAS_iter = 5
+N_PGAS_iter = 800
 forget_factor = 1
 dt = dt.seconds
 
@@ -246,28 +246,11 @@ def Battery_APF(Y=Y):
             R_1=Sigma_C1R1[i-1,...,1]
         )
         
-        # create auxiliary variable for C1, R1 and R0
-        basis = jax.vmap(functools.partial(basis_fcn))(x_aux)
-        C1R1_aux = jax.vmap(
-            functools.partial(prior_mniw_Predictive)
-            )(
-            mean=GP_para[0],
-            col_cov=GP_para[1],
-            row_scale=GP_para[2],
-            df=GP_para[3],
-            basis=basis
-        )[0]
-        
         # calculate first stage weights
         y_aux = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=x_aux)
         l_fy_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
         
-        l_C0_clip_aux = np.all(np.vstack([cl_C1 >= C1R1_aux[:,0], C1R1_aux[:,0] >= cu_C1]), axis=0)
-        l_C0_clip_aux = np.array(l_C0_clip_aux, dtype=np.float_) * -500
-        l_R0_clip_aux = np.all(np.vstack([cl_R1 >= C1R1_aux[:,1], C1R1_aux[:,1] >= cu_R1]), axis=0)
-        l_R0_clip_aux = np.array(l_R0_clip_aux, dtype=np.float_) * -500
-        
-        log_weights_aux = log_weights[i-1] + l_fy_aux + l_C0_clip_aux + l_R0_clip_aux
+        log_weights_aux = log_weights[i-1] + l_fy_aux
         weights_aux = np.exp(log_weights_aux - np.max(log_weights_aux))
         weights_aux = weights_aux/np.sum(weights_aux)
         
@@ -337,12 +320,7 @@ def Battery_APF(Y=Y):
         Sigma_Y[i] = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=Sigma_X[i])
         l_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(Sigma_Y[i])
         
-        l_C0_clip = np.all(np.vstack([cl_C1 >= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] >= cu_C1]), axis=0)
-        l_C0_clip = np.array(l_C0_clip, dtype=np.float_) * -500
-        l_R0_clip = np.all(np.vstack([cl_R1 >= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] >= cu_R1]), axis=0)
-        l_R0_clip = np.array(l_R0_clip, dtype=np.float_) * -500
-        
-        log_weights[i] = l_fy + l_C0_clip + l_R0_clip - l_fy_aux[idx] - l_C0_clip_aux[idx] - l_R0_clip_aux[idx]
+        log_weights[i] = l_fy - l_fy_aux[idx]
         
         
         
@@ -507,28 +485,11 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, GP_stats_ref, Y=Y):
             R_1=Sigma_C1R1[i-1,...,1]
         )
         
-        # create auxiliary variable for C1, R1
-        basis = jax.vmap(functools.partial(basis_fcn))(x_aux)
-        C1R1_aux = jax.vmap(
-            functools.partial(prior_mniw_Predictive)
-            )(
-            basis=basis, 
-            mean=Mean,
-            col_cov=Col_Cov,
-            row_scale=Row_Scale,
-            df=df
-        )[0]
-        
         # calculate first stage weights
         y_aux = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=x_aux)
         l_fy_aux = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(y_aux)
         
-        l_C0_clip_aux = np.all(np.vstack([cl_C1 >= C1R1_aux[:,0], C1R1_aux[:,0] >= cu_C1]), axis=0)
-        l_C0_clip_aux = np.array(l_C0_clip_aux, dtype=np.float_) * -500
-        l_R0_clip_aux = np.all(np.vstack([cl_R1 >= C1R1_aux[:,1], C1R1_aux[:,1] >= cu_R1]), axis=0)
-        l_R0_clip_aux = np.array(l_R0_clip_aux, dtype=np.float_) * -500
-        
-        log_weights_aux = log_weights[i-1] + l_fy_aux + l_C0_clip_aux + l_R0_clip_aux
+        log_weights_aux = log_weights[i-1] + l_fy_aux
         weights_aux = np.exp(log_weights_aux - np.max(log_weights_aux))
         weights_aux = weights_aux/np.sum(weights_aux)
         
@@ -540,9 +501,6 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, GP_stats_ref, Y=Y):
         # draw new indices
         u = rng.random()
         idx = np.array(systematic_SISR(u, weights_aux))
-        
-        # correct out of bounds indices from numerical errors
-        idx[idx >= N_particles] = N_particles - 1 
         
         
         
@@ -570,6 +528,9 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, GP_stats_ref, Y=Y):
         
         # set ancestor index
         idx[-1] = ref_idx
+        
+        # correct out of bounds indices from numerical errors
+        idx[idx >= N_particles] = N_particles - 1 
         
         # save genealogy
         ancestor_idx[i-1] = idx
@@ -651,12 +612,7 @@ def Battery_CPFAS_Kernel(x_ref, C1R1_ref, GP_stats_ref, Y=Y):
         Sigma_Y[i] = jax.vmap(functools.partial(f_y, I=ctrl_input[i]))(x=Sigma_X[i])
         l_fy = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(Sigma_Y[i])
         
-        l_C0_clip = np.all(np.vstack([cl_C1 >= Sigma_C1R1[i,:,0], Sigma_C1R1[i,:,0] >= cu_C1]), axis=0)
-        l_C0_clip = np.array(l_C0_clip, dtype=np.float_) * -500
-        l_R0_clip = np.all(np.vstack([cl_R1 >= Sigma_C1R1[i,:,1], Sigma_C1R1[i,:,1] >= cu_R1]), axis=0)
-        l_R0_clip = np.array(l_R0_clip, dtype=np.float_) * -500
-        
-        log_weights[i] = l_fy + l_C0_clip + l_R0_clip - l_fy_aux[idx] - l_C0_clip_aux[idx] - l_R0_clip_aux[idx]
+        log_weights[i] = l_fy - l_fy_aux[idx]
         
         #abort
         if np.any(np.isnan(log_weights[i])):
