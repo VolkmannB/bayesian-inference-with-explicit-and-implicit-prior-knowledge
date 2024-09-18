@@ -2,8 +2,8 @@ import jax
 import jax.numpy as jnp
 import scipy.io
 
-from src.Battery import Battery_PGAS, basis_fcn, scale_C1, scale_R1
-from src.Battery import GP_prior, offset_C1, offset_R1, Y
+from src.Battery import Battery_PGAS, basis_fcn
+from src.Battery import GP_prior, offset_C1, Y
 from src.Battery import Battery_APF, time
 
 
@@ -14,7 +14,7 @@ print("\n=== Offline Algorithm ===")
 
 (
     offline_Sigma_X, 
-    offline_Sigma_C1R1, 
+    offline_Sigma_C1, 
     offline_Sigma_Y, 
     offline_weights, 
     offline_GP_stats
@@ -30,7 +30,7 @@ print("\n=== Online Algorithm ===")
 
 (
     online_Sigma_X, 
-    online_Sigma_C1R1, 
+    online_Sigma_C1, 
     online_Sigma_Y, 
     online_weights, 
     online_GP_stats
@@ -49,7 +49,7 @@ basis_plot = jax.vmap(basis_fcn)(X_plot)
 # Create save file
 mdict = {
     'offline_Sigma_X': offline_Sigma_X,
-    'offline_Sigma_C1R1': offline_Sigma_C1R1,
+    'offline_Sigma_C1': offline_Sigma_C1,
     'offline_Sigma_Y': offline_Sigma_Y,
     'offline_weights': offline_weights,
     'offline_T0': offline_T0,
@@ -57,7 +57,7 @@ mdict = {
     'offline_T2': offline_T2,
     'offline_T3': offline_T3,
     'online_Sigma_X': online_Sigma_X,
-    'online_Sigma_C1R1': online_Sigma_C1R1,
+    'online_Sigma_C1': online_Sigma_C1,
     'online_Sigma_Y': online_Sigma_Y,
     'online_weights': online_weights,
     'online_T0': online_T0,
@@ -71,10 +71,7 @@ mdict = {
     'prior_T1': GP_prior[1],
     'prior_T2': GP_prior[2],
     'prior_T3': GP_prior[3],
-    'scale_C1': scale_C1,
-    'scale_R1': scale_R1,
     'offset_C1': offset_C1,
-    'offset_R1': offset_R1,
     'Y': Y
 }
 scipy.io.savemat('plots\Battery.mat', mdict)
