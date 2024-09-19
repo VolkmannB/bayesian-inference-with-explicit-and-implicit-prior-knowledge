@@ -21,7 +21,7 @@ from src.Filtering import log_likelihood_Multivariate_t, reconstruct_trajectory
 
 # parameters
 V_0 = 2.4125 # interpolated from product specification V_nom at 1.0C and V_cutoff at 0.2C
-R_0 = 23e-3
+R_0 = 35e-3
 R_1 = 30000
 
 
@@ -113,14 +113,14 @@ steps = data.shape[0]
 rng = np.random.default_rng(16723573)
 
 # sim para
-N_particles = 100
+N_particles = 200
 N_PGAS_iter = 5
-forget_factor = 1
+forget_factor = 1 - 1/2500
 dt = dt.seconds
 
 
 # parameter limits
-l_C1, u_C1 = 200, 2000
+l_C1, u_C1 = 5000, 15000
 
 # limits for clipping
 offset_C1 = (u_C1 + l_C1)/2
@@ -142,19 +142,19 @@ ctrl_input = data["Current"].to_numpy()
 
 # measurments
 Y = data[["Voltage"]].to_numpy()
-time = data.index
+time = (data.index - data.index[0]).astype(np.int64)
 steps = Y.shape[0]
 
 
 #### This section defines the basis function expansion
 
 N_basis_fcn = 15
-basis_fcn, sd = generate_Hilbert_BasisFunction(N_basis_fcn, jnp.array([-0.5, 2.4]), 2.4/N_basis_fcn, 5)
+basis_fcn, sd = generate_Hilbert_BasisFunction(N_basis_fcn, jnp.array([-0.5, 2.4]), 2.4/N_basis_fcn, 100)
 
 GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
-    np.eye(1),
+    np.eye(1)*10,
     0
 ))
 
