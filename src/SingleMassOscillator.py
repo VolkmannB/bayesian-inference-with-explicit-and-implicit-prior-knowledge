@@ -5,6 +5,7 @@ from tqdm import tqdm
 import functools
 import scipy
 import jax.scipy as jsc
+from jax.scipy.special import multigammaln
 
 from src.BayesianInferrence import generate_Hilbert_BasisFunction
 from src.BayesianInferrence import prior_mniw_2naturalPara
@@ -62,6 +63,15 @@ def f_y(x):
     return C @ x
 
 
+
+@jax.jit
+def log_base_measure(Col_cov_F,Row_scale_F,df_F):
+    n = Row_scale_F.shape[0]
+    m = Col_cov_F.shape[0]
+    
+    out = (df_F/2)*jnp.log(jnp.linalg.det(Row_scale_F)) - (n/2)*jnp.log(jnp.linalg.det(Col_cov_F)) - (df_F*n/2) *jnp.log(2) - (n*m/2)*jnp.log(2*jnp.pi) - multigammaln(df_F/2,n)
+
+    return out 
 
 @jax.jit
 def log_likelihood(obs_x, obs_F, x_mean, Mean_F, Col_cov_F, Row_scale_F, df_F):
@@ -142,7 +152,7 @@ GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
     np.eye(1),
-    0
+    3 # nu > n_xi + 1
 ))
 
 
@@ -362,13 +372,13 @@ def SingleMassOscillator_PGAS(Y):
     Sigma_X = np.zeros((steps,N_PGAS_iter,2))
     Sigma_F = np.zeros((steps,N_PGAS_iter))
     weights = np.ones((steps,N_PGAS_iter))/N_PGAS_iter
-
+    
     # variable for sufficient statistics
     GP_stats = [
         np.zeros((N_PGAS_iter, N_basis_fcn, 1)),
         np.zeros((N_PGAS_iter, N_basis_fcn, N_basis_fcn)),
         np.zeros((N_PGAS_iter, 1, 1)),
-        np.zeros((N_PGAS_iter,))
+        np.zeros((N_PGAS_iter,))         # nu > n_xi +1
     ]
 
     # set initial reference using filtering distribution from APF
@@ -480,7 +490,12 @@ def SingleMassOscillator_CPFAS_Kernel(
             GP_prior[3] + GP_stats_ref[3] + GP_stats_ancestor[3],
         )
         
-        
+        Mean_t, Col_Cov_t, Row_Scale_t, df_t = jax.vmap(prior_mniw_2naturalPara_inv)(
+            GP_prior[0] + GP_stats_ancestor[0], # -T_0,
+            GP_prior[1] + GP_stats_ancestor[1], # -T_1,
+            GP_prior[2] + GP_stats_ancestor[2], # -T_2,
+            GP_prior[3] + GP_stats_ancestor[3], # -T_3,
+        )
         
         ### Step 1: According to the algorithm of the auxiliary PF, draw new 
         # ancestor indices according to the first stage weights
@@ -515,19 +530,47 @@ def SingleMassOscillator_CPFAS_Kernel(
         ### Step 2: Sample a new ancestor for the reference trajectory
         
         # calculate ancestor weights
-        l_x = jax.vmap(
-            functools.partial(
-            log_likelihood, 
-            obs_x=x_ref[i], 
-            obs_F=F_ref[i])
+        # l_x = jax.vmap(
+        #     functools.partial(
+        #     log_likelihood, 
+        #     obs_x=x_ref[i], 
+        #     obs_F=F_ref[i])
+        #     )(
+        #     x_mean=x_aux, 
+        #     Mean_F=Mean, 
+        #     Col_cov_F=Col_Cov, 
+        #     Row_scale_F=Row_Scale, 
+        #     df_F=df
+        # )
+
+        g_T = jax.vmap(
+            log_base_measure
             )(
-            x_mean=x_aux, 
-            Mean_F=Mean, 
             Col_cov_F=Col_Cov, 
             Row_scale_F=Row_Scale, 
             df_F=df
         )
-        log_weights_ancestor = log_weights_aux + l_x
+        g_t = jax.vmap(
+            log_base_measure
+            )(
+            Col_cov_F=Col_Cov_t, 
+            Row_scale_F=Row_Scale_t, 
+            df_F=df_t
+        )
+
+        # calculate ancestor weights
+        h_x = jax.vmap(
+            functools.partial(
+            log_likelihood_Normal, 
+            observed=x_ref[i], 
+            cov=Q)
+            )(
+            mean=x_aux, 
+        )
+        # h_y and h_xi are the same for all particles, so we can ignore them.
+        
+
+        log_weights_ancestor = log_weights_aux + g_t - g_T + h_x
         weights_ancestor = np.exp(log_weights_ancestor - np.max(log_weights_ancestor))
         weights_ancestor /= np.sum(weights_ancestor)
         
