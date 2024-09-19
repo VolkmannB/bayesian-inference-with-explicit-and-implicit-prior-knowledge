@@ -44,7 +44,8 @@ offset_C1 = data['offset_C1'].flatten()[0]
 
 X_plot = data['X_plot'].flatten()
 basis_plot = data['basis_plot']
-time = data['time'].flatten()
+time = data['time'].flatten() / 1e9
+time = time - time[0]
 
 Y = data['Y'].flatten()
 
@@ -88,6 +89,7 @@ fig_X, axes_X = plot_Data(
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
 axes_X[1].set_ylabel(r"$C_1$ in F")
 axes_X[1].set_xlabel(r"Time in $\mathrm{s}$")
+axes_X[1].set_ylim(0, 20000)
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
 fig_X.savefig("plots\Battery_PGAS_Y.svg", bbox_inches='tight')
 
@@ -119,7 +121,7 @@ for i in index:
     ax_fcn_e[0][-1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
-    fig_fcn_e.savefig(f"plots\Battery_PGAS_C1R1_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"plots\Battery_PGAS_C1_fcn_{int(i)}.svg")
 
 
 
@@ -134,6 +136,7 @@ ax_RMSE.plot(
     color=imes_blue
 )
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
+fig_RMSE.savefig("plots\Battery_PGAS_RMSE.svg", bbox_inches='tight')
 
 
 
@@ -151,6 +154,7 @@ fig_X, axes_X = plot_Data(
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
 axes_X[1].set_ylabel(r"$C_1$ in F")
 axes_X[1].set_xlabel(r"Time in $\mathrm{s}$")
+axes_X[1].set_ylim(0, 20000)
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
 fig_X.savefig("plots\Battery_APF_Y.svg", bbox_inches='tight')
 
@@ -182,7 +186,7 @@ for i in index:
     ax_fcn_e[0][-1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
-    fig_fcn_e.savefig(f"plots\Battery_APF_C1R1_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"plots\Battery_APF_C1_fcn_{int(i)}.svg")
     
 
 
@@ -209,7 +213,7 @@ for i in index:
     
     
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
-fig_RMSE.savefig("plots\Vehicle_APF_C1R1_wRMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\Vehicle_APF_C1_wRMSE.svg", bbox_inches='tight')
 
 
 
