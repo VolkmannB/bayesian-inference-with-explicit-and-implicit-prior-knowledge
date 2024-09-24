@@ -215,7 +215,7 @@ for i in index:
     
     
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
-fig_RMSE.savefig("plots\Vehicle_APF_C1_wRMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\Battery_APF_C1_wRMSE.svg", bbox_inches='tight')
 
 
 
