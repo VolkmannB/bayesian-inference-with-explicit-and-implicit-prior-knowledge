@@ -11,7 +11,7 @@ from src.BayesianInferrence import prior_mniw_calcStatistics
 from src.BayesianInferrence import prior_mniw_Predictive
 from src.BayesianInferrence import prior_mniw_log_base_measure
 from src.Filtering import systematic_SISR, log_likelihood_Normal
-from src.Filtering import log_likelihood_Multivariate_t, reconstruct_trajectory
+from src.Filtering import reconstruct_trajectory
 
 
 #### This section defines the state space model
