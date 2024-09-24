@@ -12,8 +12,9 @@ from src.BayesianInferrence import prior_mniw_2naturalPara
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
 from src.BayesianInferrence import prior_mniw_Predictive
+from src.BayesianInferrence import prior_mniw_log_base_measure
 from src.Filtering import systematic_SISR, log_likelihood_Normal
-from src.Filtering import log_likelihood_Multivariate_t, reconstruct_trajectory
+from src.Filtering import reconstruct_trajectory
 
 
 
@@ -54,33 +55,6 @@ def f_x(x, I, C_1, dt):
 @jax.jit
 def f_y(x, I, R_0=R_0, V_0=V_0):
     return V_0 + x + R_0*I
-
-
-
-@jax.jit
-def log_likelihood(obs_x, obs_C1, x_mean, Mean, Col_Cov, Row_Scale, df):
-    
-    # log likelihood of state x
-    l_x = log_likelihood_Normal(obs_x, x_mean, Q)
-    
-    # log likelihood from predictive PDF
-    basis = basis_fcn(obs_x)
-    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_Predictive(
-        mean=Mean,
-        col_cov=Col_Cov,
-        row_scale=Row_Scale,
-        df=df,
-        basis=basis
-        )
-    
-    l_F = log_likelihood_Multivariate_t(
-        observed=obs_C1, 
-        mean=c_mean, 
-        scale=c_col_scale*c_row_scale, 
-        df=c_df
-        )
-    
-    return l_x + l_F
 
 
 
@@ -490,21 +464,36 @@ def Battery_CPFAS_Kernel(x_ref, C1_ref, GP_stats_ref, Y=Y):
         
         
         ### Step 2: Sample a new ancestor for the reference trajectory
-        
-        # calculate ancestor weights
-        l_x = jax.vmap(
-            functools.partial(
-            log_likelihood, 
-            obs_x=x_ref[i], 
-            obs_C1=C1_ref[i])
+
+        g_T = jax.vmap(
+            prior_mniw_log_base_measure
             )(
-            x_mean=x_aux, 
-            Mean=Mean, 
-            Col_Cov=Col_Cov, 
-            Row_Scale=Row_Scale, 
-            df=df
+            GP_prior[0] + GP_stats_ancestor[0] + GP_stats_ref[0],
+            GP_prior[1] + GP_stats_ancestor[1] + GP_stats_ref[1],
+            GP_prior[2] + GP_stats_ancestor[2] + GP_stats_ref[2],
+            GP_prior[3] + GP_stats_ancestor[3] + GP_stats_ref[3]
         )
-        log_weights_ancestor = log_weights_aux + l_x
+        g_t = jax.vmap(
+            prior_mniw_log_base_measure
+            )(
+            GP_prior[0] + GP_stats_ancestor[0],
+            GP_prior[1] + GP_stats_ancestor[1],
+            GP_prior[2] + GP_stats_ancestor[2],
+            GP_prior[3] + GP_stats_ancestor[3]
+        )
+
+        # calculate ancestor weights
+        h_x = jax.vmap(
+            functools.partial(
+            log_likelihood_Normal, 
+            observed=x_ref[i], 
+            cov=Q)
+            )(
+            mean=x_aux, 
+        )
+        
+
+        log_weights_ancestor = log_weights_aux + g_t - g_T + h_x
         weights_ancestor = np.exp(log_weights_ancestor - np.max(log_weights_ancestor))
         weights_ancestor /= np.sum(weights_ancestor)
         

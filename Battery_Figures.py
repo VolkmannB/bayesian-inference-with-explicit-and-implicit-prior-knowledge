@@ -119,6 +119,7 @@ for i in index:
         X_weights=offline_weights[:,:int(i)])
     ax_fcn_e[0][-1].set_xlabel(r"Voltage in $\mathrm{V}$")
     ax_fcn_e[0][-1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
+    ax_fcn_e[0][-1].set_ylim(8000, 12000)
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
     fig_fcn_e.savefig(f"plots\Battery_PGAS_C1_fcn_{int(i)}.svg")
@@ -184,6 +185,7 @@ for i in index:
         X_weights=online_weights[:int(i)])
     ax_fcn_e[0][-1].set_xlabel(r"Voltage in $\mathrm{V}$")
     ax_fcn_e[0][-1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
+    ax_fcn_e[0][-1].set_ylim(8000, 12000)
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
     fig_fcn_e.savefig(f"plots\Battery_APF_C1_fcn_{int(i)}.svg")
