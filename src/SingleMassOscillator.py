@@ -3,15 +3,13 @@ import jax.numpy as jnp
 import jax
 from tqdm import tqdm
 import functools
-import scipy
-import jax.scipy as jsc
-from jax.scipy.special import multigammaln
 
 from src.BayesianInferrence import generate_Hilbert_BasisFunction
 from src.BayesianInferrence import prior_mniw_2naturalPara
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 from src.BayesianInferrence import prior_mniw_calcStatistics
 from src.BayesianInferrence import prior_mniw_Predictive
+from src.BayesianInferrence import prior_mniw_log_base_measure
 from src.Filtering import systematic_SISR, log_likelihood_Normal
 from src.Filtering import log_likelihood_Multivariate_t, reconstruct_trajectory
 
@@ -64,42 +62,6 @@ def f_y(x):
 
 
 
-@jax.jit
-def log_base_measure(Col_cov_F,Row_scale_F,df_F):
-    n = Row_scale_F.shape[0]
-    m = Col_cov_F.shape[0]
-    
-    out = (df_F/2)*jnp.log(jnp.linalg.det(Row_scale_F)) - (n/2)*jnp.log(jnp.linalg.det(Col_cov_F)) - (df_F*n/2) *jnp.log(2) - (n*m/2)*jnp.log(2*jnp.pi) - multigammaln(df_F/2,n)
-
-    return out 
-
-@jax.jit
-def log_likelihood(obs_x, obs_F, x_mean, Mean_F, Col_cov_F, Row_scale_F, df_F):
-    
-    # log likelihood of state x
-    l_x = log_likelihood_Normal(obs_x, x_mean, Q)
-    
-    # log likelihood of force F_sd from conditional predictive PDF
-    basis = basis_fcn(obs_x)
-    c_mean, c_col_scale, c_row_scale, c_df = prior_mniw_Predictive(
-        mean=Mean_F,
-        col_cov=Col_cov_F,
-        row_scale=Row_scale_F,
-        df=df_F,
-        basis=basis,
-        )
-    
-    l_F = log_likelihood_Multivariate_t(
-        observed=obs_F, 
-        mean=c_mean, 
-        scale=c_col_scale*c_row_scale, 
-        df=c_df
-        )
-    
-    return l_x + l_F
-
-
-
 #### This section defines relevant parameters for the simulation
 
 # set a seed for reproducability
@@ -142,7 +104,7 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
     num_fcn=N_basis_fcn, 
     domain_boundary=np.array([[-7.5, 7.5],[-7.5, 7.5]]), 
     lengthscale=7.5*2/N_basis_fcn, 
-    scale=120
+    scale=60
     )
 
 
@@ -152,7 +114,7 @@ GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
     np.eye(1),
-    3 # nu > n_xi + 1
+    1
 ))
 
 
@@ -487,14 +449,7 @@ def SingleMassOscillator_CPFAS_Kernel(
             GP_prior[0] + GP_stats_ref[0] + GP_stats_ancestor[0],
             GP_prior[1] + GP_stats_ref[1] + GP_stats_ancestor[1],
             GP_prior[2] + GP_stats_ref[2] + GP_stats_ancestor[2],
-            GP_prior[3] + GP_stats_ref[3] + GP_stats_ancestor[3],
-        )
-        
-        Mean_t, Col_Cov_t, Row_Scale_t, df_t = jax.vmap(prior_mniw_2naturalPara_inv)(
-            GP_prior[0] + GP_stats_ancestor[0], # -T_0,
-            GP_prior[1] + GP_stats_ancestor[1], # -T_1,
-            GP_prior[2] + GP_stats_ancestor[2], # -T_2,
-            GP_prior[3] + GP_stats_ancestor[3], # -T_3,
+            GP_prior[3] + GP_stats_ref[3] + GP_stats_ancestor[3]
         )
         
         ### Step 1: According to the algorithm of the auxiliary PF, draw new 
@@ -522,40 +477,26 @@ def SingleMassOscillator_CPFAS_Kernel(
         
         # draw new indices
         idx = np.array(systematic_SISR(rng.random(), weights_aux))
-        # correct out of bounds indices from numerical errors
-        idx[idx >= N_particles] = N_particles - 1
         
         
         
         ### Step 2: Sample a new ancestor for the reference trajectory
-        
-        # calculate ancestor weights
-        # l_x = jax.vmap(
-        #     functools.partial(
-        #     log_likelihood, 
-        #     obs_x=x_ref[i], 
-        #     obs_F=F_ref[i])
-        #     )(
-        #     x_mean=x_aux, 
-        #     Mean_F=Mean, 
-        #     Col_cov_F=Col_Cov, 
-        #     Row_scale_F=Row_Scale, 
-        #     df_F=df
-        # )
 
         g_T = jax.vmap(
-            log_base_measure
+            prior_mniw_log_base_measure
             )(
-            Col_cov_F=Col_Cov, 
-            Row_scale_F=Row_Scale, 
-            df_F=df
+            GP_prior[0] + GP_stats_ancestor[0] + GP_stats_ref[0],
+            GP_prior[1] + GP_stats_ancestor[1] + GP_stats_ref[1],
+            GP_prior[2] + GP_stats_ancestor[2] + GP_stats_ref[2],
+            GP_prior[3] + GP_stats_ancestor[3] + GP_stats_ref[3]
         )
         g_t = jax.vmap(
-            log_base_measure
+            prior_mniw_log_base_measure
             )(
-            Col_cov_F=Col_Cov_t, 
-            Row_scale_F=Row_Scale_t, 
-            df_F=df_t
+            GP_prior[0] + GP_stats_ancestor[0],
+            GP_prior[1] + GP_stats_ancestor[1],
+            GP_prior[2] + GP_stats_ancestor[2],
+            GP_prior[3] + GP_stats_ancestor[3]
         )
 
         # calculate ancestor weights
@@ -567,7 +508,6 @@ def SingleMassOscillator_CPFAS_Kernel(
             )(
             mean=x_aux, 
         )
-        # h_y and h_xi are the same for all particles, so we can ignore them.
         
 
         log_weights_ancestor = log_weights_aux + g_t - g_T + h_x
@@ -579,6 +519,9 @@ def SingleMassOscillator_CPFAS_Kernel(
         
         # set ancestor index
         idx[-1] = ref_idx
+        
+        # correct out of bounds indices from numerical errors
+        idx[idx >= N_particles] = N_particles - 1
         
         # save genealogy
         ancestor_idx[i-1] = idx

@@ -30,7 +30,9 @@ def prior_mniw_2naturalPara(mean, col_cov, row_scale, df):
     eta_1 = temp[:,mean.shape[0]:]
     eta_2 = mean @ eta_0 + row_scale
     
-    return eta_0, eta_1, eta_2, df
+    eta_3 = df + col_cov.shape[0] + row_scale.shape[0] + 1
+    
+    return eta_0, eta_1, eta_2, eta_3
 
 @jax.jit
 def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
@@ -43,8 +45,9 @@ def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
     mean = temp[:,:eta_0.shape[1]].T
     col_cov = temp[:,eta_0.shape[1]:]
     row_scale = eta_2 - mean @ eta_0
+    df = eta_3 - col_cov.shape[0] - row_scale.shape[0] - 1
     
-    return jnp.atleast_2d(mean), col_cov, jnp.atleast_2d(row_scale), eta_3
+    return jnp.atleast_2d(mean), col_cov, jnp.atleast_2d(row_scale), df
 
 @jax.jit
 def prior_mniw_calcStatistics(y, basis):
@@ -66,7 +69,7 @@ def prior_mniw_Predictive(mean, col_cov, row_scale, df, basis):
     n_b = basis.shape[0]
     
     # degrees of freedom
-    df = df + 1
+    df = df + 1 - row_scale.shape[0]
     
     # mean
     mean = jnp.squeeze(basis @ mean.T)
@@ -78,6 +81,8 @@ def prior_mniw_Predictive(mean, col_cov, row_scale, df, basis):
     row_scale = row_scale / df
     
     return mean, col_scale, row_scale, df
+
+
 
 @jax.jit
 def prior_mniw_CondPredictive(mean, col_cov, row_scale, df, y1, y1_var, basis1, basis2):
@@ -115,6 +120,22 @@ def prior_mniw_CondPredictive(mean, col_cov, row_scale, df, y1, y1_var, basis1, 
     c_row_scale = row_scale / df
     
     return c_mean, c_col_scale, c_row_scale, df
+
+
+
+@jax.jit
+def prior_mniw_log_base_measure(T_0, T_1, T_2, T_3):
+    
+    n = T_2.shape[0]
+    m = T_1.shape[0]
+    
+    temp_1 = - 0.5 * n * m * jnp.log(2*jnp.pi)
+    temp_2 = 0.5 * m * jnp.log(jnp.linalg.det(T_1))
+    temp_3 = - 0.5 * (T_3 - n -m - 1) * jnp.log(2)
+    temp_4 = - jsc.special.multigammaln((T_3 - n -m - 1)/2, n)
+
+    return temp_1 + temp_2 + temp_3 + temp_4
+
     
 
 # Multivariate Normal
@@ -223,7 +244,7 @@ def prior_iw_calcStatistics(T_0, T_1, mu, y):
     
 
 
-def sq_dist(x1: npt.ArrayLike, x2: npt.ArrayLike) -> npt.NDArray:
+def sq_dist(x1, x2) -> npt.NDArray:
     """
     This function calculates the squared euclidean distance ||x||_2^2 between 
     all pairs of vectors in x1 and x2.
