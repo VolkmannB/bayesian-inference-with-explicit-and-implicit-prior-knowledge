@@ -104,7 +104,7 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
     num_fcn=N_basis_fcn, 
     domain_boundary=np.array([[-7.5, 7.5],[-7.5, 7.5]]), 
     lengthscale=7.5*2/N_basis_fcn, 
-    scale=60
+    scale=50
     )
 
 
@@ -113,7 +113,7 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
 GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
-    np.eye(1),
+    np.eye(1)*8,
     1
 ))
 
