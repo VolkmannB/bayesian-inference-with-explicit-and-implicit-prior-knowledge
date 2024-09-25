@@ -124,7 +124,7 @@ for i in index:
 
 
 
-# plot RMSE between observations and predictions
+# plot RMSE between observations and PGAS iterations
 RMSE = np.zeros((N_PGAS_iter,))
 for i in range(0, N_PGAS_iter):
     RMSE[i] = np.sqrt(np.mean((Y - offline_Sigma_Y[:,i])**2))
@@ -134,6 +134,8 @@ ax_RMSE.plot(
     RMSE,
     color=imes_blue
 )
+ax_RMSE.set_xlabel(r"PGAS iterations")
+ax_RMSE.set_ylabel(r"RMSE in m")
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
 fig_RMSE.savefig("plots\EMPS_PGAS_RMSE.svg", bbox_inches='tight')
 
