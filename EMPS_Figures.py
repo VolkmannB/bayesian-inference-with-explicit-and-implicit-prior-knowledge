@@ -47,6 +47,7 @@ basis_plot = data['basis_plot']
 time = data['time'].flatten()
 
 Y = data['Y'].flatten()
+X = data['X']
 
 del data
     
@@ -81,7 +82,7 @@ del online_T0, online_T1, online_T2, online_T3
 fig_X, axes_X = plot_Data(
     Particles=np.concatenate([offline_Sigma_X, offline_Sigma_F[...,None]], axis=-1),
     weights=offline_weights,
-    Reference=np.concatenate([Y[...,None], np.ones((Y.shape[0],2))*np.nan], axis=-1),
+    Reference=np.concatenate([X, np.ones((Y.shape[0],1))*np.nan], axis=-1),
     time=time
 )
 axes_X[0].set_ylabel(r"$q$ in m")
@@ -145,7 +146,7 @@ fig_RMSE.savefig("plots\EMPS_PGAS_RMSE.svg", bbox_inches='tight')
 fig_X, axes_X = plot_Data(
     Particles=np.concatenate([online_Sigma_X, online_Sigma_F[...,None]], axis=-1),
     weights=online_weights,
-    Reference=np.concatenate([Y[...,None], np.ones((Y.shape[0],2))*np.nan], axis=-1),
+    Reference=np.concatenate([X, np.ones((Y.shape[0],1))*np.nan], axis=-1),
     time=time
 )
 axes_X[0].set_ylabel(r"$q$ in m")

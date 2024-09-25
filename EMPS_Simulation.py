@@ -3,7 +3,7 @@ import jax.numpy as jnp
 import scipy.io
 
 from src.EMPS import EMPS_PGAS, basis_fcn
-from src.EMPS import GP_prior, Y
+from src.EMPS import GP_prior, Y, X
 from src.EMPS import EMPS_APF, time
 
 
@@ -71,6 +71,7 @@ mdict = {
     'prior_T1': GP_prior[1],
     'prior_T2': GP_prior[2],
     'prior_T3': GP_prior[3],
-    'Y': Y
+    'Y': Y,
+    'X': X
 }
 scipy.io.savemat('plots\EMPS.mat', mdict)
