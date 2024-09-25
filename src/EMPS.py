@@ -50,8 +50,8 @@ rng = np.random.default_rng(16723573)
 
 # sim para
 N_particles = 200
-N_PGAS_iter = 5
-forget_factor = 1 - 1/500
+N_PGAS_iter = 6
+forget_factor = 1 - 1/1000
 
 ### Load data
 data = scipy.io.loadmat('src\Measurements\DATA_EMPS.mat')
@@ -133,13 +133,13 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
     jnp.array([-0.2, 0.2]), 
     0.4/N_basis_fcn, 
-    5
+    12
     )
 
 GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
-    np.eye(1)*5,
+    np.eye(1)*2,
     1
 ))
 
