@@ -2,6 +2,7 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import functools
+import scipy.signal
 from tqdm import tqdm
 import scipy.io
 
@@ -18,6 +19,30 @@ from src.Filtering import reconstruct_trajectory
 
 
 
+def central_difference_quotient(x, t):
+    # Ensure x and t are numpy arrays
+    x = np.asarray(x)
+    t = np.asarray(t)
+    
+    # Initialize dx/dt array
+    dxdt = np.zeros_like(x)
+    
+    # Compute dt, assuming t is uniformly spaced
+    dt = np.diff(t)
+    
+    # Forward difference for the first point
+    dxdt[0] = (x[1] - x[0]) / dt[0]
+    
+    # Central difference for the interior points using vectorized operations
+    dxdt[1:-1] = (x[2:] - x[:-2]) / (t[2:] - t[:-2])
+    
+    # Backward difference for the last point
+    dxdt[-1] = (x[-1] - x[-2]) / dt[-1]
+    
+    return dxdt
+
+
+
 #### This section loads the measurment data
 
 # set a seed for reproducability
@@ -26,11 +51,22 @@ rng = np.random.default_rng(16723573)
 # sim para
 N_particles = 200
 N_PGAS_iter = 5
-forget_factor = 1 - 1/1000
+forget_factor = 1 - 1/500
 
 ### Load data
 data = scipy.io.loadmat('src\Measurements\DATA_EMPS.mat')
 
+# calculate reference data
+q_ref = data['qm'].flatten()
+
+f_nyq = 500
+sos = scipy.signal.butter(4, 100/f_nyq, btype='lowpass', output='sos')
+q_ref = scipy.signal.sosfiltfilt(sos, q_ref)
+dq_ref = central_difference_quotient(q_ref, data['t'].flatten())
+X = np.vstack([q_ref, dq_ref]).T
+X = X[0:-1:10]
+
+# measurements
 time = data['t'].flatten()[0:-1:10]
 Y = data['qm'].flatten()[0:-1:10]
 steps = time.shape[0]
@@ -42,13 +78,13 @@ x0 = np.array([Y[0], 0])
 P0 = np.diag([1e-5, 1e-6])
 
 # process and measurement noise
-R = np.diag([1e-6])
-Q = np.diag([1e-7, 1e-8])
+R = np.diag([1e-4])
+Q = np.diag([1e-6, 1e-7])
 w = lambda n=1: rng.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
 e = lambda n=1: rng.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
 # input
-ctrl_input = data['vir'].flatten()
+ctrl_input = (data['vir'] * data['gtau']).flatten()[0:-1:10]
 
 
 
@@ -97,13 +133,13 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
     jnp.array([-0.2, 0.2]), 
     0.4/N_basis_fcn, 
-    20
+    5
     )
 
 GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
-    np.eye(1),
+    np.eye(1)*5,
     1
 ))
 
@@ -135,13 +171,11 @@ def EMPS_APF(Y=Y):
     
     # initial values for states
     Sigma_X[0] = rng.multivariate_normal(x0, P0, (N_particles,))
-    Sigma_F[0] = rng.normal(0, 1e-3, (N_particles,))
+    Sigma_F[0] = rng.normal(0, 1e-6, (N_particles,))
     Sigma_Y[0] = jax.vmap(functools.partial(f_y))(x=Sigma_X[0])
 
     # update GP
-    basis = jax.vmap(
-        functools.partial(basis_fcn)
-        )(Sigma_X[0,:,1])
+    basis = jax.vmap(basis_fcn)(Sigma_X[0,:,1])
     GP_stats = list(jax.vmap(prior_mniw_calcStatistics)(
         Sigma_F[0,...],
         basis
@@ -221,7 +255,7 @@ def EMPS_APF(Y=Y):
         
         ## sample proposal for alpha and beta at time t
         # evaluate basis functions
-        basis = jax.vmap(functools.partial(basis_fcn))(Sigma_X[i,:,1])
+        basis = jax.vmap(basis_fcn)(Sigma_X[i,:,1])
         
         # calculate conditional predictive distribution for C1 and R1
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
