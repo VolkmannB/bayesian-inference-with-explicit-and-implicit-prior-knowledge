@@ -335,7 +335,7 @@ for i in index:
     ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE_f[int(i)]*1.5], color="black", linewidth=0.8)
     
     
-apply_basic_formatting(fig_RMSE, width=8, height=8, ont_size=8)
+apply_basic_formatting(fig_RMSE, width=8, height=8, font_size=8)
 fig_RMSE.savefig("plots\Vehicle_APF_muf_wRMSE.svg", bbox_inches='tight')
 
 
