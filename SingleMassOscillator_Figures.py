@@ -128,6 +128,8 @@ for i in index:
         alpha=fcn_alpha[int(i)])
     ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
     ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+    ax_fcn_e[1].set_ylim(0, 200)
+    ax_fcn_e[2].set_xlim(0, 100)
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
     fig_fcn_e.savefig(f"plots\SingleMassOscillator_PGAS_Fsd_fcn_{int(i)}.svg")
@@ -207,6 +209,8 @@ for i in index:
         alpha=fcn_alpha[int(i)])
     ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
     ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+    ax_fcn_e[1].set_ylim(0, 200)
+    ax_fcn_e[2].set_xlim(0, 100)
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
     fig_fcn_e.savefig(f"plots\SingleMassOscillator_APF_Fsd_fcn_{np.round(time[int(i)],3)}.svg")
