@@ -101,7 +101,7 @@ def dx(x, tau, F_v, F_c=F_c, M=M, OFF=OFF):
         
         # x = [q, dq]
         dq = x[1]
-        ddq = (tau - F_c * jnp.sign(dq) - F_v - OFF)/M
+        ddq = (tau - F_v)/M
     
         return jnp.array([dq, ddq])
 
@@ -133,13 +133,13 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
     jnp.array([-0.2, 0.2]), 
     0.4/N_basis_fcn, 
-    15
+    20
     )
 
 GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
-    np.eye(1)*3,
+    np.eye(1)*4,
     1
 ))
 
