@@ -90,7 +90,7 @@ axes_X[1].set_ylabel(r"$\dot{q}$ in m/s")
 axes_X[2].set_ylabel(r"$F_v$ in N")
 axes_X[2].set_xlabel(r"Time in s")
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
-fig_X.savefig("plots\EMPS_PGAS_Y.svg", bbox_inches='tight')
+fig_X.savefig("plots\EMPS_PGAS_X.svg", bbox_inches='tight')
 
 N_PGAS_iter = offline_Sigma_X.shape[1]
 index = (np.array(range(N_slices))+1)/N_slices*(N_PGAS_iter-1)
@@ -120,7 +120,7 @@ for i in index:
     ax_fcn_e[0][-1].set_ylabel(r"$F_v$ in N")
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
-    fig_fcn_e.savefig(f"plots\EMPS_PGAS_C1_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"plots\EMPS_PGAS_F_fcn_{int(i)}.svg")
 
 
 
@@ -156,7 +156,7 @@ axes_X[1].set_ylabel(r"$\dot{q}$ in m/s")
 axes_X[2].set_ylabel(r"$F_v$ in N")
 axes_X[2].set_xlabel(r"Time in s")
 apply_basic_formatting(fig_X, width=10, aspect_ratio=0.6, font_size=8)
-fig_X.savefig("plots\EMPS_APF_Y.svg", bbox_inches='tight')
+fig_X.savefig("plots\EMPS_APF_X.svg", bbox_inches='tight')
 
 steps = time.shape[0]
 index = (np.array(range(N_slices))+1)/N_slices*(steps-1)
@@ -186,7 +186,7 @@ for i in index:
     ax_fcn_e[0][-1].set_ylabel(r"$F_v$ in N")
         
     apply_basic_formatting(fig_fcn_e, width=8, aspect_ratio=1, font_size=8)
-    fig_fcn_e.savefig(f"plots\EMPS_APF_C1_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"plots\EMPS_APF_F_fcn_{int(i)}.svg")
     
 
 
@@ -213,7 +213,7 @@ for i in index:
     
     
 apply_basic_formatting(fig_RMSE, width=8, font_size=8)
-fig_RMSE.savefig("plots\EMPS_APF_C1_wRMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\EMPS_APF_F_wRMSE.svg", bbox_inches='tight')
 
 
 
