@@ -110,7 +110,7 @@ rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
-N_PGAS_iter = 5
+N_PGAS_iter = 800
 forget_factor = 0.999
 dt = 0.02
 t_end = 100.0
