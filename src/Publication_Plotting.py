@@ -340,11 +340,12 @@ def plot_PGAS_iterrations(Trajectories, time, iter_idx, dpi=150):
 def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150):
     
     fig = plt.figure(dpi=dpi)
-    gs = fig.add_gridspec(2, 2,  width_ratios=(5, 1), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
+    gs = fig.add_gridspec(2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
     
     ax = fig.add_subplot(gs[1, 0])
     ax_histx = fig.add_subplot(gs[0, 0], sharex=ax)
     ax_histy = fig.add_subplot(gs[1, 1], sharey=ax)
+    cax = fig.add_subplot(gs[1, 2])
     
     ax_histx.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
     ax_histy.tick_params(axis='y', which='both', left=False, right=False, labelbottom=False)
@@ -390,7 +391,7 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
         orientation='horizontal',)
     
     # add colorbar
-    fig.colorbar(cntr, ax=ax_histy)
+    fig.colorbar(cntr, cax=cax)
     
     return fig, [ax, ax_histx, ax_histy]
 
