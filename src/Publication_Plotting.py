@@ -15,6 +15,8 @@ from src.BayesianInferrence import prior_mniw_Predictive
 plt.rcParams.update({
     "text.usetex": True
 })
+matplotlib.rcParams['mathtext.fontset'] = 'stix'
+matplotlib.rcParams['font.family'] = 'STIXGeneral'
 
 
 
@@ -30,190 +32,6 @@ imes_colorscale = matplotlib.colors.LinearSegmentedColormap.from_list(
 
 aspect_ratio = 16/9
 inch_per_cm = 0.3937007874
-
-
-
-def generate_BFE_TimeSlices(
-    N_slices, 
-    X_in, 
-    Sigma_X, 
-    Sigma_weights,
-    Mean, 
-    Col_Scale, 
-    Row_Scale, 
-    DF, 
-    basis_fcn, 
-    forget_factor
-    ):
-    
-    N_tasks = Row_Scale.shape[-1]
-    
-    basis = jax.vmap(basis_fcn)(X_in)
-    steps = Mean.shape[0]
-    
-    # allocate variables
-    Mean_ = np.zeros((N_slices, N_tasks, basis.shape[0]))
-    Std = np.zeros((N_slices, N_tasks, basis.shape[0]))
-    X_stats = []
-    X_weights = []
-    Time = np.zeros(N_slices)
-    
-    for i in range(N_slices):
-        
-        # index of time slice
-        step = int((i+1)/N_slices*steps)-1
-        
-        # calculate predictive distribution
-        mean, col_scale, row_scale, df = prior_mniw_Predictive(
-            mean=Mean[step], 
-            col_cov=Col_Scale[step], 
-            row_scale=Row_Scale[step], 
-            df=DF[step], 
-            basis=basis
-            )
-        Mean_[i] = mean.T
-        
-        # calculate standard deviation
-        for j in range(N_tasks):
-            Std[i,j] = np.sqrt(np.diag(col_scale*row_scale[j,j]))
-        
-        # window = int(np.maximum(0, 1/(1-forget_factor)))
-        # window = int(np.maximum(0, step - df))
-        weights = np.ones(Sigma_weights[:step].shape) * forget_factor
-        weights[-1,:] = 1
-        weights = np.cumprod(weights.T, axis=-1).T
-        weights = weights * Sigma_weights[:step]
-        X_weights.append(weights)
-        
-        X_stats.append(Sigma_X[:step])
-        
-        Time[i] = step
-        
-    
-    
-    return Mean_, Std, X_stats, X_weights, Time
-    
-
-
-
-def plot_BFE_1D(X_in, Mean, Std, time, X_stats, X_weights, dpi=150):
-    
-    N_TimeSlices = Mean.shape[0]
-    N_tasks = Mean.shape[1]
-    
-    fig, axes = plt.subplots(
-        N_tasks+1, 
-        N_TimeSlices, 
-        layout="tight", 
-        sharey='row', 
-        sharex='col', 
-        dpi=dpi
-        )
-    
-    x_min = np.min(X_in)
-    x_max = np.max(X_in)
-    
-    for i in range(N_TimeSlices):
-        
-        # plot slice for each task
-        for j in range(N_tasks):
-            axes[j,i].plot(X_in, Mean[i,j], color=imes_blue)
-            axes[j,i].fill_between(
-                X_in, 
-                Mean[i,j] - 3*Std[i,j], 
-                Mean[i,j] + 3*Std[i,j], 
-                facecolor=imes_blue, 
-                edgecolor=None, 
-                alpha=0.2
-                )
-            axes[j,i].set_xlim(x_min, x_max)
-            
-        
-        # set timestamp of slice as title
-        axes[0,i].set_title(f"$t={np.round(time[i],2)} s$")
-        
-        # plot histogram of input data
-        axes[N_tasks,i].hist(
-            X_stats[i].flatten(), 
-            bins=50, 
-            range=(x_min, x_max), 
-            weights=X_weights[i].flatten(), 
-            color=imes_blue,
-            log=True
-            )
-        axes[N_tasks,i].set_xlim(x_min, x_max)
-    
-    for ax in axes.flat:
-        ax.grid(which='major', color='gray', alpha=0.2)
-        
-        
-    
-    return fig, axes
-
-
-
-def plot_BFE_2D(X_in, Mean, time, X_stats, X_weights, norm='log', dpi=150):
-    
-    N_TimeSlices = Mean.shape[0]
-    N_tasks = Mean.shape[1]
-    
-    fig, axes = plt.subplots(N_tasks+1, N_TimeSlices, layout="tight", dpi=dpi)
-    
-    x_min = np.min(X_in[:,0])
-    x_max = np.max(X_in[:,0])
-    y_min = np.min(X_in[:,1])
-    y_max = np.max(X_in[:,1])
-    z_min = np.min(Mean)
-    z_max = np.max(Mean)
-    
-    if norm=='log':
-        normalizer = matplotlib.colors.LogNorm()
-    else:
-        normalizer = matplotlib.colors.Normalize()
-    
-    for i in range(N_TimeSlices):
-        
-        # plot slice for each task
-        for j in range(N_tasks):
-            cntr = axes[j,i].tripcolor(
-                X_in[:,0], 
-                X_in[:,1], 
-                Mean[i,j],
-                norm=normalizer,
-                cmap=imes_colorscale
-                )
-            axes[j,i].set_xlim(x_min, x_max)
-            axes[j,i].set_ylim(y_min, y_max)
-    
-            # add colorbar for tasks
-            if i == N_TimeSlices-1:
-                fig.colorbar(cntr, ax=axes[j,i])
-        
-        # set timestamp of slice as title
-        axes[0,i].set_title(f"$t={np.round(time[i],2)} s$")
-        
-        # plot histogram of input data
-        hist = axes[N_tasks,i].hist2d(
-            x=X_stats[i][...,0].flatten(),
-            y=X_stats[i][...,1].flatten(),
-            bins=50, 
-            range=((x_min, x_max), (y_min, y_max)), 
-            weights=X_weights[i].flatten(), 
-            norm=matplotlib.colors.LogNorm(),
-            cmap=imes_colorscale
-            )
-        axes[N_tasks,i].set_xlim(x_min, x_max)
-        axes[N_tasks,i].set_ylim(y_min, y_max)
-        
-    # add colorbar for histogram
-    fig.colorbar(hist[3], ax=axes[N_tasks,i])
-    
-    for ax in axes.flat:
-        ax.grid(which='major', color='gray', alpha=0.2)
-        
-        
-    
-    return fig, axes
 
 
 
@@ -269,9 +87,9 @@ def plot_Data(Particles, weights, Reference, time, dpi=150):
 
 
 
-def apply_basic_formatting(fig, width=8, aspect_ratio=aspect_ratio, font_size=12, dpi=150):
+def apply_basic_formatting(fig, width=8, height=8, font_size=12, dpi=150):
     
-    fig.set_size_inches(width*inch_per_cm, width*inch_per_cm/aspect_ratio)
+    fig.set_size_inches(width*inch_per_cm, height*inch_per_cm)
     
     set_font_size(fig, font_size)
     
@@ -291,51 +109,6 @@ def apply_basic_formatting(fig, width=8, aspect_ratio=aspect_ratio, font_size=12
 
 
 
-def plot_PGAS_iterrations(Trajectories, time, iter_idx, dpi=150):
-    
-    Trajectories = np.atleast_3d(Trajectories)
-    
-    N_Slices = iter_idx.shape[0]
-    N_tasks = Trajectories.shape[-1]
-    
-    fig, axes = plt.subplots(
-        N_tasks, 
-        N_Slices, 
-        layout="tight", 
-        sharey='row', 
-        sharex='col', 
-        dpi=dpi
-        )
-    axes = np.atleast_2d(axes)
-    
-    
-    for i in range(N_Slices):
-        
-        for j in range(N_tasks):
-            
-            # plot reference
-            axes[j,i].plot(time, Trajectories[:,int(iter_idx[i]-1),j], 
-                        color=imes_blue,
-                        label='Ref')
-            
-            # plot drawn sample
-            axes[j,i].plot(time, Trajectories[:,int(iter_idx[i]),j], 
-                        color=imes_orange,
-                        linestyle='',
-                        marker='.', 
-                        markersize=3,
-                        label='sample'
-                        )
-            
-        axes[0,i].set_title(f"Iteration ${int(iter_idx[i])}$")
-        axes[-1,i].set_xlabel(r'Time in [$s$]')
-        axes[-1,i].set_xlim(np.min(time), np.max(time))
-    
-    axes[0,-1].legend()
-        
-    return fig, axes
-
-
 
 def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150):
     
@@ -348,7 +121,7 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
     cax = fig.add_subplot(gs[1, 2])
     
     ax_histx.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
-    ax_histy.tick_params(axis='y', which='both', left=False, right=False, labelbottom=False)
+    ax_histy.tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
     
     x_min = np.min(X_in[:,0])
     x_max = np.max(X_in[:,0])

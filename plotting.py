@@ -113,7 +113,7 @@ for i in index:
     ax_fcn_e[1].text(5.2,75,r'$\# \mathrm{Data}$')
     # ax_fcn_e[2].set_yticklabels([])
 
-    apply_basic_formatting(fig_fcn_e, width=figsize_miniplots, aspect_ratio=1, font_size=fontsize_miniplots)
+    apply_basic_formatting(fig_fcn_e, width=figsize_miniplots, height=1, font_size=fontsize_miniplots)
     # fig_fcn_e.tight_layout()
     fig_fcn_e.savefig(f"SingleMassOscillator_APF_Fsd_fcn_{np.round(time[int(i)],3)}.png",dpi=dpi_miniplots, bbox_inches='tight')
 
@@ -288,7 +288,7 @@ for i in index:
     # ax_fcn_e[1].set_ylabel(r"\# $\mathrm{Data}$")
     ax_fcn_e[0][-1].plot(alpha, mu_f_true, color='k', linestyle=':')
         
-    apply_basic_formatting(fig_fcn_e, width=figsize_miniplots, aspect_ratio=1, font_size=fontsize_miniplots)
+    apply_basic_formatting(fig_fcn_e, width=figsize_miniplots, height=1, font_size=fontsize_miniplots)
     # fig_fcn_e.tight_layout()
     fig_fcn_e.savefig(f"Vehicle_APF_muf_fcn_{np.round(time[int(i)],3)}.png",dpi=dpi_miniplots, bbox_inches='tight')
 
@@ -440,7 +440,7 @@ for i in index:
     # ax_fcn_e[0][0].set_ylabel(r"$C_1$ $\mathrm{in}$ $\mathrm{F}$")
     # ax_fcn_e[0][1].set_ylabel(r"$R_1$ $\mathrm{in}$ $\mathrm{\Omega}$")
 
-    apply_basic_formatting(fig_fcn_e, width=figsize_miniplots, aspect_ratio=1, font_size=fontsize_miniplots)
+    apply_basic_formatting(fig_fcn_e, width=figsize_miniplots, height=1, font_size=fontsize_miniplots)
     # fig_fcn_e.tight_layout()
     fig_fcn_e.savefig(f"Battery_APF_C1R1_fcn_{int(i)}.png",dpi=dpi_miniplots, bbox_inches='tight')
 
@@ -536,7 +536,7 @@ axs_overall[1+1,2].set_xlabel(r"$\mathrm{Time}$ $\mathrm{in}$ $\mathrm{h}$")
 #############################################################
 # overall saving
 
-apply_basic_formatting(fig_overall, width=17.78, aspect_ratio=1, font_size=fontsize_overall)
+apply_basic_formatting(fig_overall, width=17.78, height=1, font_size=fontsize_overall)
 fig_overall.tight_layout()
 fig_overall.savefig("grid_plot_online.svg", bbox_inches='tight')
 
