@@ -110,10 +110,10 @@ rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
-N_PGAS_iter = 800
+N_PGAS_iter = 5
 forget_factor = 0.999
 dt = 0.02
-t_end = 100.0
+t_end = 30.0
 time = np.arange(0.0, t_end, dt)
 steps = len(time)
 
@@ -130,7 +130,7 @@ e = lambda n=1: rng.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
 # control input to the vehicle as [steering angle, longitudinal velocity]
 ctrl_input = np.zeros((steps,2))
-ctrl_input[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * 0.5*(np.tanh(0.2*(time-t_end*0.15))-np.tanh(0.2*(time-t_end*0.75)))
+ctrl_input[:,0] = 10/180*np.pi * np.sin(2*np.pi*time/5) * np.exp(-0.5*(time-t_end/2)**2/(t_end/5)**2)
 ctrl_input[:,1] = 11.0
 
 
@@ -138,8 +138,8 @@ ctrl_input[:,1] = 11.0
 #### This section defines the basis function expansion
 
 # basis functions for front and rear tire
-N_basis_fcn = 10
-lengthscale = 2 /180*jnp.pi
+N_basis_fcn = 15
+lengthscale = 40 /180*jnp.pi / N_basis_fcn
 basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
     np.array([-25/180*jnp.pi, 25/180*jnp.pi]), 
@@ -545,7 +545,7 @@ def Vehicle_PGAS(Y):
         
         
     # set initial statistic for mu_f
-    basis = jax.vmap(basis_fcn)(Sigma_mu_f[:,0])
+    basis = jax.vmap(basis_fcn)(Sigma_alpha_f[:,0])
     T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_f[:,0],
             basis
@@ -556,7 +556,7 @@ def Vehicle_PGAS(Y):
     GP_stats_f[3][0] = np.sum(T_3, axis=0)
 
     # set initial statistic for mu_r
-    basis = jax.vmap(basis_fcn)(Sigma_mu_r[:,0])
+    basis = jax.vmap(basis_fcn)(Sigma_alpha_r[:,0])
     T_0, T_1, T_2, T_3 = jax.vmap(prior_mniw_calcStatistics)(
             Sigma_mu_r[:,0],
             basis
