@@ -4,15 +4,10 @@ import scipy.io
 
 
 
-import matplotlib.pyplot as plt
-
-
-
 from src.SingleMassOscillator import F_spring, F_damper, basis_fcn, time
 from src.SingleMassOscillator import SingleMassOscillator_simulation
 from src.SingleMassOscillator import GP_prior, SingleMassOscillator_APF
 from src.SingleMassOscillator import SingleMassOscillator_PGAS
-from src.BayesianInferrence import prior_mniw_2naturalPara_inv
 
 
 

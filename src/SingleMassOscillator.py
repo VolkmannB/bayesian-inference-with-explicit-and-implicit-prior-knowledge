@@ -1,8 +1,10 @@
 import numpy as np
 import jax.numpy as jnp
 import jax
+import scipy.signal
 from tqdm import tqdm
 import functools
+import scipy
 
 from src.BayesianInferrence import generate_Hilbert_BasisFunction
 from src.BayesianInferrence import prior_mniw_2naturalPara
@@ -20,7 +22,7 @@ from src.Filtering import reconstruct_trajectory
 m=2.0
 c1=10.0
 c2=2.0
-d1=0.7
+d1=0.8
 d2=0.4
 C = np.array([[1,0]])
 
@@ -35,21 +37,21 @@ def F_damper(dx):
 
 
 
-def dx(x, F, F_sd, p):
+def dx(x, F, F_sd, m=m):
     return jnp.array(
-        [x[1], -F_sd/p + F/p + 9.81]
+        [x[1], -F_sd/m + F/m]
     )
 
 
 
 @jax.jit
-def f_x(x, F, F_sd, dt, p=m):
+def f_x(x, F, F_sd, dt):
     
     # Runge-Kutta 4
-    k1 = dx(x, F, F_sd, p)
-    k2 = dx(x+dt/2.0*k1, F, F_sd, p)
-    k3 = dx(x+dt/2.0*k2, F, F_sd, p)
-    k4 = dx(x+dt*k3, F, F_sd, p)
+    k1 = dx(x, F, F_sd)
+    k2 = dx(x+dt/2.0*k1, F, F_sd)
+    k3 = dx(x+dt/2.0*k2, F, F_sd)
+    k4 = dx(x+dt*k3, F, F_sd)
     x = x + dt/6.0*(k1+2*k2+2*k3+k4) 
     
     return x
@@ -70,7 +72,7 @@ rng = np.random.default_rng(16723573)
 # simulation parameters
 N_particles = 200
 N_PGAS_iter = 5
-t_end = 100.0
+t_end = 50.0
 dt = 0.02
 forget_factor = 0.999
 time = np.arange(0.0,t_end,dt)
@@ -88,11 +90,11 @@ w = lambda n=1: rng.multivariate_normal(np.zeros((2,)), Q, n)
 e = lambda n=1: rng.multivariate_normal(np.zeros((1,)), R, n)
 
 # external force
-F_ext = np.zeros((steps,)) 
-F_ext[int(t_end/(5*dt)):] = -9.81*m
-F_ext[int(2*t_end/(5*dt)):] = -9.81*m*2
-F_ext[int(3*t_end/(5*dt)):] = -9.81*m
-F_ext[int(4*t_end/(5*dt)):] = 0
+F_ext = np.ones((steps,)) * 9.81*m
+F_ext[int(t_end/(5*dt)):] = 0
+F_ext[int(2*t_end/(5*dt)):] = -9.81*m
+F_ext[int(3*t_end/(5*dt)):] = 0
+F_ext[int(4*t_end/(5*dt)):] = 9.81*m
     
     
     
