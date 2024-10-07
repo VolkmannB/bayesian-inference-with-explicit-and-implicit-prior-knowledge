@@ -22,7 +22,7 @@ from src.Filtering import reconstruct_trajectory
 m=2.0
 c1=10.0
 c2=2.0
-d1=0.8
+d1=0.9
 d2=0.4
 C = np.array([[1,0]])
 
@@ -72,7 +72,7 @@ rng = np.random.default_rng(16723573)
 # simulation parameters
 N_particles = 200
 N_PGAS_iter = 5
-t_end = 50.0
+t_end = 30.0
 dt = 0.02
 forget_factor = 0.999
 time = np.arange(0.0,t_end,dt)
@@ -90,11 +90,14 @@ w = lambda n=1: rng.multivariate_normal(np.zeros((2,)), Q, n)
 e = lambda n=1: rng.multivariate_normal(np.zeros((1,)), R, n)
 
 # external force
+# F_ext = np.ones((steps,)) * 9.81*m
+# F_ext[int(t_end/(5*dt)):] = 0
+# F_ext[int(2*t_end/(5*dt)):] = -9.81*m
+# F_ext[int(3*t_end/(5*dt)):] = 0
+# F_ext[int(4*t_end/(5*dt)):] = 9.81*m
 F_ext = np.ones((steps,)) * 9.81*m
-F_ext[int(t_end/(5*dt)):] = 0
-F_ext[int(2*t_end/(5*dt)):] = -9.81*m
-F_ext[int(3*t_end/(5*dt)):] = 0
-F_ext[int(4*t_end/(5*dt)):] = 9.81*m
+F_ext[int(t_end/(3*dt)):] = 0
+F_ext[int(2*t_end/(3*dt)):] = -9.81*m
     
     
     
