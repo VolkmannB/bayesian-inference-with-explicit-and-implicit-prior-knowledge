@@ -137,7 +137,7 @@ ax_RMSE.plot(
 ax_RMSE.set_xlabel(r"Iterations")
 ax_RMSE.set_ylabel(r"RMSE in m")
 apply_basic_formatting(fig_RMSE, width=8, height=8, font_size=8)
-fig_RMSE.savefig("plots\EMPS_PGAS_RMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\EMPS_PGAS_RMSE.pdf", bbox_inches='tight')
 
 
 
@@ -156,7 +156,7 @@ axes_X[1].set_ylabel(r"$\dot{q}$ in m/s")
 axes_X[2].set_ylabel(r"$F_v$ in N")
 axes_X[2].set_xlabel(r"Time in s")
 apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
-fig_X.savefig("plots\EMPS_APF_X.svg", bbox_inches='tight')
+fig_X.savefig("plots\EMPS_APF_X.pdf", bbox_inches='tight')
 
 steps = time.shape[0]
 index = (np.array(range(N_slices))+1)/N_slices*(steps-1)
