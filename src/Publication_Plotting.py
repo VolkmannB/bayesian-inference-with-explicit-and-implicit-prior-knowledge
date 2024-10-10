@@ -5,6 +5,7 @@ import jax
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.ticker import ScalarFormatter, LogLocator
 import matplotlib
+from matplotlib.tri.triangulation import Triangulation
 
 
 
@@ -110,7 +111,7 @@ def apply_basic_formatting(fig, width=8, height=8, font_size=12, dpi=150):
 
 
 
-def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150):
+def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150, vmin=1e-4, vmax=3e3):
     
     fig = plt.figure(dpi=dpi)
     gs = fig.add_gridspec(2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
@@ -128,21 +129,26 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
     y_min = np.min(X_in[:,1])
     y_max = np.max(X_in[:,1])
     
+    # Triangulation
+    triang = Triangulation(X_in[:,0], X_in[:,1])
+    
+    # Compute the alpha values for each triangle by averaging the alphas of its vertices
+    alpha_faces = np.mean(alpha[triang.triangles], axis=1)
+    
     
     if norm=='log':
-        normalizer = matplotlib.colors.LogNorm()
+        normalizer = matplotlib.colors.LogNorm(vmin=vmin, vmax=vmax)
     else:
-        normalizer = matplotlib.colors.Normalize()
+        normalizer = matplotlib.colors.Normalize(vmin=vmin, vmax=vmax)
     
     # plot triangulized mesh
     cntr = ax.tripcolor(
-        X_in[:,0], 
-        X_in[:,1], 
+        triang,
         Mean,
         norm=normalizer,
         cmap=imes_colorscale,
-        alpha=alpha,
-        shading='gouraud',
+        alpha=alpha_faces,
+        shading='flat',
         edgecolors='none'
         )
     ax.set_xlim(x_min, x_max)
