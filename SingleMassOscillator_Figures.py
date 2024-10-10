@@ -96,9 +96,11 @@ axes_X[0].set_ylabel(r"$s$ in $\mathrm{m}$")
 axes_X[1].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
 axes_X[2].set_ylabel(r"$F$ in $\mathrm{N}$")
 axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
-axes_X[2].set_ylim(-130,130)
+axes_X[0].set_ylim(-2.8,2.8)
+axes_X[1].set_ylim(-5.2,5.2)
+axes_X[2].set_ylim(-80,80)
 apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
-fig_X.savefig("plots\SingleMassOscillator_PGAS_X.svg", bbox_inches='tight')
+fig_X.savefig("plots\SingleMassOscillator_PGAS_X.pdf", bbox_inches='tight')
 
 N_iterations = offline_Sigma_X.shape[1]
 index = (np.array(range(N_slices))+1)/N_slices*(N_iterations-1)
@@ -129,11 +131,11 @@ for i in index:
         alpha=fcn_alpha[int(i)])
     ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
     ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-    ax_fcn_e[1].set_ylim(0, 200)
-    ax_fcn_e[2].set_xlim(0, 100)
+    ax_fcn_e[1].set_ylim(0, 100)
+    ax_fcn_e[2].set_xlim(0, 50)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\SingleMassOscillator_PGAS_Fsd_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"plots\SingleMassOscillator_PGAS_Fsd_fcn_{int(i)}.pdf")
 
 
 
@@ -159,7 +161,7 @@ for i in index:
 wRMSE_offline_final = wRMSE[-1]
     
 apply_basic_formatting(fig_RMSE, width=8, height=8, font_size=8)
-fig_RMSE.savefig("plots\SingleMassOscillator_PGAS_Fsd_wRMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\SingleMassOscillator_PGAS_Fsd_wRMSE.pdf", bbox_inches='tight')
 
 
 
@@ -179,9 +181,11 @@ axes_X[0].set_ylabel(r"$s$ in $\mathrm{m}$")
 axes_X[1].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
 axes_X[2].set_ylabel(r"$F$ in $\mathrm{N}$")
 axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
-axes_X[2].set_ylim(-130,130)
+axes_X[0].set_ylim(-2.8,2.8)
+axes_X[1].set_ylim(-5.2,5.2)
+axes_X[2].set_ylim(-80,80)
 apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
-fig_X.savefig("plots\SingleMassOscillator_APF_X.svg", bbox_inches='tight')
+fig_X.savefig("plots\SingleMassOscillator_APF_X.pdf", bbox_inches='tight')
 
 index = (np.array(range(N_slices))+1)/N_slices*(time.shape[0]-1)
 
@@ -211,11 +215,11 @@ for i in index:
         alpha=fcn_alpha[int(i)])
     ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
     ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-    ax_fcn_e[1].set_ylim(0, 200)
-    ax_fcn_e[2].set_xlim(0, 100)
+    ax_fcn_e[1].set_ylim(0, 100)
+    ax_fcn_e[2].set_xlim(0, 50)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\SingleMassOscillator_APF_Fsd_fcn_{np.round(time[int(i)],3)}.svg")
+    fig_fcn_e.savefig(f"plots\SingleMassOscillator_APF_Fsd_fcn_{np.round(time[int(i)],3)}.pdf")
 
 
 
@@ -245,7 +249,7 @@ for i in index:
     ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
     
 apply_basic_formatting(fig_RMSE, width=8, height=8, font_size=8)
-fig_RMSE.savefig("plots\SingleMassOscillator_APF_Fsd_wRMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\SingleMassOscillator_APF_Fsd_wRMSE.pdf", bbox_inches='tight')
 
 
 
