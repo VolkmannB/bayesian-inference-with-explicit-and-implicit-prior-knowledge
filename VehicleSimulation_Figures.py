@@ -144,7 +144,7 @@ axes_X[3].set_xlabel(r"Time in $\mathrm{s}$")
 axes_X[2].set_ylim(-2,2)
 axes_X[3].set_ylim(-2,2)
 apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
-fig_X.savefig("plots\Vehicle_PGAS_X.svg", bbox_inches='tight')
+fig_X.savefig("plots\Vehicle_PGAS_X.pdf", bbox_inches='tight')
 
 N_PGAS_iter = offline_Sigma_X.shape[1]
 index = (np.array(range(N_slices))+1)/N_slices*(N_PGAS_iter-1)
@@ -187,7 +187,7 @@ for i in index:
     ax_fcn_e[0][-1].plot(alpha_plot, mu_true_plot, color='red', linestyle=':')
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\Vehicle_PGAS_muf_fcn_{int(i)}.svg")
+    fig_fcn_e.savefig(f"plots\Vehicle_PGAS_muf_fcn_{int(i)}.pdf")
 
 
 
@@ -216,7 +216,7 @@ ax_RMSE.plot(
     color=imes_orange
 )
 ax_RMSE.set_ylabel(r"wRMSE")
-ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
+ax_RMSE.set_xlabel(r"Iterations")
 ax_RMSE.set_ylim(0)
 
 for i in index:
@@ -227,7 +227,7 @@ wRMSE_offline_r = wRMSE_r[-1]
     
     
 apply_basic_formatting(fig_RMSE, width=8, height=8, font_size=8)
-fig_RMSE.savefig("plots\Vehicle_PGAS_muf_wRMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\Vehicle_PGAS_muf_wRMSE.pdf", bbox_inches='tight')
 
 
 
@@ -250,7 +250,7 @@ axes_X[3].set_xlabel(r"Time in $\mathrm{s}$")
 axes_X[2].set_ylim(-2,2)
 axes_X[3].set_ylim(-2,2)
 apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
-fig_X.savefig("plots\Vehicle_APF_X.svg", bbox_inches='tight')
+fig_X.savefig("plots\Vehicle_APF_X.pdf", bbox_inches='tight')
 
 steps = time.shape[0]
 index = (np.array(range(N_slices))+1)/N_slices*(steps-1)
@@ -293,7 +293,7 @@ for i in index:
     ax_fcn_e[0][-1].plot(alpha_plot, mu_true_plot, color='red', linestyle=':')
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\Vehicle_APF_muf_fcn_{np.round(time[int(i)],3)}.svg")
+    fig_fcn_e.savefig(f"plots\Vehicle_APF_muf_fcn_{np.round(time[int(i)],3)}.pdf")
 
 
 
@@ -336,7 +336,7 @@ for i in index:
     
     
 apply_basic_formatting(fig_RMSE, width=8, height=8, font_size=8)
-fig_RMSE.savefig("plots\Vehicle_APF_muf_wRMSE.svg", bbox_inches='tight')
+fig_RMSE.savefig("plots\Vehicle_APF_muf_wRMSE.pdf", bbox_inches='tight')
 
 
 
