@@ -5,6 +5,7 @@ from tqdm import tqdm
 import scipy.io
 
 import matplotlib.pyplot as plt
+import matplotlib.gridspec
 
 from src.Publication_Plotting import plot_fcn_error_2D, plot_fcn_error_1D
 from src.Publication_Plotting import plot_Data, apply_basic_formatting
@@ -270,30 +271,63 @@ fig_traj.set_layout_engine('tight')
 
 # the figure
 fig_fcn = plt.figure(dpi=150)
-gs_fcn = fig_fcn.add_gridspec(6, 7,  width_ratios=(6.2, 5, 1, 0.2, 5, 1, 0.2), height_ratios=(1, 5, 1, 5, 1, 5), hspace=0.05, wspace=0.05)
+gs_fcn = matplotlib.gridspec.GridSpec(3,3, figure=fig_fcn)
+
+gs_fcn_01 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+    2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), 
+    hspace=0.05, wspace=0.05, 
+    subplot_spec=gs_fcn[0,1]
+    )
+gs_fcn_02 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+    2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), 
+    hspace=0.05, wspace=0.05, 
+    subplot_spec=gs_fcn[0,2]
+    )
+
+gs_fcn_11 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+    2, 1,  height_ratios=(1, 5), 
+    hspace=0.05, wspace=0.05, 
+    subplot_spec=gs_fcn[1,1]
+    )
+gs_fcn_12 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+    2, 1,  height_ratios=(1, 5), 
+    hspace=0.05, wspace=0.05, 
+    subplot_spec=gs_fcn[1,2]
+    )
+
+gs_fcn_21 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+    2, 1,  height_ratios=(1, 5), 
+    hspace=0.05, wspace=0.05, 
+    subplot_spec=gs_fcn[2,1]
+    )
+gs_fcn_22 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+    2, 1,  height_ratios=(1, 5), 
+    hspace=0.05, wspace=0.05, 
+    subplot_spec=gs_fcn[2,2]
+    )
 
 # generate axes
-SMO_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[0:2, 0])
-SMO_ax_S1_tripc = fig_fcn.add_subplot(gs_fcn[1, 1])
-SMO_ax_S1_histx = fig_fcn.add_subplot(gs_fcn[0, 1], sharex=SMO_ax_S1_tripc)
-SMO_ax_S1_histy = fig_fcn.add_subplot(gs_fcn[1, 2], sharey=SMO_ax_S1_tripc)
-SMO_ax_S1_cax = fig_fcn.add_subplot(gs_fcn[1, 3])
-SMO_ax_S2_tripc = fig_fcn.add_subplot(gs_fcn[1, 4])
-SMO_ax_S2_histx = fig_fcn.add_subplot(gs_fcn[0, 4], sharex=SMO_ax_S2_tripc)
-SMO_ax_S2_histy = fig_fcn.add_subplot(gs_fcn[1, 5], sharey=SMO_ax_S2_tripc)
-SMO_ax_S2_cax = fig_fcn.add_subplot(gs_fcn[1, 6])
+SMO_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[0, 0])
+SMO_ax_S1_tripc = fig_fcn.add_subplot(gs_fcn_01[1, 0])
+SMO_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_01[0, 0], sharex=SMO_ax_S1_tripc)
+SMO_ax_S1_histy = fig_fcn.add_subplot(gs_fcn_01[1, 1], sharey=SMO_ax_S1_tripc)
+SMO_ax_S1_cax = fig_fcn.add_subplot(gs_fcn_01[1, 2])
+SMO_ax_S2_tripc = fig_fcn.add_subplot(gs_fcn_02[1, 0])
+SMO_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_02[0, 0], sharex=SMO_ax_S2_tripc)
+SMO_ax_S2_histy = fig_fcn.add_subplot(gs_fcn_02[1, 1], sharey=SMO_ax_S2_tripc)
+SMO_ax_S2_cax = fig_fcn.add_subplot(gs_fcn_02[1, 2])
 
-Veh_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[2:4, 0])
-Veh_ax_S1_plt = fig_fcn.add_subplot(gs_fcn[3, 1:4])
-Veh_ax_S1_histx = fig_fcn.add_subplot(gs_fcn[2, 1:4], sharex=Veh_ax_S1_plt)
-Veh_ax_S2_plt = fig_fcn.add_subplot(gs_fcn[3, 4:7])
-Veh_ax_S2_histx = fig_fcn.add_subplot(gs_fcn[2, 4:7], sharex=Veh_ax_S2_plt)
+Veh_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[1, 0])
+Veh_ax_S1_plt = fig_fcn.add_subplot(gs_fcn_11[1, 0])
+Veh_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_11[0, 0], sharex=Veh_ax_S1_plt)
+Veh_ax_S2_plt = fig_fcn.add_subplot(gs_fcn_12[1, 0])
+Veh_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_12[0, 0], sharex=Veh_ax_S2_plt)
 
-EMPS_ax_RMSE = fig_fcn.add_subplot(gs_fcn[4:6, 0])
-EMPS_ax_S1_plt = fig_fcn.add_subplot(gs_fcn[5, 1:4])
-EMPS_ax_S1_histx = fig_fcn.add_subplot(gs_fcn[4, 1:4], sharex=EMPS_ax_S1_plt)
-EMPS_ax_S2_plt = fig_fcn.add_subplot(gs_fcn[5, 4:7])
-EMPS_ax_S2_histx = fig_fcn.add_subplot(gs_fcn[4, 4:7], sharex=EMPS_ax_S1_plt)
+EMPS_ax_RMSE = fig_fcn.add_subplot(gs_fcn[2, 0])
+EMPS_ax_S1_plt = fig_fcn.add_subplot(gs_fcn_21[1, 0])
+EMPS_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_21[0, 0], sharex=EMPS_ax_S1_plt)
+EMPS_ax_S2_plt = fig_fcn.add_subplot(gs_fcn_22[1, 0])
+EMPS_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_22[0, 0], sharex=EMPS_ax_S1_plt)
 fig_fcn.set_layout_engine('tight')
 
 
@@ -464,6 +498,7 @@ Veh_ax_wRMSE.plot(
     Veh_offline_wRMSE_r,
     color=imes_orange
 )
+Veh_ax_wRMSE.legend(["front", "rear"])
 
 # first slice
 plot_fcn_error_1D(
