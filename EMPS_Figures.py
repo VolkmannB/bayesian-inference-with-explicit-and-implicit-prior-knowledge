@@ -79,17 +79,19 @@ del online_T0, online_T1, online_T2, online_T3
 # Plotting Offline
 
 # plot the state estimations
-fig_X, axes_X = plot_Data(
+fig_X, axes_X = plt.subplots(3, 1, layout='tight', sharex='col', dpi=150)
+plot_Data(
     Particles=np.concatenate([offline_Sigma_X, offline_Sigma_F[...,None]], axis=-1),
     weights=offline_weights,
     Reference=np.concatenate([X, np.ones((Y.shape[0],1))*np.nan], axis=-1),
-    time=time
+    time=time,
+    axes=axes_X
 )
 axes_X[0].set_ylabel(r"$q$ in m")
 axes_X[1].set_ylabel(r"$\dot{q}$ in m/s")
-axes_X[2].set_ylabel(r"$F_v$ in N")
+axes_X[2].set_ylabel(r"$F$ in N")
 axes_X[2].set_xlabel(r"Time in s")
-apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
+apply_basic_formatting(fig_X, width=8, height=16, font_size=8)
 fig_X.savefig("plots\EMPS_PGAS_X.pdf", bbox_inches='tight')
 
 N_PGAS_iter = offline_Sigma_X.shape[1]
@@ -109,18 +111,37 @@ for i in tqdm(range(0, N_PGAS_iter), desc='Calculating fcn value and var'):
     fcn_mean_offline[i] = mean
 
 # generate plot
+c = 0
 for i in index:
-    fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
+    
+    N_tasks = 1
+    fig_fcn_e = plt.figure(dpi=150)
+    gs = fig_fcn_e.add_gridspec(
+        N_tasks+1, 1, 
+        height_ratios=(1, *(5*np.ones((N_tasks,)))), 
+        hspace=0.05, 
+        wspace=0.05
+        )
+    ax = [fig_fcn_e.add_subplot(gs[i+1, 0]) for i in range(0,N_tasks)]
+    ax_histx = fig_fcn_e.add_subplot(gs[0, 0], sharex=ax[-1])
+    
+    plot_fcn_error_1D(
         dq_plot, 
         Mean=fcn_mean_offline[int(i)], 
         Std=np.sqrt(fcn_var_offline[int(i)]),
         X_stats=offline_Sigma_X[:,:int(i),1], 
-        X_weights=offline_weights[:,:int(i)])
-    ax_fcn_e[0][-1].set_xlabel(r"$\dot{q}$ in m/s")
-    ax_fcn_e[0][-1].set_ylabel(r"$F_v$ in N")
+        X_weights=offline_weights[:,:int(i)],
+        ax=ax,
+        ax_histx=ax_histx
+        )
+    
+    ax[-1].set_xlabel(r"$\dot{q}$ in m/s")
+    ax[-1].set_ylabel(r"$F$ in N")
+    fig_fcn_e.suptitle(f"Iteration {int(i+1)}", fontsize=8)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\EMPS_PGAS_F_fcn_{int(i)}.pdf")
+    fig_fcn_e.savefig(f"plots\EMPS_PGAS_F_fcn_{int(c)}.pdf", bbox_inches='tight')
+    c += 1
 
 
 
@@ -145,17 +166,19 @@ fig_RMSE.savefig("plots\EMPS_PGAS_RMSE.pdf", bbox_inches='tight')
 # Plotting Online
 
 # plot the state estimations
-fig_X, axes_X = plot_Data(
+fig_X, axes_X = plt.subplots(3, 1, layout='tight', sharex='col', dpi=150)
+plot_Data(
     Particles=np.concatenate([online_Sigma_X, online_Sigma_F[...,None]], axis=-1),
     weights=online_weights,
     Reference=np.concatenate([X, np.ones((Y.shape[0],1))*np.nan], axis=-1),
-    time=time
+    time=time,
+    axes=axes_X
 )
 axes_X[0].set_ylabel(r"$q$ in m")
 axes_X[1].set_ylabel(r"$\dot{q}$ in m/s")
-axes_X[2].set_ylabel(r"$F_v$ in N")
+axes_X[2].set_ylabel(r"$F$ in N")
 axes_X[2].set_xlabel(r"Time in s")
-apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
+apply_basic_formatting(fig_X, width=8, height=16, font_size=8)
 fig_X.savefig("plots\EMPS_APF_X.pdf", bbox_inches='tight')
 
 steps = time.shape[0]
@@ -175,18 +198,37 @@ for i in tqdm(range(0, steps), desc='Calculating fcn value and var'):
     fcn_mean_online[i] = mean
 
 # generate plot
+c = 0
 for i in index:
-    fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
+    
+    N_tasks = 1
+    fig_fcn_e = plt.figure(dpi=150)
+    gs = fig_fcn_e.add_gridspec(
+        N_tasks+1, 1, 
+        height_ratios=(1, *(5*np.ones((N_tasks,)))), 
+        hspace=0.05, 
+        wspace=0.05
+        )
+    ax = [fig_fcn_e.add_subplot(gs[i+1, 0]) for i in range(0,N_tasks)]
+    ax_histx = fig_fcn_e.add_subplot(gs[0, 0], sharex=ax[-1])
+    
+    plot_fcn_error_1D(
         dq_plot, 
         Mean=fcn_mean_online[int(i)], 
         Std=np.sqrt(fcn_var_online[int(i)]),
         X_stats=online_Sigma_X[:int(i),:,1], 
-        X_weights=online_weights[:int(i)])
-    ax_fcn_e[0][-1].set_xlabel(r"$\dot{q}$ in m/s")
-    ax_fcn_e[0][-1].set_ylabel(r"$F_v$ in N")
+        X_weights=online_weights[:int(i)],
+        ax=ax,
+        ax_histx=ax_histx
+        )
+    
+    ax[-1].set_xlabel(r"$\dot{q}$ in m/s")
+    ax[-1].set_ylabel(r"$F$ in N")
+    fig_fcn_e.suptitle(f"Time {np.round(time[int(i)],2)}\,s", fontsize=8)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\EMPS_APF_F_fcn_{int(i)}.pdf")
+    fig_fcn_e.savefig(f"plots\EMPS_APF_F_fcn_{int(c)}.pdf", bbox_inches='tight')
+    c += 1
     
 
 

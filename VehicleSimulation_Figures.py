@@ -6,7 +6,7 @@ import scipy.io
 
 import matplotlib.pyplot as plt
 
-from src.Vehicle import time, steps, GP_prior_f
+from src.Vehicle import GP_prior_f
 from src.Publication_Plotting import plot_Data, apply_basic_formatting
 from src.Publication_Plotting import plot_fcn_error_1D, imes_blue, imes_orange
 from src.BayesianInferrence import prior_mniw_Predictive, prior_mniw_2naturalPara_inv
@@ -64,7 +64,8 @@ mu_true_plot = data['mu_true_plot'].flatten()
 X = data['X']
 mu_f = data['mu_f'].flatten()
 mu_r = data['mu_r'].flatten()
-
+time = data['time'].flatten()
+steps = len(time)
 del data
     
     
@@ -130,11 +131,13 @@ del col_scale_prior, row_scale_prior, GP_prior_f
 
 
 # plot the state estimations
-fig_X, axes_X = plot_Data(
+fig_X, axes_X = plt.subplots(4, 1, layout='tight', sharex='col', dpi=150)
+plot_Data(
     Particles=np.concatenate([offline_Sigma_X, offline_Sigma_mu_f[...,None], offline_Sigma_mu_r[...,None]], axis=-1),
     weights=offline_weights,
     Reference=np.concatenate([X, mu_f[...,None], mu_r[...,None]], axis=-1),
-    time=time
+    time=time,
+    axes=axes_X
 )
 axes_X[0].set_ylabel(r"$\psi$ in $\mathrm{rad/s}$")
 axes_X[1].set_ylabel(r"$v_y$ in $\mathrm{m/s}$")
@@ -143,7 +146,7 @@ axes_X[3].set_ylabel(r"$\mu_\mathrm{r}$")
 axes_X[3].set_xlabel(r"Time in $\mathrm{s}$")
 axes_X[2].set_ylim(-2,2)
 axes_X[3].set_ylim(-2,2)
-apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
+apply_basic_formatting(fig_X, width=8, height=16, font_size=8)
 fig_X.savefig("plots\Vehicle_PGAS_X.pdf", bbox_inches='tight')
 
 N_PGAS_iter = offline_Sigma_X.shape[1]
@@ -176,18 +179,38 @@ for i in tqdm(range(0, N_PGAS_iter), desc='Calculating fcn value and var'):
     fcn_mean_r[i] = mean
 
 # generate plot
+c = 0
 for i in index:
-    fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
+    
+    N_tasks = 1
+    fig_fcn_e = plt.figure(dpi=150)
+    gs = fig_fcn_e.add_gridspec(
+        N_tasks+1, 1, 
+        height_ratios=(1, *(5*np.ones((N_tasks,)))), 
+        hspace=0.05, 
+        wspace=0.05
+        )
+    ax = [fig_fcn_e.add_subplot(gs[i+1, 0]) for i in range(0,N_tasks)]
+    ax_histx = fig_fcn_e.add_subplot(gs[0, 0], sharex=ax[-1])
+    
+    plot_fcn_error_1D(
         alpha_plot, 
         Mean=fcn_mean_f[int(i)], 
         Std=np.sqrt(fcn_var_f[int(i)]),
         X_stats=offline_Sigma_alpha_f[:,:int(i)], 
-        X_weights=offline_weights[:,:int(i)])
-    ax_fcn_e[0][-1].set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
-    ax_fcn_e[0][-1].plot(alpha_plot, mu_true_plot, color='red', linestyle=':')
+        X_weights=offline_weights[:,:int(i)],
+        ax=ax,
+        ax_histx=ax_histx
+        )
+    ax[-1].set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
+    ax[-1].set_ylabel(r"$\mu$")
+    ax[-1].plot(alpha_plot, mu_true_plot, color='red', linestyle=':')
+    ax[-1].set_ylim(-1.3, 1.3)
+    fig_fcn_e.suptitle(f"Iteration {int(i+1)}", fontsize=8)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\Vehicle_PGAS_muf_fcn_{int(i)}.pdf")
+    fig_fcn_e.savefig(f"plots\Vehicle_PGAS_muf_fcn_{int(c)}.pdf", bbox_inches='tight')
+    c += 1
 
 
 
@@ -218,9 +241,10 @@ ax_RMSE.plot(
 ax_RMSE.set_ylabel(r"wRMSE")
 ax_RMSE.set_xlabel(r"Iterations")
 ax_RMSE.set_ylim(0)
+ax_RMSE.legend(["front", "rear"])
 
-for i in index:
-    ax_RMSE.plot([int(i), int(i)], [0, wRMSE_f[int(i)]*1.5], color="black", linewidth=0.8)
+# for i in index:
+#     ax_RMSE.plot([int(i), int(i)], [0, wRMSE_f[int(i)]*1.5], color="black", linewidth=0.8)
     
 wRMSE_offline_f = wRMSE_f[-1]
 wRMSE_offline_r = wRMSE_r[-1]
@@ -236,11 +260,13 @@ fig_RMSE.savefig("plots\Vehicle_PGAS_muf_wRMSE.pdf", bbox_inches='tight')
 
 
 # plot the state estimations
-fig_X, axes_X = plot_Data(
+fig_X, axes_X = plt.subplots(4, 1, layout='tight', sharex='col', dpi=150)
+plot_Data(
     Particles=np.concatenate([online_Sigma_X, online_Sigma_mu_f[...,None], online_Sigma_mu_r[...,None]], axis=-1),
     weights=online_weights,
     Reference=np.concatenate([X, mu_f[...,None], mu_r[...,None]], axis=-1),
-    time=time
+    time=time,
+    axes=axes_X
 )
 axes_X[0].set_ylabel(r"$\psi$ in $\mathrm{rad/s}$")
 axes_X[1].set_ylabel(r"$v_y$ in $\mathrm{m/s}$")
@@ -249,7 +275,7 @@ axes_X[3].set_ylabel(r"$\mu_\mathrm{r}$")
 axes_X[3].set_xlabel(r"Time in $\mathrm{s}$")
 axes_X[2].set_ylim(-2,2)
 axes_X[3].set_ylim(-2,2)
-apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
+apply_basic_formatting(fig_X, width=8, height=16, font_size=8)
 fig_X.savefig("plots\Vehicle_APF_X.pdf", bbox_inches='tight')
 
 steps = time.shape[0]
@@ -282,18 +308,39 @@ for i in tqdm(range(0, steps), desc='Calculating fcn value and var'):
     fcn_mean_r[i] = mean
 
 # generate plot
+c = 0
 for i in index:
-    fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
+    
+    N_tasks = 1
+    fig_fcn_e = plt.figure(dpi=150)
+    gs = fig_fcn_e.add_gridspec(
+        N_tasks+1, 1, 
+        height_ratios=(1, *(5*np.ones((N_tasks,)))), 
+        hspace=0.05, 
+        wspace=0.05
+        )
+    ax = [fig_fcn_e.add_subplot(gs[i+1, 0]) for i in range(0,N_tasks)]
+    ax_histx = fig_fcn_e.add_subplot(gs[0, 0], sharex=ax[-1])
+    
+    plot_fcn_error_1D(
         alpha_plot, 
         Mean=fcn_mean_f[int(i)], 
         Std=np.sqrt(fcn_var_f[int(i)]),
         X_stats=online_Sigma_alpha_f[:int(i)], 
-        X_weights=online_weights[:int(i)])
-    ax_fcn_e[0][-1].set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
-    ax_fcn_e[0][-1].plot(alpha_plot, mu_true_plot, color='red', linestyle=':')
+        X_weights=online_weights[:int(i)],
+        ax=ax,
+        ax_histx=ax_histx
+        )
+    
+    ax[-1].set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
+    ax[-1].set_ylabel(r"$\mu$")
+    ax[-1].plot(alpha_plot, mu_true_plot, color='red', linestyle=':')
+    ax[-1].set_ylim(-1.3, 1.3)
+    fig_fcn_e.suptitle(f"Time {np.round(time[int(i)],2)}\,s", fontsize=8)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\Vehicle_APF_muf_fcn_{np.round(time[int(i)],3)}.pdf")
+    fig_fcn_e.savefig(f"plots\Vehicle_APF_muf_fcn_{int(c)}.pdf", bbox_inches='tight')
+    c += 1
 
 
 
@@ -324,6 +371,7 @@ ax_RMSE.plot(
 ax_RMSE.set_ylabel(r"wRMSE")
 ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
 ax_RMSE.set_ylim(0)
+ax_RMSE.legend(["front", "rear"])
 
 # plot convergence wRMSE of offline algorithm
 ax_RMSE.plot(
@@ -331,8 +379,8 @@ ax_RMSE.plot(
     [wRMSE_offline_f, wRMSE_offline_f], 
     color='red', linestyle=':')
 
-for i in index:
-    ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE_f[int(i)]*1.5], color="black", linewidth=0.8)
+# for i in index:
+#     ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE_f[int(i)]*1.5], color="black", linewidth=0.8)
     
     
 apply_basic_formatting(fig_RMSE, width=8, height=8, font_size=8)

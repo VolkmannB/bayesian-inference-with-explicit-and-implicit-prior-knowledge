@@ -52,15 +52,15 @@ def set_font_size(fig, size):
 
 
 
-def plot_Data(Particles, weights, Reference, time, dpi=150):
+def plot_Data(Particles, weights, Reference, time, axes):
     
     Particles = np.atleast_3d(Particles)
     Reference = np.atleast_2d(Reference.T).T
     
     N_dim = Particles.shape[-1]
     
-    fig, axes = plt.subplots(N_dim, 1, layout='tight', sharex='col', dpi=dpi)
-    axes = np.atleast_1d(axes)
+    if N_dim != len(axes):
+        raise ValueError("Number of states must be equal to the number of the given axes")
     
     mean = np.einsum('inm,in->im', Particles, weights)
     
@@ -83,8 +83,6 @@ def plot_Data(Particles, weights, Reference, time, dpi=150):
         
         # set limits
         axes[i].set_xlim(np.min(time), np.max(time))
-        
-    return fig, axes
 
 
 
@@ -111,15 +109,7 @@ def apply_basic_formatting(fig, width=8, height=8, font_size=12, dpi=150):
 
 
 
-def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi=150, vmin=1e-4, vmax=3e3):
-    
-    fig = plt.figure(dpi=dpi)
-    gs = fig.add_gridspec(2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
-    
-    ax = fig.add_subplot(gs[1, 0])
-    ax_histx = fig.add_subplot(gs[0, 0], sharex=ax)
-    ax_histy = fig.add_subplot(gs[1, 1], sharey=ax)
-    cax = fig.add_subplot(gs[1, 2])
+def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, fig, ax, ax_histx, ax_histy, cax, alpha=1.0, norm='log', vmin=1e-4, vmax=3e3):
     
     ax_histx.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)
     ax_histy.tick_params(axis='y', which='both', left=False, right=False, labelleft=False)
@@ -171,34 +161,18 @@ def plot_fcn_error_2D(X_in, Mean, X_stats, X_weights, alpha=1.0, norm='log', dpi
     
     # add colorbar
     fig.colorbar(cntr, cax=cax)
-    
-    return fig, [ax, ax_histx, ax_histy]
 
 
 
-def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150):
+def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, ax, ax_histx):
     
     Mean = np.atleast_2d(Mean)
     Std = np.atleast_2d(Std)
-    N_tasks = Mean.shape[0]
     
     x_min = np.min(X_in)
     x_max = np.max(X_in)
     
-    fig = plt.figure(dpi=dpi)
-    gs = fig.add_gridspec(
-        N_tasks+1, 1, 
-        height_ratios=(1, *(5*np.ones((N_tasks,)))), 
-        hspace=0.05, 
-        wspace=0.05)
-    
-    ax = []
-    for i in range(0,N_tasks):
-        
-        if i == 0:
-            ax.append(fig.add_subplot(gs[i+1, 0]))
-        else:
-            ax.append(fig.add_subplot(gs[i+1, 0], sharex=ax[i-1]))
+    for i in range(0,len(ax)):
     
         # plot function
         ax[i].plot(X_in, Mean[i], color=imes_blue)
@@ -211,7 +185,6 @@ def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150):
         ax[i].set_xlim(x_min, x_max)
     
     # plot histogram
-    ax_histx = fig.add_subplot(gs[0, 0], sharex=ax[-1])
     ax_histx.hist(
         X_stats.flatten(), 
         bins=np.linspace(x_min, x_max, 100),
@@ -223,5 +196,14 @@ def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, dpi=150):
         bottom=False, 
         top=False, 
         labelbottom=False)
+
+
+
+def calc_wRMSE(w, y1, y2):
     
-    return fig, [ax, ax_histx]
+    w = w / np.sum(w, axis=-1, keepdims=True)
+    v1 = np.sum(w, axis=-1)
+    v2 = np.sum(w**2, axis=-1)
+    wRMSE = np.sqrt(1/(v1-(v2/v1**2)) * np.sum((y1 - y2)**2 * w, axis=-1))
+    
+    return wRMSE

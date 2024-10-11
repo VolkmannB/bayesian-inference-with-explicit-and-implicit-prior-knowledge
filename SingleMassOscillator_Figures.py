@@ -86,11 +86,13 @@ del col_scale_prior, row_scale_prior, GP_prior
 
 
 # plot the state estimations
-fig_X, axes_X = plot_Data(
+fig_X, axes_X = plt.subplots(3, 1, layout='tight', sharex='col', dpi=150)
+plot_Data(
     Particles=np.concatenate([offline_Sigma_X, offline_Sigma_F[...,None]], axis=-1),
     weights=offline_weights,
     Reference=np.concatenate([X,F_sd[...,None]], axis=-1),
-    time=time
+    time=time,
+    axes=axes_X
 )
 axes_X[0].set_ylabel(r"$s$ in $\mathrm{m}$")
 axes_X[1].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
@@ -99,7 +101,7 @@ axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
 axes_X[0].set_ylim(-2.8,2.8)
 axes_X[1].set_ylim(-5.2,5.2)
 axes_X[2].set_ylim(-80,80)
-apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
+apply_basic_formatting(fig_X, width=8, height=16, font_size=8)
 fig_X.savefig("plots\SingleMassOscillator_PGAS_X.pdf", bbox_inches='tight')
 
 N_iterations = offline_Sigma_X.shape[1]
@@ -122,20 +124,39 @@ for i in tqdm(range(0, N_iterations), desc='Calculating fcn value and var'):
 fcn_alpha = np.maximum(np.minimum(1 - fcn_var/fcn_var_prior, 1), 0)
 
 # generate plot
+c = 0
 for i in index:
-    fig_fcn_e, ax_fcn_e = plot_fcn_error_2D(
+    
+    fig_fcn_e = plt.figure(dpi=150)
+    gs = fig_fcn_e.add_gridspec(2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
+    
+    ax = fig_fcn_e.add_subplot(gs[1, 0])
+    ax_histx = fig_fcn_e.add_subplot(gs[0, 0], sharex=ax)
+    ax_histy = fig_fcn_e.add_subplot(gs[1, 1], sharey=ax)
+    cax = fig_fcn_e.add_subplot(gs[1, 2])
+    
+    plot_fcn_error_2D(
         X_plot, 
         Mean=np.abs(fcn_mean[int(i)]-F_sd_true_plot), 
         X_stats=offline_Sigma_X[:,:int(i)], 
         X_weights=offline_weights[:,:int(i)], 
-        alpha=fcn_alpha[int(i)])
-    ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
-    ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-    ax_fcn_e[1].set_ylim(0, 100)
-    ax_fcn_e[2].set_xlim(0, 50)
+        alpha=fcn_alpha[int(i)],
+        fig=fig_fcn_e,
+        ax=ax,
+        ax_histx=ax_histx,
+        ax_histy=ax_histy,
+        cax=cax
+        )
+    
+    ax.set_xlabel(r"$s$ in $\mathrm{m}$")
+    ax.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+    ax_histx.set_ylim(0, 100)
+    ax_histy.set_xlim(0, 50)
+    fig_fcn_e.suptitle(f"Iteration {int(i+1)}", fontsize=8)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\SingleMassOscillator_PGAS_Fsd_fcn_{int(i)}.pdf")
+    fig_fcn_e.savefig(f"plots\SingleMassOscillator_PGAS_Fsd_fcn_{int(c)}.pdf", bbox_inches='tight')
+    c += 1
 
 
 
@@ -147,7 +168,7 @@ v2 = np.sum(w**2, axis=-1)
 wRMSE = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean - F_sd_true_plot)**2 * w, axis=-1))
 fig_RMSE, ax_RMSE = plt.subplots(1,1, layout='tight')
 ax_RMSE.plot(
-    range(0,N_iterations),
+    np.array(range(0,N_iterations))+1,
     wRMSE,
     color=imes_blue
 )
@@ -155,8 +176,8 @@ ax_RMSE.set_ylabel(r"wRMSE")
 ax_RMSE.set_xlabel(r"Iterations")
 ax_RMSE.set_ylim(0)
 
-for i in index:
-    ax_RMSE.plot([int(i), int(i)], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
+# for i in index:
+#     ax_RMSE.plot([int(i), int(i)], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
     
 wRMSE_offline_final = wRMSE[-1]
     
@@ -171,11 +192,13 @@ fig_RMSE.savefig("plots\SingleMassOscillator_PGAS_Fsd_wRMSE.pdf", bbox_inches='t
 
 
 # plot the state estimations
-fig_X, axes_X = plot_Data(
+fig_X, axes_X = plt.subplots(3, 1, layout='tight', sharex='col', dpi=150)
+plot_Data(
     Particles=np.concatenate([online_Sigma_X, online_Sigma_F[...,None]], axis=-1),
     weights=online_weights,
     Reference=np.concatenate([X,F_sd[...,None]], axis=-1),
-    time=time
+    time=time,
+    axes=axes_X
 )
 axes_X[0].set_ylabel(r"$s$ in $\mathrm{m}$")
 axes_X[1].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
@@ -184,7 +207,7 @@ axes_X[2].set_xlabel(r"Time in $\mathrm{s}$")
 axes_X[0].set_ylim(-2.8,2.8)
 axes_X[1].set_ylim(-5.2,5.2)
 axes_X[2].set_ylim(-80,80)
-apply_basic_formatting(fig_X, width=10, height=10, font_size=8)
+apply_basic_formatting(fig_X, width=8, height=16, font_size=8)
 fig_X.savefig("plots\SingleMassOscillator_APF_X.pdf", bbox_inches='tight')
 
 index = (np.array(range(N_slices))+1)/N_slices*(time.shape[0]-1)
@@ -206,20 +229,39 @@ for i in tqdm(range(0, time.shape[0]), desc='Calculating fcn value and var'):
 fcn_alpha = np.maximum(np.minimum(1 - fcn_var/fcn_var_prior, 1), 0)
 
 # generate plot
+c = 0
 for i in index:
-    fig_fcn_e, ax_fcn_e = plot_fcn_error_2D(
+    
+    fig_fcn_e = plt.figure(dpi=150)
+    gs = fig_fcn_e.add_gridspec(2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), hspace=0.05, wspace=0.05)
+    
+    ax = fig_fcn_e.add_subplot(gs[1, 0])
+    ax_histx = fig_fcn_e.add_subplot(gs[0, 0], sharex=ax)
+    ax_histy = fig_fcn_e.add_subplot(gs[1, 1], sharey=ax)
+    cax = fig_fcn_e.add_subplot(gs[1, 2])
+    
+    plot_fcn_error_2D(
         X_plot, 
         Mean=np.abs(fcn_mean[int(i)]-F_sd_true_plot), 
         X_stats=online_Sigma_X[:int(i)], 
         X_weights=online_weights[:int(i)], 
-        alpha=fcn_alpha[int(i)])
-    ax_fcn_e[0].set_xlabel(r"$s$ in $\mathrm{m}$")
-    ax_fcn_e[0].set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-    ax_fcn_e[1].set_ylim(0, 100)
-    ax_fcn_e[2].set_xlim(0, 50)
+        alpha=fcn_alpha[int(i)],
+        fig=fig_fcn_e,
+        ax=ax,
+        ax_histx=ax_histx,
+        ax_histy=ax_histy,
+        cax=cax
+        )
+    
+    ax.set_xlabel(r"$s$ in $\mathrm{m}$")
+    ax.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+    ax_histx.set_ylim(0, 100)
+    ax_histy.set_xlim(0, 50)
+    fig_fcn_e.suptitle(f"Time {np.round(time[int(i)],2)}\,s", fontsize=8)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
-    fig_fcn_e.savefig(f"plots\SingleMassOscillator_APF_Fsd_fcn_{np.round(time[int(i)],3)}.pdf")
+    fig_fcn_e.savefig(f"plots\SingleMassOscillator_APF_Fsd_fcn_{int(c)}.pdf", bbox_inches='tight')
+    c += 1
 
 
 
@@ -245,8 +287,8 @@ ax_RMSE.plot(
     [wRMSE_offline_final, wRMSE_offline_final], 
     color='red', linestyle=':')
 
-for i in index:
-    ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
+# for i in index:
+#     ax_RMSE.plot([time[int(i)], time[int(i)]], [0, wRMSE[int(i)]*1.5], color="black", linewidth=0.8)
     
 apply_basic_formatting(fig_RMSE, width=8, height=8, font_size=8)
 fig_RMSE.savefig("plots\SingleMassOscillator_APF_Fsd_wRMSE.pdf", bbox_inches='tight')

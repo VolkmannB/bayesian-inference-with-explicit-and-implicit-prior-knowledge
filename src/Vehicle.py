@@ -110,7 +110,7 @@ rng = np.random.default_rng(16723573)
 
 # simulation parameters
 N_particles = 200
-N_PGAS_iter = 5
+N_PGAS_iter = 800
 forget_factor = 0.999
 dt = 0.02
 t_end = 30.0
@@ -144,7 +144,7 @@ basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
     np.array([-25/180*jnp.pi, 25/180*jnp.pi]), 
     lengthscale, 
-    50
+    5
     )
 
 
@@ -153,7 +153,7 @@ basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
 GP_prior_f = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(spectral_density),
-    np.eye(1)*1e0,
+    np.eye(1),
     0
 ))
 
