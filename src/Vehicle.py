@@ -99,7 +99,7 @@ def f_y(x, u, mu_yf, mu_yr, m=m, l_f=l_f, l_r=l_r, g=g, mu_x=mu_x, mu=mu, B=B, C
     
     dv_y = 1/m * (F_zf*mu_yf*jnp.cos(u[0]) + F_zr*mu_yr + F_zf*mu_x*jnp.sin(u[0])) - u[1]*x[0]
     
-    return jnp.array([x[0], dv_y, x[1]])
+    return jnp.array([x[0], dv_y])
 
 
 
@@ -122,8 +122,8 @@ x0 = np.array([0.0, 0.0])
 P0 = np.diag([1e-4, 1e-4])
 
 # noise
-R = np.diag([0.01/180*np.pi, 1e-1, 1e-3])
-Q = np.diag([1e-9, 1e-9])
+R = np.diag([0.001/180*np.pi, 1e-3])
+Q = np.diag([1e-8, 1e-8])
 w = lambda n=1: rng.multivariate_normal(np.zeros((Q.shape[0],)), Q, n)
 e = lambda n=1: rng.multivariate_normal(np.zeros((R.shape[0],)), R, n)
 
@@ -138,13 +138,15 @@ ctrl_input[:,1] = 11.0
 #### This section defines the basis function expansion
 
 # basis functions for front and rear tire
-N_basis_fcn = 15
-lengthscale = 40 /180*jnp.pi / N_basis_fcn
+N_basis_fcn = 20
+lengthscale = 2 /180*jnp.pi #40 /180*jnp.pi / N_basis_fcn
 basis_fcn, spectral_density = generate_Hilbert_BasisFunction(
     N_basis_fcn, 
-    np.array([-25/180*jnp.pi, 25/180*jnp.pi]), 
+    np.array([-30/180*jnp.pi, 30/180*jnp.pi]), 
     lengthscale, 
-    5
+    50,
+    idx_start=2,
+    idx_step=2
     )
 
 
@@ -173,7 +175,7 @@ def Vehicle_simulation():
 
     # time series for plot
     X = np.zeros((steps,2)) # sim
-    Y = np.zeros((steps,3))
+    Y = np.zeros((steps,2))
     mu_f = np.zeros((steps,))
     mu_r = np.zeros((steps,))
     
@@ -458,14 +460,13 @@ def Vehicle_APF(Y):
         
         
         # calculate new weights
-        sigma_y = jax.vmap(
+        Sigma_Y[i] = jax.vmap(
             functools.partial(f_y, u=ctrl_input[i])
             )(
                 x=Sigma_X[i],
                 mu_yf=Sigma_mu_f[i], 
                 mu_yr=Sigma_mu_r[i])
-        Sigma_Y[i] = sigma_y[:,:2]
-        l_y = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(sigma_y)
+        l_y = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(Sigma_Y[i])
         log_weights[i] = l_y - l_y_aux[idx]
         
         #abort
@@ -955,15 +956,14 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_
         
         
         ### Step 6: Calculate new weights
-        sigma_y = jax.vmap(
+        Sigma_Y[i] = jax.vmap(
             functools.partial(f_y, u=ctrl_input[i])
             )(
             x=Sigma_X[i],
             mu_yf=Sigma_mu_f[i], 
             mu_yr=Sigma_mu_r[i]
         )
-        Sigma_Y[i] = sigma_y[:,:2]
-        l_y = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(sigma_y)
+        l_y = jax.vmap(functools.partial(log_likelihood_Normal, mean=Y[i], cov=R))(Sigma_Y[i])
         log_weights[i] = l_y - l_y_aux[idx]
         
         #abort

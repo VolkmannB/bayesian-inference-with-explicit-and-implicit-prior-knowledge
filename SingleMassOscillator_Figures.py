@@ -47,10 +47,10 @@ del data
 # Convert sufficient statistics to standard parameters
 (offline_GP_Mean, offline_GP_Col_Cov, 
  offline_GP_Row_Scale, offline_GP_df) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior_stats[0] + np.cumsum(offline_T0, axis=0),
-    GP_prior_stats[1] + np.cumsum(offline_T1, axis=0),
-    GP_prior_stats[2] + np.cumsum(offline_T2, axis=0),
-    GP_prior_stats[3] + np.cumsum(offline_T3, axis=0)
+    GP_prior_stats[0] + np.cumsum(offline_T0, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats[1] + np.cumsum(offline_T1, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats[2] + np.cumsum(offline_T2, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats[3] + np.cumsum(offline_T3, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None]
 )
     
     
@@ -162,7 +162,6 @@ for i in index:
 
 # plot weighted RMSE of GP over entire function space
 w = 1 / fcn_var
-w = w / np.sum(w, axis=-1, keepdims=True)
 v1 = np.sum(w, axis=-1)
 v2 = np.sum(w**2, axis=-1)
 wRMSE = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean - F_sd_true_plot)**2 * w, axis=-1))
@@ -172,7 +171,7 @@ ax_RMSE.plot(
     wRMSE,
     color=imes_blue
 )
-ax_RMSE.set_ylabel(r"wRMSE")
+ax_RMSE.set_ylabel(r"wRMSE in N")
 ax_RMSE.set_xlabel(r"Iterations")
 ax_RMSE.set_ylim(0)
 
@@ -267,7 +266,6 @@ for i in index:
 
 # plot weighted RMSE of GP over entire function space
 w = 1 / fcn_var
-w = w / np.sum(w, axis=-1, keepdims=True)
 v1 = np.sum(w, axis=-1)
 v2 = np.sum(w**2, axis=-1)
 wRMSE = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean - F_sd_true_plot)**2 * w, axis=-1))
@@ -277,7 +275,7 @@ ax_RMSE.plot(
     wRMSE,
     color=imes_blue
 )
-ax_RMSE.set_ylabel(r"wRMSE")
+ax_RMSE.set_ylabel(r"wRMSE in N")
 ax_RMSE.set_xlabel(r"Time in $\mathrm{s}$")
 ax_RMSE.set_ylim(0)
 
