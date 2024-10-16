@@ -50,7 +50,7 @@ del data
     GP_prior_stats[0] + np.cumsum(offline_T0, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
     GP_prior_stats[1] + np.cumsum(offline_T1, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
     GP_prior_stats[2] + np.cumsum(offline_T2, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
-    GP_prior_stats[3] + np.cumsum(offline_T3, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None]
+    GP_prior_stats[3] + np.cumsum(offline_T3, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)
 )
     
     
