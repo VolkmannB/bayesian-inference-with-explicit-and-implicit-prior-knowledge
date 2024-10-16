@@ -73,17 +73,17 @@ del data
 # Convert sufficient statistics to standard parameters
 (offline_GP_Mean_f, offline_GP_Col_Cov_f, 
  offline_GP_Row_Scale_f, offline_GP_df_f) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior_stats_f[0] + np.cumsum(offline_T0_f, axis=0),
-    GP_prior_stats_f[1] + np.cumsum(offline_T1_f, axis=0),
-    GP_prior_stats_f[2] + np.cumsum(offline_T2_f, axis=0),
-    GP_prior_stats_f[3] + np.cumsum(offline_T3_f, axis=0)
+    GP_prior_stats_f[0] + np.cumsum(offline_T0_f, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats_f[1] + np.cumsum(offline_T1_f, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats_f[2] + np.cumsum(offline_T2_f, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats_f[3] + np.cumsum(offline_T3_f, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None]
 )
 (offline_GP_Mean_r, offline_GP_Col_Cov_r, 
  offline_GP_Row_Scale_r, offline_GP_df_r) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior_stats_r[0] + np.cumsum(offline_T0_r, axis=0),
-    GP_prior_stats_r[1] + np.cumsum(offline_T1_r, axis=0),
-    GP_prior_stats_r[2] + np.cumsum(offline_T2_r, axis=0),
-    GP_prior_stats_r[3] + np.cumsum(offline_T3_r, axis=0)
+    GP_prior_stats_r[0] + np.cumsum(offline_T0_r, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats_r[1] + np.cumsum(offline_T1_r, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats_r[2] + np.cumsum(offline_T2_r, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats_r[3] + np.cumsum(offline_T3_r, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None]
 )
 del offline_T0_f, offline_T1_f, offline_T2_f, offline_T3_f
 del offline_T0_r, offline_T1_r, offline_T2_r, offline_T3_r
@@ -216,13 +216,11 @@ for i in index:
 
 # plot weighted RMSE of GP over entire function space
 w = 1 / fcn_var_f
-w = w / np.sum(w, axis=-1, keepdims=True)
 v1 = np.sum(w, axis=-1)
 v2 = np.sum(w**2, axis=-1)
 wRMSE_f = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean_f - mu_true_plot)**2 * w, axis=-1))
 
 w = 1 / fcn_var_r
-w = w / np.sum(w, axis=-1, keepdims=True)
 v1 = np.sum(w, axis=-1)
 v2 = np.sum(w**2, axis=-1)
 wRMSE_r = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean_r - mu_true_plot)**2 * w, axis=-1))
@@ -346,13 +344,11 @@ for i in index:
 
 # plot weighted RMSE of GP over entire function space
 w = 1 / fcn_var_f
-w = w / np.sum(w, axis=-1, keepdims=True)
 v1 = np.sum(w, axis=-1)
 v2 = np.sum(w**2, axis=-1)
 wRMSE_f = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean_f - mu_true_plot)**2 * w, axis=-1))
 
 w = 1 / fcn_var_r
-w = w / np.sum(w, axis=-1, keepdims=True)
 v1 = np.sum(w, axis=-1)
 v2 = np.sum(w**2, axis=-1)
 wRMSE_r = np.sqrt(1/(v1-(v2/v1**2)) * jnp.sum((fcn_mean_r - mu_true_plot)**2 * w, axis=-1))

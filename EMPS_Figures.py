@@ -56,10 +56,10 @@ del data
 # Convert sufficient statistics to standard parameters
 (offline_GP_Mean, offline_GP_Col_Cov, 
  offline_GP_Row_Scale, offline_GP_df) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    GP_prior_stats[0] + np.cumsum(offline_T0, axis=0),
-    GP_prior_stats[1] + np.cumsum(offline_T1, axis=0),
-    GP_prior_stats[2] + np.cumsum(offline_T2, axis=0),
-    GP_prior_stats[3] + np.cumsum(offline_T3, axis=0)
+    GP_prior_stats[0] + np.cumsum(offline_T0, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats[1] + np.cumsum(offline_T1, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats[2] + np.cumsum(offline_T2, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None],
+    GP_prior_stats[3] + np.cumsum(offline_T3, axis=0)/np.arange(1,offline_Sigma_X.shape[1]+1)[:,None,None]
 )
 del offline_T0, offline_T1, offline_T2, offline_T3
     
@@ -137,6 +137,7 @@ for i in index:
     
     ax[-1].set_xlabel(r"$\dot{q}$ in m/s")
     ax[-1].set_ylabel(r"$F$ in N")
+    ax[-1].set_ylim(-65, 65)
     fig_fcn_e.suptitle(f"Iteration {int(i+1)}", fontsize=8)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
@@ -224,6 +225,7 @@ for i in index:
     
     ax[-1].set_xlabel(r"$\dot{q}$ in m/s")
     ax[-1].set_ylabel(r"$F$ in N")
+    ax[-1].set_ylim(-65, 65)
     fig_fcn_e.suptitle(f"Time {np.round(time[int(i)],2)}\,s", fontsize=8)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
@@ -235,7 +237,6 @@ for i in index:
 # plot weighted RMSE of GP over entire function space
 fcn_var = fcn_var_online + fcn_var_offline[-1]
 w = 1 / fcn_var
-w = w / np.sum(w, axis=-1, keepdims=True)
 v1 = np.sum(w, axis=-1)
 v2 = np.sum(w**2, axis=-1)
 wRMSE = np.sqrt(1/(v1-(v2/v1**2)) * np.sum((fcn_mean_online - fcn_mean_offline[-1])**2 * w, axis=-1))

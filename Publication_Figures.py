@@ -54,10 +54,10 @@ del data
 # Convert sufficient statistics to standard parameters
 (SMO_offline_GP_Mean, SMO_offline_GP_Col_Cov, 
  SMO_offline_GP_Row_Scale, SMO_offline_GP_df) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    SMO_GP_prior_stats[0] + np.cumsum(SMO_offline_T0, axis=0),
-    SMO_GP_prior_stats[1] + np.cumsum(SMO_offline_T1, axis=0),
-    SMO_GP_prior_stats[2] + np.cumsum(SMO_offline_T2, axis=0),
-    SMO_GP_prior_stats[3] + np.cumsum(SMO_offline_T3, axis=0)
+    SMO_GP_prior_stats[0] + np.cumsum(SMO_offline_T0, axis=0)/np.arange(1,SMO_offline_Sigma_X.shape[1]+1)[:,None,None],
+    SMO_GP_prior_stats[1] + np.cumsum(SMO_offline_T1, axis=0)/np.arange(1,SMO_offline_Sigma_X.shape[1]+1)[:,None,None],
+    SMO_GP_prior_stats[2] + np.cumsum(SMO_offline_T2, axis=0)/np.arange(1,SMO_offline_Sigma_X.shape[1]+1)[:,None,None],
+    SMO_GP_prior_stats[3] + np.cumsum(SMO_offline_T3, axis=0)/np.arange(1,SMO_offline_Sigma_X.shape[1]+1)[:,None,None]
 )
     
     
@@ -146,17 +146,17 @@ del data
 # Convert sufficient statistics to standard parameters
 (Veh_offline_GP_Mean_f, Veh_offline_GP_Col_Cov_f, 
  Veh_offline_GP_Row_Scale_f, Veh_offline_GP_df_f) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    Veh_GP_prior_stats_f[0] + np.cumsum(Veh_offline_T0_f, axis=0),
-    Veh_GP_prior_stats_f[1] + np.cumsum(Veh_offline_T1_f, axis=0),
-    Veh_GP_prior_stats_f[2] + np.cumsum(Veh_offline_T2_f, axis=0),
-    Veh_GP_prior_stats_f[3] + np.cumsum(Veh_offline_T3_f, axis=0)
+    Veh_GP_prior_stats_f[0] + np.cumsum(Veh_offline_T0_f, axis=0)/np.arange(1,Veh_offline_Sigma_X.shape[1]+1)[:,None,None],
+    Veh_GP_prior_stats_f[1] + np.cumsum(Veh_offline_T1_f, axis=0)/np.arange(1,Veh_offline_Sigma_X.shape[1]+1)[:,None,None],
+    Veh_GP_prior_stats_f[2] + np.cumsum(Veh_offline_T2_f, axis=0)/np.arange(1,Veh_offline_Sigma_X.shape[1]+1)[:,None,None],
+    Veh_GP_prior_stats_f[3] + np.cumsum(Veh_offline_T3_f, axis=0)/np.arange(1,Veh_offline_Sigma_X.shape[1]+1)[:,None,None]
 )
 (Veh_offline_GP_Mean_r, Veh_offline_GP_Col_Cov_r, 
  Veh_offline_GP_Row_Scale_r, Veh_offline_GP_df_r) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    Veh_GP_prior_stats_r[0] + np.cumsum(Veh_offline_T0_r, axis=0),
-    Veh_GP_prior_stats_r[1] + np.cumsum(Veh_offline_T1_r, axis=0),
-    Veh_GP_prior_stats_r[2] + np.cumsum(Veh_offline_T2_r, axis=0),
-    Veh_GP_prior_stats_r[3] + np.cumsum(Veh_offline_T3_r, axis=0)
+    Veh_GP_prior_stats_r[0] + np.cumsum(Veh_offline_T0_r, axis=0)/np.arange(1,Veh_offline_Sigma_X.shape[1]+1)[:,None,None],
+    Veh_GP_prior_stats_r[1] + np.cumsum(Veh_offline_T1_r, axis=0)/np.arange(1,Veh_offline_Sigma_X.shape[1]+1)[:,None,None],
+    Veh_GP_prior_stats_r[2] + np.cumsum(Veh_offline_T2_r, axis=0)/np.arange(1,Veh_offline_Sigma_X.shape[1]+1)[:,None,None],
+    Veh_GP_prior_stats_r[3] + np.cumsum(Veh_offline_T3_r, axis=0)/np.arange(1,Veh_offline_Sigma_X.shape[1]+1)[:,None,None]
 )
 del Veh_offline_T0_f, Veh_offline_T1_f, Veh_offline_T2_f, Veh_offline_T3_f
 del Veh_offline_T0_r, Veh_offline_T1_r, Veh_offline_T2_r, Veh_offline_T3_r
@@ -223,10 +223,10 @@ del data
 # Convert sufficient statistics to standard parameters
 (EMPS_offline_GP_Mean, EMPS_offline_GP_Col_Cov, 
  EMPS_offline_GP_Row_Scale, EMPS_offline_GP_df) = jax.vmap(prior_mniw_2naturalPara_inv)(
-    EMPS_GP_prior_stats[0] + np.cumsum(EMPS_offline_T0, axis=0),
-    EMPS_GP_prior_stats[1] + np.cumsum(EMPS_offline_T1, axis=0),
-    EMPS_GP_prior_stats[2] + np.cumsum(EMPS_offline_T2, axis=0),
-    EMPS_GP_prior_stats[3] + np.cumsum(EMPS_offline_T3, axis=0)
+    EMPS_GP_prior_stats[0] + np.cumsum(EMPS_offline_T0, axis=0)/np.arange(1,EMPS_offline_Sigma_X.shape[1]+1)[:,None,None],
+    EMPS_GP_prior_stats[1] + np.cumsum(EMPS_offline_T1, axis=0)/np.arange(1,EMPS_offline_Sigma_X.shape[1]+1)[:,None,None],
+    EMPS_GP_prior_stats[2] + np.cumsum(EMPS_offline_T2, axis=0)/np.arange(1,EMPS_offline_Sigma_X.shape[1]+1)[:,None,None],
+    EMPS_GP_prior_stats[3] + np.cumsum(EMPS_offline_T3, axis=0)/np.arange(1,EMPS_offline_Sigma_X.shape[1]+1)[:,None,None]
 )
 del EMPS_offline_T0, EMPS_offline_T1, EMPS_offline_T2, EMPS_offline_T3
     
@@ -270,64 +270,53 @@ fig_traj.set_layout_engine('tight')
 
 # the figure
 fig_fcn = plt.figure(dpi=150)
-gs_fcn = matplotlib.gridspec.GridSpec(3,3, figure=fig_fcn)
+gs_fcn = matplotlib.gridspec.GridSpec(1,3, figure=fig_fcn)
 
-gs_fcn_01 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+gs_fcn_0 = matplotlib.gridspec.GridSpecFromSubplotSpec(
     2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), 
     hspace=0.05, wspace=0.05, 
-    subplot_spec=gs_fcn[0,1]
-    )
-gs_fcn_02 = matplotlib.gridspec.GridSpecFromSubplotSpec(
-    2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), 
-    hspace=0.05, wspace=0.05, 
-    subplot_spec=gs_fcn[0,2]
+    subplot_spec=gs_fcn[1,0]
     )
 
-gs_fcn_11 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+gs_fcn_1 = matplotlib.gridspec.GridSpecFromSubplotSpec(
     2, 1,  height_ratios=(1, 5), 
     hspace=0.05, wspace=0.05, 
     subplot_spec=gs_fcn[1,1]
     )
-gs_fcn_12 = matplotlib.gridspec.GridSpecFromSubplotSpec(
+
+gs_fcn_2 = matplotlib.gridspec.GridSpecFromSubplotSpec(
     2, 1,  height_ratios=(1, 5), 
     hspace=0.05, wspace=0.05, 
     subplot_spec=gs_fcn[1,2]
     )
 
-gs_fcn_21 = matplotlib.gridspec.GridSpecFromSubplotSpec(
-    2, 1,  height_ratios=(1, 5), 
-    hspace=0.05, wspace=0.05, 
-    subplot_spec=gs_fcn[2,1]
-    )
-gs_fcn_22 = matplotlib.gridspec.GridSpecFromSubplotSpec(
-    2, 1,  height_ratios=(1, 5), 
-    hspace=0.05, wspace=0.05, 
-    subplot_spec=gs_fcn[2,2]
-    )
-
 # generate axes
 SMO_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[0, 0])
-SMO_ax_S1_tripc = fig_fcn.add_subplot(gs_fcn_01[1, 0])
-SMO_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_01[0, 0], sharex=SMO_ax_S1_tripc)
-SMO_ax_S1_histy = fig_fcn.add_subplot(gs_fcn_01[1, 1], sharey=SMO_ax_S1_tripc)
-SMO_ax_S1_cax = fig_fcn.add_subplot(gs_fcn_01[1, 2])
+SMO_ax_S1_tripc = fig_fcn.add_subplot(gs_fcn_0[1, 0])
+SMO_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_0[0, 0], sharex=SMO_ax_S1_tripc)
+SMO_ax_S1_histy = fig_fcn.add_subplot(gs_fcn_0[1, 1], sharey=SMO_ax_S1_tripc)
+SMO_ax_S1_cax = fig_fcn.add_subplot(gs_fcn_0[1, 2])
 SMO_ax_S2_tripc = fig_fcn.add_subplot(gs_fcn_02[1, 0])
 SMO_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_02[0, 0], sharex=SMO_ax_S2_tripc)
 SMO_ax_S2_histy = fig_fcn.add_subplot(gs_fcn_02[1, 1], sharey=SMO_ax_S2_tripc)
 SMO_ax_S2_cax = fig_fcn.add_subplot(gs_fcn_02[1, 2])
 
-Veh_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[1, 0])
+Veh_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[0, 1])
 Veh_ax_S1_plt = fig_fcn.add_subplot(gs_fcn_11[1, 0])
 Veh_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_11[0, 0], sharex=Veh_ax_S1_plt)
 Veh_ax_S2_plt = fig_fcn.add_subplot(gs_fcn_12[1, 0])
 Veh_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_12[0, 0], sharex=Veh_ax_S2_plt)
 
-EMPS_ax_RMSE = fig_fcn.add_subplot(gs_fcn[2, 0])
+EMPS_ax_RMSE = fig_fcn.add_subplot(gs_fcn[0, 2])
 EMPS_ax_S1_plt = fig_fcn.add_subplot(gs_fcn_21[1, 0])
 EMPS_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_21[0, 0], sharex=EMPS_ax_S1_plt)
 EMPS_ax_S2_plt = fig_fcn.add_subplot(gs_fcn_22[1, 0])
 EMPS_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_22[0, 0], sharex=EMPS_ax_S1_plt)
 fig_fcn.set_layout_engine('tight')
+
+SMO_ax_wRMSE.set_title("Single-Mass-Oscillator")
+Veh_ax_wRMSE.set_title("Vehicle")
+EMPS_ax_RMSE.set_title("EMPS")
 
 
 
@@ -348,8 +337,6 @@ SMO_ax_x0.set_ylim(-2.8,2.8)
 SMO_ax_x1.set_ylim(-5.2,5.2)
 SMO_ax_F.set_ylim(-80,80)
 SMO_ax_x0.set_title("Single-Mass-Oscillator")
-SMO_ax_x0.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-SMO_ax_x1.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
 
 
 plot_Data(
@@ -365,9 +352,6 @@ Veh_ax_muf.set_ylabel(r"$\mu_\mathrm{f}$")
 Veh_ax_muf.set_xlabel(r"Time in $\mathrm{s}$")
 Veh_ax_muf.set_ylim(-1.2,1.2)
 Veh_ax_x0.set_title("Vehicle")
-Veh_ax_x0.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-Veh_ax_x1.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-Veh_ax_muf.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
 
 
 plot_Data(
@@ -382,8 +366,6 @@ EMPS_ax_x1.set_ylabel(r"$\dot{q}$ in m/s")
 EMPS_ax_F.set_ylabel(r"$F$ in N")
 EMPS_ax_F.set_xlabel(r"Time in s")
 EMPS_ax_x0.set_title("EMPS")
-EMPS_ax_x0.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-EMPS_ax_x1.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
 
 
 apply_basic_formatting(fig_traj, width=18, height=10, font_size=8)
@@ -422,6 +404,7 @@ SMO_ax_wRMSE.plot(
     color=imes_blue
     )
 SMO_ax_wRMSE.set_ylabel("wRMSE")
+SMO_ax_wRMSE.set_xlabel("Iterations")
 
 # first slice
 plot_fcn_error_2D(
@@ -438,10 +421,15 @@ plot_fcn_error_2D(
         )
 SMO_ax_S1_tripc.set_xlabel(r"$s$ in $\mathrm{m}$")
 SMO_ax_S1_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+SMO_ax_S1_tripc.set_xlim(-4.8, 4.8)
 SMO_ax_S1_histx.set_ylim(0, 100)
 SMO_ax_S1_histy.set_xlim(0, 50)
+SMO_ax_S1_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
+SMO_ax_S1_histy.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+SMO_ax_S1_histx.set_ylabel(r"\#")
+SMO_ax_S1_histy.set_xlabel(r"\#")
 
-# second slive
+# second slice
 plot_fcn_error_2D(
         SMO_X_plot, 
         Mean=np.abs(fcn_mean[int(PGAS_slice_idx[1])]-SMO_F_sd_true_plot), 
@@ -455,10 +443,14 @@ plot_fcn_error_2D(
         cax=SMO_ax_S2_cax
         )
 SMO_ax_S2_tripc.set_xlabel(r"$s$ in $\mathrm{m}$")
+SMO_ax_S2_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+SMO_ax_S2_tripc.set_xlim(-4.8, 4.8)
 SMO_ax_S2_histx.set_ylim(0, 100)
 SMO_ax_S2_histy.set_xlim(0, 50)
-SMO_ax_S2_tripc.tick_params(axis='y', which='both', left=False, labelleft=False)
 SMO_ax_S2_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
+SMO_ax_S2_histy.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
+SMO_ax_S2_histx.set_ylabel(r"\#")
+SMO_ax_S2_histy.set_xlabel(r"\#")
 
 
 
@@ -506,6 +498,7 @@ Veh_ax_wRMSE.plot(
 )
 Veh_ax_wRMSE.legend(["front", "rear"])
 Veh_ax_wRMSE.set_ylabel("wRMSE")
+Veh_ax_wRMSE.set_xlabel("Iterations")
 
 # first slice
 plot_fcn_error_1D(
@@ -534,11 +527,12 @@ plot_fcn_error_1D(
     ax_histx=Veh_ax_S2_histx
     )
 Veh_ax_S2_plt.set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
+Veh_ax_S2_plt.set_ylabel(r"$\mu$")
 Veh_ax_S2_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S2_plt.set_ylim(-1.3, 1.3)
 Veh_ax_S2_histx.set_ylim(0, 400)
-Veh_ax_S2_plt.tick_params(axis='y', which='both', left=False, labelleft=False)
-Veh_ax_S2_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
+# Veh_ax_S2_plt.tick_params(axis='y', which='both', left=False, labelleft=False)
+# Veh_ax_S2_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
 
 
 ## EMPS
@@ -611,9 +605,10 @@ plot_fcn_error_1D(
     ax_histx=EMPS_ax_S2_histx
     )
 EMPS_ax_S2_plt.set_xlabel(r"$\dot{q}$ in m/s")
+EMPS_ax_S2_plt.set_ylabel(r"$F$ in N")
 EMPS_ax_S2_histx.set_ylim(0, 110)
-EMPS_ax_S2_plt.tick_params(axis='y', which='both', left=False, labelleft=False)
-EMPS_ax_S2_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
+# EMPS_ax_S2_plt.tick_params(axis='y', which='both', left=False, labelleft=False)
+# EMPS_ax_S2_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
 
 
 apply_basic_formatting(fig_fcn, width=18, height=18, font_size=8)
@@ -657,12 +652,12 @@ gs_fcn = matplotlib.gridspec.GridSpec(3,3, figure=fig_fcn)
 gs_fcn_01 = matplotlib.gridspec.GridSpecFromSubplotSpec(
     2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), 
     hspace=0.05, wspace=0.05, 
-    subplot_spec=gs_fcn[0,1]
+    subplot_spec=gs_fcn[1,0]
     )
 gs_fcn_02 = matplotlib.gridspec.GridSpecFromSubplotSpec(
     2, 3,  width_ratios=(5, 1, 0.2), height_ratios=(1, 5), 
     hspace=0.05, wspace=0.05, 
-    subplot_spec=gs_fcn[0,2]
+    subplot_spec=gs_fcn[2,0]
     )
 
 gs_fcn_11 = matplotlib.gridspec.GridSpecFromSubplotSpec(
@@ -673,13 +668,13 @@ gs_fcn_11 = matplotlib.gridspec.GridSpecFromSubplotSpec(
 gs_fcn_12 = matplotlib.gridspec.GridSpecFromSubplotSpec(
     2, 1,  height_ratios=(1, 5), 
     hspace=0.05, wspace=0.05, 
-    subplot_spec=gs_fcn[1,2]
+    subplot_spec=gs_fcn[2,1]
     )
 
 gs_fcn_21 = matplotlib.gridspec.GridSpecFromSubplotSpec(
     2, 1,  height_ratios=(1, 5), 
     hspace=0.05, wspace=0.05, 
-    subplot_spec=gs_fcn[2,1]
+    subplot_spec=gs_fcn[1,2]
     )
 gs_fcn_22 = matplotlib.gridspec.GridSpecFromSubplotSpec(
     2, 1,  height_ratios=(1, 5), 
@@ -698,18 +693,22 @@ SMO_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_02[0, 0], sharex=SMO_ax_S2_tripc)
 SMO_ax_S2_histy = fig_fcn.add_subplot(gs_fcn_02[1, 1], sharey=SMO_ax_S2_tripc)
 SMO_ax_S2_cax = fig_fcn.add_subplot(gs_fcn_02[1, 2])
 
-Veh_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[1, 0])
+Veh_ax_wRMSE = fig_fcn.add_subplot(gs_fcn[0, 1])
 Veh_ax_S1_plt = fig_fcn.add_subplot(gs_fcn_11[1, 0])
 Veh_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_11[0, 0], sharex=Veh_ax_S1_plt)
 Veh_ax_S2_plt = fig_fcn.add_subplot(gs_fcn_12[1, 0])
 Veh_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_12[0, 0], sharex=Veh_ax_S2_plt)
 
-EMPS_ax_RMSE = fig_fcn.add_subplot(gs_fcn[2, 0])
+EMPS_ax_RMSE = fig_fcn.add_subplot(gs_fcn[0, 2])
 EMPS_ax_S1_plt = fig_fcn.add_subplot(gs_fcn_21[1, 0])
 EMPS_ax_S1_histx = fig_fcn.add_subplot(gs_fcn_21[0, 0], sharex=EMPS_ax_S1_plt)
 EMPS_ax_S2_plt = fig_fcn.add_subplot(gs_fcn_22[1, 0])
 EMPS_ax_S2_histx = fig_fcn.add_subplot(gs_fcn_22[0, 0], sharex=EMPS_ax_S1_plt)
 fig_fcn.set_layout_engine('tight')
+
+SMO_ax_wRMSE.set_title("Single-Mass-Oscillator")
+Veh_ax_wRMSE.set_title("Vehicle")
+EMPS_ax_RMSE.set_title("EMPS")
 
 
 
@@ -730,8 +729,6 @@ SMO_ax_x0.set_ylim(-2.8,2.8)
 SMO_ax_x1.set_ylim(-5.2,5.2)
 SMO_ax_F.set_ylim(-80,80)
 SMO_ax_x0.set_title("Single-Mass-Oscillator")
-SMO_ax_x0.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-SMO_ax_x1.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
 
 
 plot_Data(
@@ -747,9 +744,6 @@ Veh_ax_muf.set_ylabel(r"$\mu_\mathrm{f}$")
 Veh_ax_muf.set_xlabel(r"Time in $\mathrm{s}$")
 Veh_ax_muf.set_ylim(-1.2,1.2)
 Veh_ax_x0.set_title("Vehicle")
-Veh_ax_x0.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-Veh_ax_x1.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-Veh_ax_muf.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
 
 
 plot_Data(
@@ -764,8 +758,6 @@ EMPS_ax_x1.set_ylabel(r"$\dot{q}$ in m/s")
 EMPS_ax_F.set_ylabel(r"$F$ in N")
 EMPS_ax_F.set_xlabel(r"Time in s")
 EMPS_ax_x0.set_title("EMPS")
-EMPS_ax_x0.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
-EMPS_ax_x1.tick_params(axis='x', which='both', bottom=False, labelbottom=False)
 
 
 apply_basic_formatting(fig_traj, width=18, height=10, font_size=8)
@@ -805,6 +797,7 @@ SMO_ax_wRMSE.plot(
     )
 SMO_ax_wRMSE.set_ylabel("wRMSE")
 SMO_ax_wRMSE.set_xlim(SMO_time[0], SMO_time[-1])
+SMO_ax_wRMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
 
 # first slice
 plot_fcn_error_2D(
@@ -819,10 +812,13 @@ plot_fcn_error_2D(
         ax_histy=SMO_ax_S1_histy,
         cax=SMO_ax_S1_cax
         )
-SMO_ax_S1_tripc.set_xlabel(r"$s$ in $\mathrm{m}$")
 SMO_ax_S1_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+SMO_ax_S1_tripc.set_ylim(-5, 5)
+SMO_ax_S1_tripc.set_xlim(-5, 5)
+SMO_ax_S1_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
 SMO_ax_S1_histx.set_ylim(0, 100)
 SMO_ax_S1_histy.set_xlim(0, 50)
+SMO_ax_S1_histx.text(-4.4,55,r'$\# \mathrm{Data}$')
 
 # second slive
 plot_fcn_error_2D(
@@ -837,11 +833,12 @@ plot_fcn_error_2D(
         ax_histy=SMO_ax_S2_histy,
         cax=SMO_ax_S2_cax
         )
-SMO_ax_S2_tripc.set_xlabel(r"$s$ in $\mathrm{m}$")
+SMO_ax_S2_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
+SMO_ax_S1_tripc.set_ylim(-5, 5)
+SMO_ax_S2_tripc.set_xlim(-5, 5)
+SMO_ax_S2_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
 SMO_ax_S2_histx.set_ylim(0, 100)
 SMO_ax_S2_histy.set_xlim(0, 50)
-SMO_ax_S2_tripc.tick_params(axis='y', which='both', left=False, labelleft=False)
-SMO_ax_S2_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
 
 
 
@@ -880,16 +877,19 @@ Veh_online_wRMSE_r = calc_wRMSE(1/fcn_var_r, fcn_mean_r, Veh_mu_true_plot)
 Veh_ax_wRMSE.plot(
     Veh_time,
     Veh_online_wRMSE_f,
-    color=imes_blue
+    color=imes_blue, 
+    linestyle='--'
 )
 Veh_ax_wRMSE.plot(
     Veh_time,
     Veh_online_wRMSE_r,
-    color=imes_orange
+    color=imes_orange, 
+    linestyle=':'
 )
 Veh_ax_wRMSE.legend(["front", "rear"])
 Veh_ax_wRMSE.set_ylabel("wRMSE")
 Veh_ax_wRMSE.set_xlim(Veh_time[0], Veh_time[-1])
+Veh_ax_wRMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
 
 # first slice
 plot_fcn_error_1D(
@@ -901,11 +901,12 @@ plot_fcn_error_1D(
     ax=[Veh_ax_S1_plt],
     ax_histx=Veh_ax_S1_histx
     )
-Veh_ax_S1_plt.set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
+Veh_ax_S1_plt.set_xticks([-0.2,0,0.2],['$-0.2$',r'$\alpha$ in $\mathrm{rad}$','$0.2$'])
 Veh_ax_S1_plt.set_ylabel(r"$\mu$")
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S1_plt.set_ylim(-1.3, 1.3)
 Veh_ax_S1_histx.set_ylim(0, 400)
+Veh_ax_S1_histx.text(-0.31,227,r'$\# \mathrm{Data}$')
 
 # second slice
 plot_fcn_error_1D(
@@ -917,12 +918,11 @@ plot_fcn_error_1D(
     ax=[Veh_ax_S2_plt],
     ax_histx=Veh_ax_S2_histx
     )
-Veh_ax_S2_plt.set_xlabel(r"$\alpha$ in $\mathrm{rad}$")
+Veh_ax_S2_plt.set_xticks([-0.2,0,0.2],['$-0.2$',r'$\alpha$ in $\mathrm{rad}$','$0.2$'])
+Veh_ax_S2_plt.set_ylabel(r"$\mu$")
 Veh_ax_S2_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S2_plt.set_ylim(-1.3, 1.3)
 Veh_ax_S2_histx.set_ylim(0, 400)
-Veh_ax_S2_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
-Veh_ax_S2_plt.tick_params(axis='y', which='both', left=False, labelleft=False)
 
 
 ## EMPS
@@ -950,8 +950,9 @@ EMPS_ax_RMSE.plot(
     EMPS_online_wRMSE,
     color=imes_blue
 )
-EMPS_ax_RMSE.set_xlabel("Time in s")
 EMPS_ax_RMSE.set_ylabel("wRMSE")
+EMPS_ax_RMSE.set_xlim(EMPS_time[0], EMPS_time[-1])
+EMPS_ax_RMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
 
 # first slice
 plot_fcn_error_1D(
@@ -963,9 +964,11 @@ plot_fcn_error_1D(
     ax=[EMPS_ax_S1_plt],
     ax_histx=EMPS_ax_S1_histx
     )
-EMPS_ax_S1_plt.set_xlabel(r"$\dot{q}$ in m/s")
+EMPS_ax_S1_plt.set_xticks([-0.1,0,0.1],['$-0.1$',r'$\dot{q}$ in m/s','$0.1$'])
 EMPS_ax_S1_plt.set_ylabel(r"$F$ in N")
+EMPS_ax_S1_plt.set_ylim(-58,58)
 EMPS_ax_S1_histx.set_ylim(0, 60)
+EMPS_ax_S1_histx.text(-0.14,32,r'$\# \mathrm{Data}$')
 
 # second slice
 plot_fcn_error_1D(
@@ -977,13 +980,14 @@ plot_fcn_error_1D(
     ax=[EMPS_ax_S2_plt],
     ax_histx=EMPS_ax_S2_histx
     )
-EMPS_ax_S2_plt.set_xlabel(r"$\dot{q}$ in m/s")
+EMPS_ax_S2_plt.set_xticks([-0.1,0,0.1],['$-0.1$',r'$\dot{q}$ in m/s','$0.1$'])
+EMPS_ax_S2_plt.set_ylabel(r"$F$ in N")
+EMPS_ax_S2_plt.set_ylim(-58,58)
 EMPS_ax_S2_histx.set_ylim(0, 60)
-EMPS_ax_S2_plt.tick_params(axis='y', which='both', left=False, labelleft=False)
-EMPS_ax_S2_histx.tick_params(axis='y', which='both', left=False, labelleft=False)
 
 
 apply_basic_formatting(fig_fcn, width=18, height=18, font_size=8)
+plt.draw()
 fig_fcn.savefig(r"plots\results_fcn_online.pdf", bbox_inches='tight')
 
 
