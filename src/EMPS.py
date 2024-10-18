@@ -109,12 +109,12 @@ def dx(x, tau, F_v, F_c=F_c, M=M, OFF=OFF):
 
 # time discrete state space model with Runge-Kutta-4
 @jax.jit
-def f_x(x, tau, F_v, dt=dt):
+def f_x(x, tau, F, dt=dt):
         
-        k1 = dx(x, tau, F_v)
-        k2 = dx(x+dt*k1/2, tau, F_v)
-        k3 = dx(x+dt*k2/2, tau, F_v)
-        k4 = dx(x+dt*k3, tau, F_v)
+        k1 = dx(x, tau, F)
+        k2 = dx(x+dt*k1/2, tau, F)
+        k3 = dx(x+dt*k2/2, tau, F)
+        k4 = dx(x+dt*k3, tau, F)
         
         return x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
 
@@ -142,6 +142,32 @@ GP_prior = list(prior_mniw_2naturalPara(
     np.eye(1)*4,
     1
 ))
+
+
+
+#### This section defines a function for the simulation of the system
+
+def EMPS_Validation_Simulation(GP_Mean):
+    
+    # Load Validation Data
+    data = scipy.io.loadmat('src\Measurements\DATA_EMPS_PULSES.mat')
+    time = data['t'].flatten()[0:-1:10]
+    Y = data['qm'].flatten()[0:-1:10]
+    Tau = (data['vir'] * data['gtau']).flatten()[0:-1:10]
+    steps = time.shape[0]
+    dt = time[1] - time[0]
+    
+    X = np.zeros((steps,2))
+    
+    X[0] = np.array([Y[0], 0])
+    
+    for i in tqdm(range(1, steps), desc="Running EMPS Simulation"):
+        
+        F = (GP_Mean @ basis_fcn(X[i-1,1]))[0]
+        X[i] = f_x(x=X[i-1], tau=Tau[i-1], F=F, dt=dt)
+    
+    return np.sqrt(np.mean((X[:,0] - Y)**2))
+    
 
 
 
@@ -219,7 +245,7 @@ def EMPS_APF(Y=Y):
             functools.partial(f_x, tau=ctrl_input[i-1], dt=dt)
             )(
             x=Sigma_X[i-1],
-            F_v=Sigma_F[i-1]
+            F=Sigma_F[i-1]
         )
         
         # calculate first stage weights
@@ -250,7 +276,7 @@ def EMPS_APF(Y=Y):
             functools.partial(f_x, tau=ctrl_input[i-1], dt=dt)
             )(
             x=Sigma_X[i-1,idx],
-            F_v=Sigma_F[i-1,idx]
+            F=Sigma_F[i-1,idx]
         ) + w((N_particles,))
         
         ## sample proposal for alpha and beta at time t
@@ -450,7 +476,7 @@ def EMPS_CPFAS_Kernel(x_ref, F_ref, GP_stats_ref, Y=Y):
             functools.partial(f_x, tau=ctrl_input[i-1], dt=dt)
             )(
             x=Sigma_X[i-1],
-            F_v=Sigma_F[i-1]
+            F=Sigma_F[i-1]
         )
         
         # calculate first stage weights
@@ -528,7 +554,7 @@ def EMPS_CPFAS_Kernel(x_ref, F_ref, GP_stats_ref, Y=Y):
             functools.partial(f_x, tau=ctrl_input[i-1], dt=dt)
             )(
             x=Sigma_X[i-1,idx],
-            F_v=Sigma_F[i-1,idx]
+            F=Sigma_F[i-1,idx]
         ) + w((N_particles,))
         
         # set reference trajectory for state x
