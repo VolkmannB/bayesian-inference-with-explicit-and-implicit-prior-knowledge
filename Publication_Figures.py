@@ -396,6 +396,7 @@ plot_fcn_error_2D(
         cax=SMO_ax_S1_cax
         )
 # SMO_ax_S1_tripc.set_xlabel(r"$s$ in $\mathrm{m}$")
+SMO_ax_S1_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
 SMO_ax_S1_tripc.set_ylim(-5, 5)
 SMO_ax_S1_tripc.set_xlim(-5, 5)
 SMO_ax_S1_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
@@ -445,7 +446,7 @@ Veh_ax_S1_plt.set_ylabel(r"$\mu$")
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S1_plt.set_ylim(-1.3, 1.3)
 Veh_ax_S1_histx.set_ylim(0, 400)
-Veh_ax_S1_histx.text(-0.31,227,r'$\# \mathrm{Data}$')
+# Veh_ax_S1_histx.text(-0.31,227,r'$\# \mathrm{Data}$')
 
 
 ## EMPS
@@ -676,7 +677,7 @@ SMO_ax_wRMSE.plot(
     color=imes_blue
     )
 SMO_ax_wRMSE.plot([SMO_time[0],SMO_time[-1]], [SMO_offline_wRMSE, SMO_offline_wRMSE],color='r')
-SMO_ax_wRMSE.set_ylabel("wRMSE")
+SMO_ax_wRMSE.set_ylabel("wRMSE in N")
 SMO_ax_wRMSE.set_xlim(SMO_time[0], SMO_time[-1])
 SMO_ax_wRMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
 
@@ -758,17 +759,15 @@ Veh_online_wRMSE_r = calc_wRMSE(1/fcn_var_r, fcn_mean_r, Veh_mu_true_plot)
 Veh_ax_wRMSE.plot(
     Veh_time,
     Veh_online_wRMSE_f,
-    color=imes_blue, 
-    linestyle='--'
+    color=imes_blue
 )
 Veh_ax_wRMSE.plot(
     Veh_time,
     Veh_online_wRMSE_r,
-    color=imes_orange, 
-    linestyle=':'
+    color=imes_orange
 )
-Veh_ax_wRMSE.plot([Veh_time[0],Veh_time[-1]], [Veh_offline_wRMSE_f, Veh_offline_wRMSE_f],linestyle='--',color='r')
-Veh_ax_wRMSE.plot([Veh_time[0],Veh_time[-1]], [Veh_offline_wRMSE_r, Veh_offline_wRMSE_r],linestyle=':',color='r')
+Veh_ax_wRMSE.plot([Veh_time[0],Veh_time[-1]], [Veh_offline_wRMSE_f, Veh_offline_wRMSE_f],linestyle='--',color=imes_blue)
+Veh_ax_wRMSE.plot([Veh_time[0],Veh_time[-1]], [Veh_offline_wRMSE_r, Veh_offline_wRMSE_r],linestyle=':',color=imes_orange)
 Veh_ax_wRMSE.legend(["front", "rear"])
 Veh_ax_wRMSE.set_ylabel("wRMSE")
 Veh_ax_wRMSE.set_xlim(Veh_time[0], Veh_time[-1])
@@ -789,7 +788,7 @@ Veh_ax_S1_plt.set_ylabel(r"$\mu$")
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S1_plt.set_ylim(-1.3, 1.3)
 Veh_ax_S1_histx.set_ylim(0, 400)
-Veh_ax_S1_histx.text(-0.31,227,r'$\# \mathrm{Data}$')
+# Veh_ax_S1_histx.text(-0.31,227,r'$\# \mathrm{Data}$')
 
 # second slice
 plot_fcn_error_1D(
@@ -833,7 +832,7 @@ EMPS_ax_RMSE.plot(
     EMPS_online_wRMSE,
     color=imes_blue
 )
-EMPS_ax_RMSE.set_ylabel("wRMSE")
+EMPS_ax_RMSE.set_ylabel("wRMSE in N")
 EMPS_ax_RMSE.set_xlim(EMPS_time[0], EMPS_time[-1])
 EMPS_ax_RMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
 

@@ -90,11 +90,6 @@ w = lambda n=1: rng.multivariate_normal(np.zeros((2,)), Q, n)
 e = lambda n=1: rng.multivariate_normal(np.zeros((1,)), R, n)
 
 # external force
-# F_ext = np.ones((steps,)) * 9.81*m
-# F_ext[int(t_end/(5*dt)):] = 0
-# F_ext[int(2*t_end/(5*dt)):] = -9.81*m
-# F_ext[int(3*t_end/(5*dt)):] = 0
-# F_ext[int(4*t_end/(5*dt)):] = 9.81*m
 F_ext = np.ones((steps,)) * 9.81*m
 F_ext[int(t_end/(3*dt)):] = 0
 F_ext[int(2*t_end/(3*dt)):] = -9.81*m
