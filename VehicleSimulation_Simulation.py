@@ -109,6 +109,7 @@ mdict = {
     'prior_T2_r': GP_prior_r[2],
     'prior_T3_r': GP_prior_r[3],
     'X': X,
+    'Y': Y,
     'mu_f': mu_f,
     'mu_r': mu_r
 }

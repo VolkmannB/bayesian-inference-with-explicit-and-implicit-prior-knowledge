@@ -80,6 +80,7 @@ mdict = {
     'prior_T2': GP_prior[2],
     'prior_T3': GP_prior[3],
     'X': X,
+    'Y': Y,
     'F_sd': F_sd
 }
 scipy.io.savemat('plots\SingleMassOscillator.mat', mdict)
