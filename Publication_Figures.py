@@ -12,6 +12,7 @@ from src.Publication_Plotting import plot_Data, apply_basic_formatting
 from src.Publication_Plotting import imes_blue, imes_orange, calc_wRMSE
 from src.BayesianInferrence import prior_mniw_Predictive
 from src.BayesianInferrence import prior_mniw_2naturalPara_inv
+from src.EMPS import EMPS_Validation_Simulation
 
 
 
@@ -239,6 +240,9 @@ del EMPS_offline_T0, EMPS_offline_T1, EMPS_offline_T2, EMPS_offline_T3
     EMPS_GP_prior_stats[3] + EMPS_online_T3
 )
 del EMPS_online_T0, EMPS_online_T1, EMPS_online_T2, EMPS_online_T3
+
+EMPS_validation_RMSE = EMPS_Validation_Simulation(EMPS_offline_GP_Mean[-1])
+print(f"For the validation Data of the EMPS the RMSE is {EMPS_validation_RMSE} N by forward simulation using the mean value of the offline model.")
 
 
 ################################################################################
@@ -676,7 +680,7 @@ SMO_ax_wRMSE.plot(
     SMO_online_wRMSE,
     color=imes_blue
     )
-SMO_ax_wRMSE.plot([SMO_time[0],SMO_time[-1]], [SMO_offline_wRMSE, SMO_offline_wRMSE],color='r')
+SMO_ax_wRMSE.plot([SMO_time[0],SMO_time[-1]], [SMO_offline_wRMSE, SMO_offline_wRMSE],color=imes_blue,linestyle=':')
 SMO_ax_wRMSE.set_ylabel("wRMSE in N")
 SMO_ax_wRMSE.set_xlim(SMO_time[0], SMO_time[-1])
 SMO_ax_wRMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
@@ -783,6 +787,7 @@ plot_fcn_error_1D(
     ax=[Veh_ax_S1_plt],
     ax_histx=Veh_ax_S1_histx
     )
+Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_offline_fcn_mean_f, color='gray', linestyle=':')
 Veh_ax_S1_plt.set_xticks([-0.2,0,0.2],['$-0.2$',r'$\alpha$ in $\mathrm{rad}$','$0.2$'])
 Veh_ax_S1_plt.set_ylabel(r"$\mu$")
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
@@ -800,6 +805,7 @@ plot_fcn_error_1D(
     ax=[Veh_ax_S2_plt],
     ax_histx=Veh_ax_S2_histx
     )
+Veh_ax_S2_plt.plot(Veh_alpha_plot, Veh_offline_fcn_mean_f, color='gray', linestyle=':')
 Veh_ax_S2_plt.set_xticks([-0.2,0,0.2],['$-0.2$',r'$\alpha$ in $\mathrm{rad}$','$0.2$'])
 Veh_ax_S2_plt.set_ylabel(r"$\mu$")
 Veh_ax_S2_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
@@ -846,11 +852,12 @@ plot_fcn_error_1D(
     ax=[EMPS_ax_S1_plt],
     ax_histx=EMPS_ax_S1_histx
     )
+EMPS_ax_S1_plt.plot(EMPS_dq_plot, EMPS_offline_fcn_mean_offline, color='gray', linestyle=':')
 EMPS_ax_S1_plt.set_xticks([-0.1,0,0.1],['$-0.1$',r'$\dot{q}$ in m/s','$0.1$'])
 EMPS_ax_S1_plt.set_ylabel(r"$F$ in N")
 EMPS_ax_S1_plt.set_ylim(-58,58)
 EMPS_ax_S1_histx.set_ylim(0, 60)
-EMPS_ax_S1_histx.text(-0.14,32,r'$\# \mathrm{Data}$')
+# EMPS_ax_S1_histx.text(-0.14,32,r'$\# \mathrm{Data}$')
 
 # second slice
 plot_fcn_error_1D(
@@ -862,6 +869,7 @@ plot_fcn_error_1D(
     ax=[EMPS_ax_S2_plt],
     ax_histx=EMPS_ax_S2_histx
     )
+EMPS_ax_S2_plt.plot(EMPS_dq_plot, EMPS_offline_fcn_mean_offline, color='gray', linestyle=':')
 EMPS_ax_S2_plt.set_xticks([-0.1,0,0.1],['$-0.1$',r'$\dot{q}$ in m/s','$0.1$'])
 EMPS_ax_S2_plt.set_ylabel(r"$F$ in N")
 EMPS_ax_S2_plt.set_ylim(-58,58)
