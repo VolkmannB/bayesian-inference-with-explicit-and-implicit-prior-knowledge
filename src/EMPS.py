@@ -107,6 +107,15 @@ def dx(x, tau, F_v, F_c=F_c, M=M, OFF=OFF):
 
 
 
+def dx_linModel(x,tau):
+    
+    dq = x[1]
+    ddq = (tau - 203.5 * x[1] - 20.39 * jnp.sign(x[1]) + 3.16) / 95.11
+    
+    return jnp.array([dq, ddq])
+
+
+
 # time discrete state space model with Runge-Kutta-4
 @jax.jit
 def f_x(x, tau, F, dt=dt):
@@ -115,6 +124,18 @@ def f_x(x, tau, F, dt=dt):
         k2 = dx(x+dt*k1/2, tau, F)
         k3 = dx(x+dt*k2/2, tau, F)
         k4 = dx(x+dt*k3, tau, F)
+        
+        return x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
+
+
+
+@jax.jit
+def f_x_linModel(x,tau,dt):
+        
+        k1 = dx_linModel(x, tau)
+        k2 = dx_linModel(x+dt*k1/2, tau)
+        k3 = dx_linModel(x+dt*k2/2, tau)
+        k4 = dx_linModel(x+dt*k3, tau)
         
         return x + dt/6*(k1 + 2*k2 + 2*k3 + k4)
 
@@ -157,16 +178,19 @@ def EMPS_Validation_Simulation(GP_Mean):
     steps = time.shape[0]
     dt = time[1] - time[0]
     
-    X = np.zeros((steps,2))
+    X_GP = np.zeros((steps,2))
+    X_lin = np.zeros((steps,2))
     
-    X[0] = np.array([Y[0], 0])
+    X_GP[0] = np.array([Y[0], 0])
+    X_lin[0] = np.array([Y[0], 0])
     
     for i in tqdm(range(1, steps), desc="Running EMPS Simulation"):
         
-        F = (GP_Mean @ basis_fcn(X[i-1,1]))[0]
-        X[i] = f_x(x=X[i-1], tau=Tau[i-1], F=F, dt=dt)
+        F = (GP_Mean @ basis_fcn(X_GP[i-1,1]))[0]
+        X_GP[i] = f_x(x=X_GP[i-1], tau=Tau[i-1], F=F, dt=dt)
+        X_lin[i] = f_x_linModel(x=X_lin[i-1], tau=Tau[i-1], dt=dt)
     
-    return np.sqrt(np.mean((X[:,0] - Y)**2))
+    return np.sqrt(np.mean((X_GP[:,0] - Y)**2)), np.sqrt(np.mean((X_lin[:,0] - Y)**2))
     
 
 

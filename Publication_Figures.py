@@ -17,7 +17,8 @@ from src.EMPS import EMPS_Validation_Simulation
 
 
 PGAS_slice_idx = [49, 799]
-APF_slice_idx = [499, 1499]
+APF_slice_idx = [499, -1]
+APF_slice1 = 0.2
 
 
 ################################################################################
@@ -86,6 +87,9 @@ _, col_scale_prior, row_scale_prior, _ = prior_mniw_Predictive(
     basis=SMO_basis_plot)
 SMO_fcn_var_prior = np.diag(col_scale_prior-1) * row_scale_prior[0,0]
 del col_scale_prior, row_scale_prior, SMO_GP_prior
+
+
+APF_SMO_slice_idx1 = (np.abs(SMO_time - SMO_time[-1]*APF_slice1)).argmin()
 
     
 
@@ -182,6 +186,9 @@ del Veh_online_T0_f, Veh_online_T1_f, Veh_online_T2_f, Veh_online_T3_f
 del Veh_online_T0_r, Veh_online_T1_r, Veh_online_T2_r, Veh_online_T3_r
 
 
+APF_Veh_slice_idx1 = (np.abs(Veh_time - Veh_time[-1]*APF_slice1)).argmin()
+
+
 ################################################################################
 # Load EMPS data
 
@@ -241,8 +248,12 @@ del EMPS_offline_T0, EMPS_offline_T1, EMPS_offline_T2, EMPS_offline_T3
 )
 del EMPS_online_T0, EMPS_online_T1, EMPS_online_T2, EMPS_online_T3
 
-EMPS_validation_RMSE = EMPS_Validation_Simulation(EMPS_offline_GP_Mean[-1])
-print(f"For the validation Data of the EMPS the RMSE is {EMPS_validation_RMSE} N by forward simulation using the mean value of the offline model.")
+
+APF_EMPS_slice_idx1 = (np.abs(EMPS_time - EMPS_time[-1]*APF_slice1)).argmin()
+
+EMPS_validation_GP_RMSE, EMPS_validation_lin_RMSE = EMPS_Validation_Simulation(EMPS_offline_GP_Mean[-1])
+print(f"For the validation Data of the EMPS the RMSE is {EMPS_validation_GP_RMSE} N by forward simulation using the mean value of the offline model.")
+print(f"For the validation Data of the EMPS the RMSE is {EMPS_validation_lin_RMSE} N by forward simulation using the linear.")
 
 
 ################################################################################
@@ -445,10 +456,11 @@ plot_fcn_error_1D(
     ax=[Veh_ax_S1_plt],
     ax_histx=Veh_ax_S1_histx
     )
-Veh_ax_S1_plt.set_xticks([-0.2,0,0.2],['$-0.2$',r'$\alpha$ in $\mathrm{rad}$','$0.2$'])
+Veh_ax_S1_plt.set_xticks([-0.15,0,0.15],['$-0.15$',r'$\alpha$ in $\mathrm{rad}$','$0.15$'])
 Veh_ax_S1_plt.set_ylabel(r"$\mu$")
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S1_plt.set_ylim(-1.3, 1.3)
+Veh_ax_S1_plt.set_xlim(-0.19, 0.19)
 Veh_ax_S1_histx.set_ylim(0, 400)
 # Veh_ax_S1_histx.text(-0.31,227,r'$\# \mathrm{Data}$')
 
@@ -494,6 +506,7 @@ EMPS_ax_S1_histx.set_ylim(0, 110)
 EMPS_ax_S1_plt.set_xticks([-0.1,0,0.1],['$-0.1$',r'$\dot{q}$ in m/s','$0.1$'])
 EMPS_ax_S1_plt.set_ylabel(r"$F$ in N")
 EMPS_ax_S1_plt.set_ylim(-58,58)
+EMPS_ax_S1_plt.plot(EMPS_dq_plot, EMPS_dq_plot*203.5 + 20.39*np.sign(EMPS_dq_plot) + 3.16, color='r', linestyle=':')
 
 
 apply_basic_formatting(fig_fcn, width=18, height=6, font_size=8)
@@ -683,15 +696,15 @@ SMO_ax_wRMSE.plot(
 SMO_ax_wRMSE.plot([SMO_time[0],SMO_time[-1]], [SMO_offline_wRMSE, SMO_offline_wRMSE],color=imes_blue,linestyle=':')
 SMO_ax_wRMSE.set_ylabel("wRMSE in N")
 SMO_ax_wRMSE.set_xlim(SMO_time[0], SMO_time[-1])
-SMO_ax_wRMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
+SMO_ax_wRMSE.set_xticks([0,10,20, SMO_time[-1]],['$0$',r'Time in s','$20$', '$T$'])
 
 # first slice
 plot_fcn_error_2D(
         SMO_X_plot, 
-        Mean=np.abs(fcn_mean[int(APF_slice_idx[0])]-SMO_F_sd_true_plot), 
-        X_stats=SMO_online_Sigma_X[:int(APF_slice_idx[0])], 
-        X_weights=SMO_online_weights[:int(APF_slice_idx[0])], 
-        alpha=fcn_alpha[int(APF_slice_idx[0])],
+        Mean=np.abs(fcn_mean[int(APF_SMO_slice_idx1)]-SMO_F_sd_true_plot), 
+        X_stats=SMO_online_Sigma_X[:int(APF_SMO_slice_idx1)], 
+        X_weights=SMO_online_weights[:int(APF_SMO_slice_idx1)], 
+        alpha=fcn_alpha[int(APF_SMO_slice_idx1)],
         fig=fig_fcn,
         ax=SMO_ax_S1_tripc,
         ax_histx=SMO_ax_S1_histx,
@@ -705,14 +718,15 @@ SMO_ax_S1_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',Non
 SMO_ax_S1_histx.set_ylim(0, 100)
 SMO_ax_S1_histy.set_xlim(0, 50)
 SMO_ax_S1_histx.text(-4.4,55,r'$\# \mathrm{Data}$')
+# SMO_ax_S1_histx.set_title(f"Time $s={np.round(APF_slice1,1)}*T$")
 
 # second slive
 plot_fcn_error_2D(
         SMO_X_plot, 
-        Mean=np.abs(fcn_mean[int(APF_slice_idx[1])]-SMO_F_sd_true_plot), 
-        X_stats=SMO_online_Sigma_X[:int(APF_slice_idx[1])], 
-        X_weights=SMO_online_weights[:int(APF_slice_idx[1])], 
-        alpha=fcn_alpha[int(APF_slice_idx[1])],
+        Mean=np.abs(fcn_mean[-1]-SMO_F_sd_true_plot), 
+        X_stats=SMO_online_Sigma_X[:-1], 
+        X_weights=SMO_online_weights[:-1], 
+        alpha=fcn_alpha[-1],
         fig=fig_fcn,
         ax=SMO_ax_S2_tripc,
         ax_histx=SMO_ax_S2_histx,
@@ -725,6 +739,7 @@ SMO_ax_S2_tripc.set_xlim(-5, 5)
 SMO_ax_S2_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
 SMO_ax_S2_histx.set_ylim(0, 100)
 SMO_ax_S2_histy.set_xlim(0, 50)
+# SMO_ax_S2_histx.set_title(f"Time $s=1.0*T$")
 
 
 
@@ -775,42 +790,46 @@ Veh_ax_wRMSE.plot([Veh_time[0],Veh_time[-1]], [Veh_offline_wRMSE_r, Veh_offline_
 Veh_ax_wRMSE.legend(["front", "rear"])
 Veh_ax_wRMSE.set_ylabel("wRMSE")
 Veh_ax_wRMSE.set_xlim(Veh_time[0], Veh_time[-1])
-Veh_ax_wRMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
+Veh_ax_wRMSE.set_xticks([0,10,20, Veh_time[-1]],['$0$',r'Time in s','$20$', '$T$'])
 
 # first slice
 plot_fcn_error_1D(
     Veh_alpha_plot, 
-    Mean=fcn_mean_f[int(APF_slice_idx[0])], 
-    Std=np.sqrt(fcn_var_f[int(APF_slice_idx[0])]),
-    X_stats=Veh_online_Sigma_alpha_f[:int(APF_slice_idx[0])], 
-    X_weights=Veh_online_weights[:int(APF_slice_idx[0])],
+    Mean=fcn_mean_f[int(APF_Veh_slice_idx1)], 
+    Std=np.sqrt(fcn_var_f[int(APF_Veh_slice_idx1)]),
+    X_stats=Veh_online_Sigma_alpha_f[:int(APF_Veh_slice_idx1)], 
+    X_weights=Veh_online_weights[:int(APF_Veh_slice_idx1)],
     ax=[Veh_ax_S1_plt],
     ax_histx=Veh_ax_S1_histx
     )
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_offline_fcn_mean_f, color='gray', linestyle=':')
-Veh_ax_S1_plt.set_xticks([-0.2,0,0.2],['$-0.2$',r'$\alpha$ in $\mathrm{rad}$','$0.2$'])
+Veh_ax_S1_plt.set_xticks([-0.15,0,0.15],['$-0.15$',r'$\alpha$ in $\mathrm{rad}$','$0.15$'])
 Veh_ax_S1_plt.set_ylabel(r"$\mu$")
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S1_plt.set_ylim(-1.3, 1.3)
+Veh_ax_S1_plt.set_xlim(-0.19, 0.19)
 Veh_ax_S1_histx.set_ylim(0, 400)
+Veh_ax_S1_histx.set_title(f"Time: ${np.round(APF_slice1,1)}\cdot T$")
 # Veh_ax_S1_histx.text(-0.31,227,r'$\# \mathrm{Data}$')
 
 # second slice
 plot_fcn_error_1D(
     Veh_alpha_plot, 
-    Mean=fcn_mean_f[int(APF_slice_idx[1])], 
-    Std=np.sqrt(fcn_var_f[int(APF_slice_idx[1])]),
-    X_stats=Veh_online_Sigma_alpha_f[:int(APF_slice_idx[1])], 
-    X_weights=Veh_online_weights[:int(APF_slice_idx[1])],
+    Mean=fcn_mean_f[-1], 
+    Std=np.sqrt(fcn_var_f[-1]),
+    X_stats=Veh_online_Sigma_alpha_f[:-1], 
+    X_weights=Veh_online_weights[:-1],
     ax=[Veh_ax_S2_plt],
     ax_histx=Veh_ax_S2_histx
     )
 Veh_ax_S2_plt.plot(Veh_alpha_plot, Veh_offline_fcn_mean_f, color='gray', linestyle=':')
-Veh_ax_S2_plt.set_xticks([-0.2,0,0.2],['$-0.2$',r'$\alpha$ in $\mathrm{rad}$','$0.2$'])
+Veh_ax_S2_plt.set_xticks([-0.15,0,0.15],['$-0.15$',r'$\alpha$ in $\mathrm{rad}$','$0.15$'])
 Veh_ax_S2_plt.set_ylabel(r"$\mu$")
 Veh_ax_S2_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S2_plt.set_ylim(-1.3, 1.3)
+Veh_ax_S2_plt.set_xlim(-0.19, 0.19)
 Veh_ax_S2_histx.set_ylim(0, 400)
+Veh_ax_S2_histx.set_title(f"Time: $1.0\cdot T$")
 
 
 ## EMPS
@@ -840,15 +859,15 @@ EMPS_ax_RMSE.plot(
 )
 EMPS_ax_RMSE.set_ylabel("wRMSE in N")
 EMPS_ax_RMSE.set_xlim(EMPS_time[0], EMPS_time[-1])
-EMPS_ax_RMSE.set_xticks([0,10,20],['$0$',r'Time in s','$20$'])
+EMPS_ax_RMSE.set_xticks([0,10,20, EMPS_time[-1]],['$0$',r'Time in s','$20$', '$T$'])
 
 # first slice
 plot_fcn_error_1D(
     EMPS_dq_plot, 
-    Mean=fcn_mean_online[int(APF_slice_idx[0])], 
-    Std=np.sqrt(fcn_var_online[int(APF_slice_idx[0])]),
-    X_stats=EMPS_online_Sigma_X[:int(APF_slice_idx[0]),:,1], 
-    X_weights=EMPS_online_weights[:int(APF_slice_idx[0])],
+    Mean=fcn_mean_online[APF_EMPS_slice_idx1], 
+    Std=np.sqrt(fcn_var_online[APF_EMPS_slice_idx1]),
+    X_stats=EMPS_online_Sigma_X[:APF_EMPS_slice_idx1,:,1], 
+    X_weights=EMPS_online_weights[:APF_EMPS_slice_idx1],
     ax=[EMPS_ax_S1_plt],
     ax_histx=EMPS_ax_S1_histx
     )
@@ -857,15 +876,16 @@ EMPS_ax_S1_plt.set_xticks([-0.1,0,0.1],['$-0.1$',r'$\dot{q}$ in m/s','$0.1$'])
 EMPS_ax_S1_plt.set_ylabel(r"$F$ in N")
 EMPS_ax_S1_plt.set_ylim(-58,58)
 EMPS_ax_S1_histx.set_ylim(0, 60)
+# EMPS_ax_S1_histx.set_title(f"Time $s={np.round(APF_slice1,1)}*T$")
 # EMPS_ax_S1_histx.text(-0.14,32,r'$\# \mathrm{Data}$')
 
 # second slice
 plot_fcn_error_1D(
     EMPS_dq_plot, 
-    Mean=fcn_mean_online[int(APF_slice_idx[1])], 
-    Std=np.sqrt(fcn_var_online[int(APF_slice_idx[1])]),
-    X_stats=EMPS_online_Sigma_X[:int(APF_slice_idx[1]),:,1], 
-    X_weights=EMPS_online_weights[:int(APF_slice_idx[1])],
+    Mean=fcn_mean_online[-1], 
+    Std=np.sqrt(fcn_var_online[-1]),
+    X_stats=EMPS_online_Sigma_X[:-1,:,1], 
+    X_weights=EMPS_online_weights[:-1],
     ax=[EMPS_ax_S2_plt],
     ax_histx=EMPS_ax_S2_histx
     )
@@ -874,6 +894,7 @@ EMPS_ax_S2_plt.set_xticks([-0.1,0,0.1],['$-0.1$',r'$\dot{q}$ in m/s','$0.1$'])
 EMPS_ax_S2_plt.set_ylabel(r"$F$ in N")
 EMPS_ax_S2_plt.set_ylim(-58,58)
 EMPS_ax_S2_histx.set_ylim(0, 60)
+# EMPS_ax_S2_histx.set_title(f"Time $s=1.0*T$")
 
 
 apply_basic_formatting(fig_fcn, width=18, height=18, font_size=8)
