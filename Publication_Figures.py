@@ -252,8 +252,8 @@ del EMPS_online_T0, EMPS_online_T1, EMPS_online_T2, EMPS_online_T3
 APF_EMPS_slice_idx1 = (np.abs(EMPS_time - EMPS_time[-1]*APF_slice1)).argmin()
 
 EMPS_validation_GP_RMSE, EMPS_validation_lin_RMSE = EMPS_Validation_Simulation(EMPS_offline_GP_Mean[-1])
-print(f"For the validation Data of the EMPS the RMSE is {EMPS_validation_GP_RMSE} N by forward simulation using the mean value of the offline model.")
-print(f"For the validation Data of the EMPS the RMSE is {EMPS_validation_lin_RMSE} N by forward simulation using the linear.")
+print(f"For the validation Data of the EMPS the RMSE is {EMPS_validation_GP_RMSE} m by forward simulation using the mean value of the offline model.")
+print(f"For the validation Data of the EMPS the RMSE is {EMPS_validation_lin_RMSE} m by forward simulation using the linear model.")
 
 
 ################################################################################
@@ -509,7 +509,7 @@ EMPS_ax_S1_plt.set_ylim(-58,58)
 EMPS_ax_S1_plt.plot(EMPS_dq_plot, EMPS_dq_plot*203.5 + 20.39*np.sign(EMPS_dq_plot) + 3.16, color='r', linestyle=':')
 
 
-apply_basic_formatting(fig_fcn, width=18, height=6, font_size=8)
+apply_basic_formatting(fig_fcn, width=18, height=4.5, font_size=8)
 fig_fcn.savefig(r"plots\results_fcn_offline.pdf", bbox_inches='tight')
 
 
@@ -523,7 +523,7 @@ fig_fcn.savefig(r"plots\results_fcn_offline.pdf", bbox_inches='tight')
 
 # the figure
 fig_traj = plt.figure(dpi=150)
-gs_traj = fig_traj.add_gridspec(3, 3,  width_ratios=np.ones(3), height_ratios=np.ones(3))
+gs_traj = fig_traj.add_gridspec(3, 3,  width_ratios=np.ones(3), height_ratios=[0.8, 1, 1])
 
 # generate axes
 SMO_ax_x0 = fig_traj.add_subplot(gs_traj[0, 0])
@@ -712,12 +712,12 @@ plot_fcn_error_2D(
         cax=SMO_ax_S1_cax
         )
 SMO_ax_S1_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-SMO_ax_S1_tripc.set_ylim(-5, 5)
+SMO_ax_S1_tripc.set_ylim(-4.99, 4.99)
 SMO_ax_S1_tripc.set_xlim(-5, 5)
 SMO_ax_S1_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
 SMO_ax_S1_histx.set_ylim(0, 100)
 SMO_ax_S1_histy.set_xlim(0, 50)
-SMO_ax_S1_histx.text(-4.4,55,r'$\# \mathrm{Data}$')
+SMO_ax_S1_histx.text(-4.4,49,r'$\# \mathrm{Data}$')
 # SMO_ax_S1_histx.set_title(f"Time $s={np.round(APF_slice1,1)}*T$")
 
 # second slive
@@ -734,7 +734,7 @@ plot_fcn_error_2D(
         cax=SMO_ax_S2_cax
         )
 SMO_ax_S2_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-SMO_ax_S1_tripc.set_ylim(-5, 5)
+SMO_ax_S2_tripc.set_ylim(-4.99, 4.99)
 SMO_ax_S2_tripc.set_xlim(-5, 5)
 SMO_ax_S2_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
 SMO_ax_S2_histx.set_ylim(0, 100)
@@ -897,7 +897,7 @@ EMPS_ax_S2_histx.set_ylim(0, 60)
 # EMPS_ax_S2_histx.set_title(f"Time $s=1.0*T$")
 
 
-apply_basic_formatting(fig_fcn, width=18, height=18, font_size=8)
+apply_basic_formatting(fig_fcn, width=18, height=13, font_size=8)
 fig_fcn.savefig(r"plots\results_fcn_online.pdf", bbox_inches='tight')
 
 
