@@ -45,8 +45,8 @@ del offline_GP_stats
 # Save Results
 
 # precompute input space to function for later plotting
-x_plt = np.linspace(-5., 5., 50)
-dx_plt = np.linspace(-5., 5., 50)
+x_plt = np.linspace(-3.5, 3.5, 50)
+dx_plt = np.linspace(-3.5, 3.5, 50)
 grid_x, grid_y = np.meshgrid(x_plt, dx_plt, indexing='xy')
 
 X_plot = np.vstack([grid_x.flatten(), grid_y.flatten()]).T
