@@ -30,7 +30,7 @@ def prior_mniw_2naturalPara(mean, col_cov, row_scale, df):
     eta_1 = temp[:,mean.shape[0]:]
     eta_2 = mean @ eta_0 + row_scale
     
-    eta_3 = df + col_cov.shape[0] + row_scale.shape[0] + 1
+    eta_3 = df
     
     return eta_0, eta_1, eta_2, eta_3
 
@@ -45,7 +45,7 @@ def prior_mniw_2naturalPara_inv(eta_0, eta_1, eta_2, eta_3):
     mean = temp[:,:eta_0.shape[1]].T
     col_cov = temp[:,eta_0.shape[1]:]
     row_scale = eta_2 - mean @ eta_0
-    df = eta_3 - col_cov.shape[0] - row_scale.shape[0] - 1
+    df = eta_3
     
     return jnp.atleast_2d(mean), col_cov, jnp.atleast_2d(row_scale), df
 
@@ -129,12 +129,16 @@ def prior_mniw_log_base_measure(T_0, T_1, T_2, T_3):
     n = T_2.shape[0]
     m = T_1.shape[0]
     
+    Psi = T_2 - T_0.T @ jnp.linalg.solve(T_1, T_0)
+    nu = T_3
+    
     temp_1 = - 0.5 * n * m * jnp.log(2*jnp.pi)
-    temp_2 = 0.5 * m * jnp.log(jnp.linalg.det(T_1))
-    temp_3 = - 0.5 * (T_3 - n -m - 1) * jnp.log(2)
-    temp_4 = - jsc.special.multigammaln((T_3 - n -m - 1)/2, n)
+    temp_2 = 0.5 * n * jnp.log(jnp.linalg.det(T_1))
+    temp_3 = - 0.5 * nu * n * jnp.log(2)
+    temp_4 = - jsc.special.multigammaln(nu/2, n)
+    temp_5 = jnp.log(jnp.linalg.det(Psi)) * nu / 2
 
-    return temp_1 + temp_2 + temp_3 + temp_4
+    return temp_1 + temp_2 + temp_3 + temp_4 + temp_5
 
     
 

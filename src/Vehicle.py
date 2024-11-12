@@ -695,17 +695,17 @@ def Vehicle_CPFAS_Kernel(Y, x_ref, mu_f_ref, mu_r_ref, GP_stats_ref_f, GP_stats_
         
         # calculate models
         Mean_f, Col_Cov_f, Row_Scale_f, df_f = jax.vmap(prior_mniw_2naturalPara_inv)(
-            GP_prior_f[0] + GP_stats_ref_f[0] + GP_stats_ancestor_f[0],
-            GP_prior_f[1] + GP_stats_ref_f[1] + GP_stats_ancestor_f[1],
-            GP_prior_f[2] + GP_stats_ref_f[2] + GP_stats_ancestor_f[2],
-            GP_prior_f[3] + GP_stats_ref_f[3] + GP_stats_ancestor_f[3],
+            GP_prior_f[0] + GP_stats_ancestor_f[0],
+            GP_prior_f[1] + GP_stats_ancestor_f[1],
+            GP_prior_f[2] + GP_stats_ancestor_f[2],
+            GP_prior_f[3] + GP_stats_ancestor_f[3],
         )
         
         Mean_r, Col_Cov_r, Row_Scale_r, df_r = jax.vmap(prior_mniw_2naturalPara_inv)(
-            GP_prior_r[0] + GP_stats_ref_r[0] + GP_stats_ancestor_r[0],
-            GP_prior_r[1] + GP_stats_ref_r[1] + GP_stats_ancestor_r[1],
-            GP_prior_r[2] + GP_stats_ref_r[2] + GP_stats_ancestor_r[2],
-            GP_prior_r[3] + GP_stats_ref_r[3] + GP_stats_ancestor_r[3],
+            GP_prior_r[0] + GP_stats_ancestor_r[0],
+            GP_prior_r[1] + GP_stats_ancestor_r[1],
+            GP_prior_r[2] + GP_stats_ancestor_r[2],
+            GP_prior_r[3] + GP_stats_ancestor_r[3],
         )
             
             
