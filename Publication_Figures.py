@@ -341,6 +341,7 @@ SMO_ax_x0.set_ylim(-2.8,2.8)
 SMO_ax_x1.set_ylim(-5.2,5.2)
 SMO_ax_F.set_ylim(-80,80)
 SMO_ax_x0.set_title("Single-Mass-Oscillator")
+SMO_ax_x0.legend(["mean", f"$3\sigma$", "true"], labelspacing=.07, handlelength=1.0, loc='upper right', fontsize=5)
 
 
 plot_Data(
@@ -412,12 +413,12 @@ plot_fcn_error_2D(
         )
 # SMO_ax_S1_tripc.set_xlabel(r"$s$ in $\mathrm{m}$")
 SMO_ax_S1_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-SMO_ax_S1_tripc.set_ylim(-5, 5)
+SMO_ax_S1_tripc.set_ylim(-4.99, 4.99)
 SMO_ax_S1_tripc.set_xlim(-5, 5)
 SMO_ax_S1_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
 SMO_ax_S1_histx.set_ylim(0, 100)
 SMO_ax_S1_histy.set_xlim(0, 50)
-SMO_ax_S1_histx.text(-4.4,55,r'$\# \mathrm{Data}$')
+SMO_ax_S1_histx.text(-4.4,49,r'$\# \mathrm{Data}$')
 
 
 
@@ -457,7 +458,7 @@ plot_fcn_error_1D(
     ax_histx=Veh_ax_S1_histx
     )
 Veh_ax_S1_plt.set_xticks([-0.15,0,0.15],['$-0.15$',r'$\alpha$ in $\mathrm{rad}$','$0.15$'])
-Veh_ax_S1_plt.set_ylabel(r"$\mu$")
+Veh_ax_S1_plt.set_ylabel(r"$\mu_\mathrm{f}$")
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S1_plt.set_ylim(-1.3, 1.3)
 Veh_ax_S1_plt.set_xlim(-0.19, 0.19)
@@ -523,7 +524,7 @@ fig_fcn.savefig(r"plots\results_fcn_offline.pdf", bbox_inches='tight')
 
 # the figure
 fig_traj = plt.figure(dpi=150)
-gs_traj = fig_traj.add_gridspec(3, 3,  width_ratios=np.ones(3), height_ratios=[0.8, 1, 1])
+gs_traj = fig_traj.add_gridspec(3, 3,  width_ratios=np.ones(3), height_ratios=np.ones(3))
 
 # generate axes
 SMO_ax_x0 = fig_traj.add_subplot(gs_traj[0, 0])
@@ -627,6 +628,7 @@ SMO_ax_x0.set_ylim(-2.8,2.8)
 SMO_ax_x1.set_ylim(-5.2,5.2)
 SMO_ax_F.set_ylim(-80,80)
 SMO_ax_x0.set_title("Single-Mass-Oscillator")
+SMO_ax_x0.legend(["mean", f"$3\sigma$", "true"], labelspacing=.07, handlelength=1.0, loc='upper right', fontsize=5)
 
 
 plot_Data(
@@ -697,6 +699,7 @@ SMO_ax_wRMSE.plot([SMO_time[0],SMO_time[-1]], [SMO_offline_wRMSE, SMO_offline_wR
 SMO_ax_wRMSE.set_ylabel("wRMSE in N")
 SMO_ax_wRMSE.set_xlim(SMO_time[0], SMO_time[-1])
 SMO_ax_wRMSE.set_xticks([0,10,20, SMO_time[-1]],['$0$',r'Time in s','$20$', '$T$'])
+SMO_ax_wRMSE.legend(["online", "offline"], labelspacing=.07, handlelength=1.0, loc='upper right', fontsize=5)
 
 # first slice
 plot_fcn_error_2D(
@@ -787,7 +790,7 @@ Veh_ax_wRMSE.plot(
 )
 Veh_ax_wRMSE.plot([Veh_time[0],Veh_time[-1]], [Veh_offline_wRMSE_f, Veh_offline_wRMSE_f],linestyle='--',color=imes_blue)
 Veh_ax_wRMSE.plot([Veh_time[0],Veh_time[-1]], [Veh_offline_wRMSE_r, Veh_offline_wRMSE_r],linestyle=':',color=imes_orange)
-Veh_ax_wRMSE.legend(["front", "rear"])
+Veh_ax_wRMSE.legend(["front", "rear"], labelspacing=.07, handlelength=1.0, fontsize=5)
 Veh_ax_wRMSE.set_ylabel("wRMSE")
 Veh_ax_wRMSE.set_xlim(Veh_time[0], Veh_time[-1])
 Veh_ax_wRMSE.set_xticks([0,10,20, Veh_time[-1]],['$0$',r'Time in s','$20$', '$T$'])
@@ -804,7 +807,7 @@ plot_fcn_error_1D(
     )
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_offline_fcn_mean_f, color='gray', linestyle=':')
 Veh_ax_S1_plt.set_xticks([-0.15,0,0.15],['$-0.15$',r'$\alpha$ in $\mathrm{rad}$','$0.15$'])
-Veh_ax_S1_plt.set_ylabel(r"$\mu$")
+Veh_ax_S1_plt.set_ylabel(r"$\mu_\mathrm{f}$")
 Veh_ax_S1_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S1_plt.set_ylim(-1.3, 1.3)
 Veh_ax_S1_plt.set_xlim(-0.19, 0.19)
@@ -824,12 +827,13 @@ plot_fcn_error_1D(
     )
 Veh_ax_S2_plt.plot(Veh_alpha_plot, Veh_offline_fcn_mean_f, color='gray', linestyle=':')
 Veh_ax_S2_plt.set_xticks([-0.15,0,0.15],['$-0.15$',r'$\alpha$ in $\mathrm{rad}$','$0.15$'])
-Veh_ax_S2_plt.set_ylabel(r"$\mu$")
+Veh_ax_S2_plt.set_ylabel(r"$\mu_\mathrm{f}$")
 Veh_ax_S2_plt.plot(Veh_alpha_plot, Veh_mu_true_plot, color='red', linestyle=':')
 Veh_ax_S2_plt.set_ylim(-1.3, 1.3)
 Veh_ax_S2_plt.set_xlim(-0.19, 0.19)
 Veh_ax_S2_histx.set_ylim(0, 400)
 Veh_ax_S2_histx.set_title(f"Time: $1.0\cdot T$")
+Veh_ax_S2_plt.legend(["mean", f"$3\sigma$", "offline", "true"], labelspacing=.07, handlelength=1.0, loc='lower right', fontsize=5)
 
 
 ## EMPS
