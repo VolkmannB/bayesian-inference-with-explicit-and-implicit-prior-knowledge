@@ -17,27 +17,6 @@ X, Y, mu_f, mu_r = Vehicle_simulation()
 
 
 ################################################################################
-# Offline Algorithm
-print("\n=== Offline Algorithm ===")
-
-(
-    offline_Sigma_X, 
-    offline_Sigma_mu_f, 
-    offline_Sigma_mu_r, 
-    offline_Sigma_alpha_f, 
-    offline_Sigma_alpha_r, 
-    offline_weights, 
-    offline_GP_stats_f,
-    offline_GP_stats_r
-    ) = Vehicle_PGAS(Y)
-offline_T0_f, offline_T1_f, offline_T2_f, offline_T3_f = offline_GP_stats_f
-del offline_GP_stats_f
-offline_T0_r, offline_T1_r, offline_T2_r, offline_T3_r = offline_GP_stats_r
-del offline_GP_stats_r
-
-
-
-################################################################################
 # Online Algorithm
 print("\n=== Online Algorithm ===")
 
@@ -55,6 +34,27 @@ online_T0_f, online_T1_f, online_T2_f, online_T3_f = online_GP_stats_f
 del online_GP_stats_f
 online_T0_r, online_T1_r, online_T2_r, online_T3_r = online_GP_stats_r
 del online_GP_stats_r
+
+
+
+################################################################################
+# Offline Algorithm
+print("\n=== Offline Algorithm ===")
+
+(
+    offline_Sigma_X, 
+    offline_Sigma_mu_f, 
+    offline_Sigma_mu_r, 
+    offline_Sigma_alpha_f, 
+    offline_Sigma_alpha_r, 
+    offline_weights, 
+    offline_GP_stats_f,
+    offline_GP_stats_r
+    ) = Vehicle_PGAS(Y)
+offline_T0_f, offline_T1_f, offline_T2_f, offline_T3_f = offline_GP_stats_f
+del offline_GP_stats_f
+offline_T0_r, offline_T1_r, offline_T2_r, offline_T3_r = offline_GP_stats_r
+del offline_GP_stats_r
 
 
 

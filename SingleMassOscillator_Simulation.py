@@ -17,17 +17,6 @@ from src.SingleMassOscillator import SingleMassOscillator_PGAS
 X, Y, F_sd = SingleMassOscillator_simulation()
 
 
-################################################################################
-### Offline Algorithm
-print("\n=== Offline Algorithm ===")
-
-# Run PGAS
-(offline_Sigma_X, offline_Sigma_F, 
- offline_weights, offline_GP_stats) = SingleMassOscillator_PGAS(Y)
-offline_T0, offline_T1, offline_T2, offline_T3 = offline_GP_stats
-del offline_GP_stats
-
-
 
 ################################################################################
 ### Online Algorithm
@@ -38,6 +27,17 @@ print("\n=== Online Algorithm ===")
  online_weights, online_GP_stats) = SingleMassOscillator_APF(Y)
 online_T0, online_T1, online_T2, online_T3 = online_GP_stats
 del online_GP_stats
+
+
+################################################################################
+### Offline Algorithm
+print("\n=== Offline Algorithm ===")
+
+# Run PGAS
+(offline_Sigma_X, offline_Sigma_F, 
+ offline_weights, offline_GP_stats) = SingleMassOscillator_PGAS(Y)
+offline_T0, offline_T1, offline_T2, offline_T3 = offline_GP_stats
+del offline_GP_stats
     
     
 
