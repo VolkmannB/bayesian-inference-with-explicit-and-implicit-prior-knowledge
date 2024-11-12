@@ -70,8 +70,6 @@ def plot_Data(Particles, weights, Reference, time, axes):
     for i in range(N_dim):
         
         axes[i].plot(time, mean[:,i], color=imes_blue)
-        axes[i].plot(time, Reference[:,i], color='red', linestyle='--')
-        
         axes[i].fill_between(
                 time, 
                 mean[:,i] - 3*std[:,i], 
@@ -80,6 +78,7 @@ def plot_Data(Particles, weights, Reference, time, axes):
                 edgecolor=None, 
                 alpha=0.2
                 )
+        axes[i].plot(time, Reference[:,i], color='red', linestyle='--')
         
         # set limits
         axes[i].set_xlim(np.min(time), np.max(time))
@@ -181,6 +180,7 @@ def plot_fcn_error_1D(X_in, Mean, Std, X_stats, X_weights, ax, ax_histx):
             Mean[i] - 3*Std[i], 
             Mean[i] + 3*Std[i], 
             color=imes_blue, 
+            edgecolor=None, 
             alpha=0.2)
         ax[i].set_xlim(x_min, x_max)
     
