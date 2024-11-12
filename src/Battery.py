@@ -425,10 +425,10 @@ def Battery_CPFAS_Kernel(x_ref, C1_ref, GP_stats_ref, Y=Y):
         
         # calculate models
         Mean, Col_Cov, Row_Scale, df = jax.vmap(prior_mniw_2naturalPara_inv)(
-            GP_prior[0] + GP_stats_ref[0] + GP_stats_ancestor[0],
-            GP_prior[1] + GP_stats_ref[1] + GP_stats_ancestor[1],
-            GP_prior[2] + GP_stats_ref[2] + GP_stats_ancestor[2],
-            GP_prior[3] + GP_stats_ref[3] + GP_stats_ancestor[3],
+            GP_prior[0] + GP_stats_ancestor[0],
+            GP_prior[1] + GP_stats_ancestor[1],
+            GP_prior[2] + GP_stats_ancestor[2],
+            GP_prior[3] + GP_stats_ancestor[3],
         )
         
         

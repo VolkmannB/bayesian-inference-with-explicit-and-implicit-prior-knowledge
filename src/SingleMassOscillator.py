@@ -19,10 +19,10 @@ from src.Filtering import reconstruct_trajectory
 #### This section defines the state space model
 
 # parameters
-m=2.0
-c1=10.0
+m=0.2
+c1=5.0
 c2=2.0
-d1=0.9
+d1=0.4
 d2=0.4
 C = np.array([[1,0]])
 
@@ -72,7 +72,7 @@ rng = np.random.default_rng(16723573)
 # simulation parameters
 N_particles = 200
 N_PGAS_iter = 800
-t_end = 30.0
+t_end = 15.0
 dt = 0.02
 forget_factor = 0.999
 time = np.arange(0.0,t_end,dt)
@@ -90,9 +90,9 @@ w = lambda n=1: rng.multivariate_normal(np.zeros((2,)), Q, n)
 e = lambda n=1: rng.multivariate_normal(np.zeros((1,)), R, n)
 
 # external force
-F_ext = np.ones((steps,)) * 9.81*m
+F_ext = np.ones((steps,)) * 9.81 * m
 F_ext[int(t_end/(3*dt)):] = 0
-F_ext[int(2*t_end/(3*dt)):] = -9.81*m
+F_ext[int(2*t_end/(3*dt)):] = -9.81 * m
     
     
     
@@ -104,7 +104,7 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
     num_fcn=N_basis_fcn, 
     domain_boundary=np.array([[-7.5, 7.5],[-7.5, 7.5]]), 
     lengthscale=7.5*2/N_basis_fcn, 
-    scale=50
+    scale=10
     )
 
 
@@ -113,8 +113,8 @@ basis_fcn, sd = generate_Hilbert_BasisFunction(
 GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
-    np.eye(1)*8,
-    1
+    np.eye(1)*40,
+    1 + N_basis_fcn + 1 # nu + n_xi + n_phi
 ))
 
 
@@ -446,10 +446,10 @@ def SingleMassOscillator_CPFAS_Kernel(
         
         # calculate models
         Mean, Col_Cov, Row_Scale, df = jax.vmap(prior_mniw_2naturalPara_inv)(
-            GP_prior[0] + GP_stats_ref[0] + GP_stats_ancestor[0],
-            GP_prior[1] + GP_stats_ref[1] + GP_stats_ancestor[1],
-            GP_prior[2] + GP_stats_ref[2] + GP_stats_ancestor[2],
-            GP_prior[3] + GP_stats_ref[3] + GP_stats_ancestor[3]
+            GP_prior[0] + GP_stats_ancestor[0],
+            GP_prior[1] + GP_stats_ancestor[1],
+            GP_prior[2] + GP_stats_ancestor[2],
+            GP_prior[3] + GP_stats_ancestor[3]
         )
         
         ### Step 1: According to the algorithm of the auxiliary PF, draw new 
