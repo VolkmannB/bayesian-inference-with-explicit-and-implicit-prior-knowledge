@@ -337,9 +337,9 @@ SMO_ax_x0.set_ylabel(r"$s$ in $\mathrm{m}$")
 SMO_ax_x1.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
 SMO_ax_F.set_ylabel(r"$F$ in $\mathrm{N}$")
 SMO_ax_F.set_xlabel(r"Time in $\mathrm{s}$")
-SMO_ax_x0.set_ylim(-2.8,2.8)
-SMO_ax_x1.set_ylim(-5.2,5.2)
-SMO_ax_F.set_ylim(-80,80)
+SMO_ax_x0.set_ylim(-0.8,0.8)
+SMO_ax_x1.set_ylim(-3.0,3.0)
+SMO_ax_F.set_ylim(-8,8)
 SMO_ax_x0.set_title("Single-Mass-Oscillator")
 SMO_ax_x0.legend(["mean", f"$3\sigma$", "true"], labelspacing=.07, handlelength=1.0, loc='upper right', fontsize=5)
 
@@ -413,12 +413,12 @@ plot_fcn_error_2D(
         )
 # SMO_ax_S1_tripc.set_xlabel(r"$s$ in $\mathrm{m}$")
 SMO_ax_S1_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-SMO_ax_S1_tripc.set_ylim(-4.99, 4.99)
-SMO_ax_S1_tripc.set_xlim(-5, 5)
-SMO_ax_S1_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
+SMO_ax_S1_tripc.set_ylim(-3.5, 3.5)
+SMO_ax_S1_tripc.set_xlim(-3.5, 3.5)
+SMO_ax_S1_tripc.set_xticks([-2,0,2],['$-2$',r'$s$ in $\mathrm{m}$','$2$'])
 SMO_ax_S1_histx.set_ylim(0, 100)
 SMO_ax_S1_histy.set_xlim(0, 50)
-SMO_ax_S1_histx.text(-4.4,49,r'$\# \mathrm{Data}$')
+SMO_ax_S1_histx.text(-3.3,46,r'$\# \mathrm{Data}$')
 
 
 
@@ -624,9 +624,9 @@ SMO_ax_x0.set_ylabel(r"$s$ in $\mathrm{m}$")
 SMO_ax_x1.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
 SMO_ax_F.set_ylabel(r"$F$ in $\mathrm{N}$")
 SMO_ax_F.set_xlabel(r"Time in $\mathrm{s}$")
-SMO_ax_x0.set_ylim(-2.8,2.8)
-SMO_ax_x1.set_ylim(-5.2,5.2)
-SMO_ax_F.set_ylim(-80,80)
+SMO_ax_x0.set_ylim(-0.8,0.8)
+SMO_ax_x1.set_ylim(-3.0,3.0)
+SMO_ax_F.set_ylim(-8,8)
 SMO_ax_x0.set_title("Single-Mass-Oscillator")
 SMO_ax_x0.legend(["mean", f"$3\sigma$", "true"], labelspacing=.07, handlelength=1.0, loc='upper right', fontsize=5)
 
@@ -698,7 +698,7 @@ SMO_ax_wRMSE.plot(
 SMO_ax_wRMSE.plot([SMO_time[0],SMO_time[-1]], [SMO_offline_wRMSE, SMO_offline_wRMSE],color=imes_blue,linestyle=':')
 SMO_ax_wRMSE.set_ylabel("wRMSE in N")
 SMO_ax_wRMSE.set_xlim(SMO_time[0], SMO_time[-1])
-SMO_ax_wRMSE.set_xticks([0,10,20, SMO_time[-1]],['$0$',r'Time in s','$20$', '$T$'])
+SMO_ax_wRMSE.set_xticks([0,5,10, SMO_time[-1]],['$0$',r'Time in s','$10$', '$T$'])
 SMO_ax_wRMSE.legend(["online", "offline"], labelspacing=.07, handlelength=1.0, loc='upper right', fontsize=5)
 
 # first slice
@@ -715,15 +715,15 @@ plot_fcn_error_2D(
         cax=SMO_ax_S1_cax
         )
 SMO_ax_S1_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-SMO_ax_S1_tripc.set_ylim(-4.99, 4.99)
-SMO_ax_S1_tripc.set_xlim(-5, 5)
-SMO_ax_S1_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
+SMO_ax_S1_tripc.set_ylim(-3.5, 3.5)
+SMO_ax_S1_tripc.set_xlim(-3.5, 3.5)
+SMO_ax_S1_tripc.set_xticks([-2,0,2],['$-2$',r'$s$ in $\mathrm{m}$','$2$'])
 SMO_ax_S1_histx.set_ylim(0, 100)
 SMO_ax_S1_histy.set_xlim(0, 50)
-SMO_ax_S1_histx.text(-4.4,49,r'$\# \mathrm{Data}$')
+SMO_ax_S1_histx.text(-3.3,46,r'$\# \mathrm{Data}$')
 # SMO_ax_S1_histx.set_title(f"Time $s={np.round(APF_slice1,1)}*T$")
 
-# second slive
+# second slice
 plot_fcn_error_2D(
         SMO_X_plot, 
         Mean=np.abs(fcn_mean[-1]-SMO_F_sd_true_plot), 
@@ -737,9 +737,9 @@ plot_fcn_error_2D(
         cax=SMO_ax_S2_cax
         )
 SMO_ax_S2_tripc.set_ylabel(r"$\dot{s}$ in $\mathrm{m/s}$")
-SMO_ax_S2_tripc.set_ylim(-4.99, 4.99)
-SMO_ax_S2_tripc.set_xlim(-5, 5)
-SMO_ax_S2_tripc.set_xticks([-4,-2,0,2,4],['$-4$',None,r'$s$ in $\mathrm{m}$',None,'$4$'])
+SMO_ax_S2_tripc.set_ylim(-3.5, 3.5)
+SMO_ax_S2_tripc.set_xlim(-3.5, 3.5)
+SMO_ax_S2_tripc.set_xticks([-2,0,2],['$-2$',r'$s$ in $\mathrm{m}$','$2$'])
 SMO_ax_S2_histx.set_ylim(0, 100)
 SMO_ax_S2_histy.set_xlim(0, 50)
 # SMO_ax_S2_histx.set_title(f"Time $s=1.0*T$")
