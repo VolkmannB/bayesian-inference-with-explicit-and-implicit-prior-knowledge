@@ -341,6 +341,8 @@ SMO_ax_x0.set_ylim(-0.8,0.8)
 SMO_ax_x1.set_ylim(-3.0,3.0)
 SMO_ax_F.set_ylim(-8,8)
 SMO_ax_x0.set_title("Single-Mass-Oscillator")
+SMO_ax_x0.tick_params(axis='x', bottom=False, labelbottom=False)
+SMO_ax_x1.tick_params(axis='x', bottom=False, labelbottom=False)
 SMO_ax_x0.legend(["mean", f"$3\sigma$", "true"], labelspacing=.07, handlelength=1.0, loc='upper right', fontsize=5)
 
 
@@ -357,6 +359,8 @@ Veh_ax_muf.set_ylabel(r"$\mu_\mathrm{f}$")
 Veh_ax_muf.set_xlabel(r"Time in $\mathrm{s}$")
 Veh_ax_muf.set_ylim(-1.2,1.2)
 Veh_ax_x0.set_title("Vehicle")
+Veh_ax_x0.tick_params(axis='x', bottom=False, labelbottom=False)
+Veh_ax_x1.tick_params(axis='x', bottom=False, labelbottom=False)
 
 
 plot_Data(
@@ -371,9 +375,11 @@ EMPS_ax_x1.set_ylabel(r"$\dot{q}$ in m/s")
 EMPS_ax_F.set_ylabel(r"$F$ in N")
 EMPS_ax_F.set_xlabel(r"Time in s")
 EMPS_ax_x0.set_title("EMPS")
+EMPS_ax_x0.tick_params(axis='x', bottom=False, labelbottom=False)
+EMPS_ax_x1.tick_params(axis='x', bottom=False, labelbottom=False)
 
 
-apply_basic_formatting(fig_traj, width=18, height=10, font_size=8)
+apply_basic_formatting(fig_traj, width=18, height=8.5, font_size=8)
 fig_traj.savefig(r"plots\results_traj_offline.pdf", bbox_inches='tight')
 
 
@@ -628,6 +634,8 @@ SMO_ax_x0.set_ylim(-0.8,0.8)
 SMO_ax_x1.set_ylim(-3.0,3.0)
 SMO_ax_F.set_ylim(-8,8)
 SMO_ax_x0.set_title("Single-Mass-Oscillator")
+SMO_ax_x0.tick_params(axis='x', bottom=False, labelbottom=False)
+SMO_ax_x1.tick_params(axis='x', bottom=False, labelbottom=False)
 SMO_ax_x0.legend(["mean", f"$3\sigma$", "true"], labelspacing=.07, handlelength=1.0, loc='upper right', fontsize=5)
 
 
@@ -644,6 +652,8 @@ Veh_ax_muf.set_ylabel(r"$\mu_\mathrm{f}$")
 Veh_ax_muf.set_xlabel(r"Time in $\mathrm{s}$")
 Veh_ax_muf.set_ylim(-1.2,1.2)
 Veh_ax_x0.set_title("Vehicle")
+Veh_ax_x0.tick_params(axis='x', bottom=False, labelbottom=False)
+Veh_ax_x1.tick_params(axis='x', bottom=False, labelbottom=False)
 
 
 plot_Data(
@@ -658,9 +668,11 @@ EMPS_ax_x1.set_ylabel(r"$\dot{q}$ in m/s")
 EMPS_ax_F.set_ylabel(r"$F$ in N")
 EMPS_ax_F.set_xlabel(r"Time in s")
 EMPS_ax_x0.set_title("EMPS")
+EMPS_ax_x0.tick_params(axis='x', bottom=False, labelbottom=False)
+EMPS_ax_x1.tick_params(axis='x', bottom=False, labelbottom=False)
 
 
-apply_basic_formatting(fig_traj, width=18, height=10, font_size=8)
+apply_basic_formatting(fig_traj, width=18, height=8.5, font_size=8)
 fig_traj.savefig(r"plots\results_traj_online.pdf", bbox_inches='tight')
 
 
