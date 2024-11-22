@@ -1,0 +1,8 @@
+dependencies:
+  - python=3.10.10
+  - pip:
+    - numpy==1.24.3
+    - pandas==2.0.3
+    - jax==0.4.23
+    - scipy==1.11.1
+    - tqdm==4.66.1
