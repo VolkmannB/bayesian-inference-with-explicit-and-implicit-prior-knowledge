@@ -79,12 +79,14 @@ del online_T0, online_T1, online_T2, online_T3
 # Plotting Offline
 
 # plot the state estimations
+fig_X, axes_X = plt.subplots(2, 1, layout='tight', sharex='col', dpi=150)
 offline_C1R1 = offline_Sigma_C1[...,None] + offset_C1
-fig_X, axes_X = plot_Data(
+plot_Data(
     Particles=np.concatenate([offline_Sigma_Y[...,None], offline_C1R1], axis=-1),
     weights=offline_weights,
     Reference=np.concatenate([Y[...,None], np.ones((Y.shape[0],1))*np.nan], axis=-1),
-    time=time
+    time=time,
+    axes=axes_X
 )
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
 axes_X[1].set_ylabel(r"$C_1$ in F")
@@ -110,16 +112,32 @@ for i in tqdm(range(0, N_PGAS_iter), desc='Calculating fcn value and var'):
     fcn_mean_offline[i] = mean + offset_C1
 
 # generate plot
+c = 0
 for i in index:
-    fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
+    
+    N_tasks = 1
+    fig_fcn_e = plt.figure(dpi=150)
+    gs = fig_fcn_e.add_gridspec(
+        N_tasks+1, 1, 
+        height_ratios=(1, *(5*np.ones((N_tasks,)))), 
+        hspace=0.05, 
+        wspace=0.05
+        )
+    ax = [fig_fcn_e.add_subplot(gs[i+1, 0]) for i in range(0,N_tasks)]
+    ax_histx = fig_fcn_e.add_subplot(gs[0, 0], sharex=ax[-1])
+    
+    plot_fcn_error_1D(
         X_plot, 
         Mean=fcn_mean_offline[int(i)], 
         Std=np.sqrt(fcn_var_offline[int(i)]),
         X_stats=offline_Sigma_X[:,:int(i)], 
-        X_weights=offline_weights[:,:int(i)])
-    ax_fcn_e[0][-1].set_xlabel(r"Voltage in $\mathrm{V}$")
-    ax_fcn_e[0][-1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
-    ax_fcn_e[0][-1].set_ylim(8000, 12000)
+        X_weights=offline_weights[:,:int(i)],
+        ax=ax,
+        ax_histx=ax_histx
+        )
+    ax[-1].set_xlabel(r"Voltage in $\mathrm{V}$")
+    ax[-1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
+    ax[-1].set_ylim(8000, 12000)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
     fig_fcn_e.savefig(f"plots\Battery_PGAS_C1_fcn_{int(i)}.pdf")
@@ -145,12 +163,14 @@ fig_RMSE.savefig("plots\Battery_PGAS_RMSE.pdf", bbox_inches='tight')
 # Plotting Online
 
 # plot the state estimations
+fig_X, axes_X = plt.subplots(2, 1, layout='tight', sharex='col', dpi=150)
 online_C1R1 = online_Sigma_C1[...,None] + offset_C1
-fig_X, axes_X = plot_Data(
+plot_Data(
     Particles=np.concatenate([online_Sigma_Y[...,None], online_C1R1], axis=-1),
     weights=online_weights,
     Reference=np.concatenate([Y[...,None], np.ones((Y.shape[0],2))*np.nan], axis=-1),
-    time=time
+    time=time,
+    axes=axes_X
 )
 axes_X[0].set_ylabel(r"$V$ in $\mathrm{V}$")
 axes_X[1].set_ylabel(r"$C_1$ in F")
@@ -176,16 +196,32 @@ for i in tqdm(range(0, steps), desc='Calculating fcn value and var'):
     fcn_mean_online[i] = mean + offset_C1
 
 # generate plot
+c = 0
 for i in index:
-    fig_fcn_e, ax_fcn_e = plot_fcn_error_1D(
+    
+    N_tasks = 1
+    fig_fcn_e = plt.figure(dpi=150)
+    gs = fig_fcn_e.add_gridspec(
+        N_tasks+1, 1, 
+        height_ratios=(1, *(5*np.ones((N_tasks,)))), 
+        hspace=0.05, 
+        wspace=0.05
+        )
+    ax = [fig_fcn_e.add_subplot(gs[i+1, 0]) for i in range(0,N_tasks)]
+    ax_histx = fig_fcn_e.add_subplot(gs[0, 0], sharex=ax[-1])
+    
+    plot_fcn_error_1D(
         X_plot, 
         Mean=fcn_mean_online[int(i)], 
         Std=np.sqrt(fcn_var_online[int(i)]),
         X_stats=online_Sigma_X[:int(i)], 
-        X_weights=online_weights[:int(i)])
-    ax_fcn_e[0][-1].set_xlabel(r"Voltage in $\mathrm{V}$")
-    ax_fcn_e[0][-1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
-    ax_fcn_e[0][-1].set_ylim(8000, 12000)
+        X_weights=online_weights[:int(i)],
+        ax=ax,
+        ax_histx=ax_histx
+        )
+    ax[-1].set_xlabel(r"Voltage in $\mathrm{V}$")
+    ax[-1].set_ylabel(r"$C_1$ in $\mathrm{F}$")
+    ax[-1].set_ylim(8000, 12000)
         
     apply_basic_formatting(fig_fcn_e, width=8, height=8, font_size=8)
     fig_fcn_e.savefig(f"plots\Battery_APF_C1_fcn_{int(i)}.pdf")
