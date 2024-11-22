@@ -89,7 +89,7 @@ rng = np.random.default_rng(16723573)
 # sim para
 N_particles = 200
 N_PGAS_iter = 5
-forget_factor = 1 - 1/2500
+forget_factor = 0.999
 dt = dt.seconds
 
 
@@ -123,12 +123,12 @@ steps = Y.shape[0]
 #### This section defines the basis function expansion
 
 N_basis_fcn = 15
-basis_fcn, sd = generate_Hilbert_BasisFunction(N_basis_fcn, jnp.array([-0.5, 2.4]), 2.4/N_basis_fcn, 100)
+basis_fcn, sd = generate_Hilbert_BasisFunction(N_basis_fcn, jnp.array([-0.5, 2.4]), 2.9/N_basis_fcn, 10)
 
 GP_prior = list(prior_mniw_2naturalPara(
     np.zeros((1, N_basis_fcn)),
     np.diag(sd),
-    np.eye(1)*10,
+    np.eye(1)*100,
     0
 ))
 
