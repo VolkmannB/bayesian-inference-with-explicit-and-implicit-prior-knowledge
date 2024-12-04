@@ -1,6 +1,6 @@
 # Description
 
-This is the code to reproduce the simulation results for the paper *Bayesian Inference and Learning in Nonlinear Dyamical Systems: A Framework for Incorporating Explicit and Implicit Prior Knowledge*. The considered examples are
+This is the code to reproduce the simulation results for the paper *Bayesian Inference and Learning in Nonlinear Dynamical Systems: A Framework for Incorporating Explicit and Implicit Prior Knowledge*. The considered examples are
 - a single-mass oscillator,
 - lateral vehicle dynamics,
 - an electro mechanic positioning system (EMPS) and
