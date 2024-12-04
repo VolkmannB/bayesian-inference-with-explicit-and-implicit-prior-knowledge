@@ -398,7 +398,7 @@ def Vehicle_APF(Y):
         # evaluate basis functions
         basis_f = jax.vmap(basis_fcn)(Sigma_alpha_f[i])
         
-        # calculate conditional predictive distribution
+        # calculate predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(prior_mniw_Predictive)
             )(
@@ -419,7 +419,7 @@ def Vehicle_APF(Y):
         # evaluate basis fucntions
         basis_r = jax.vmap(basis_fcn)(Sigma_alpha_r[i])
         
-        # calculate conditional predictive distribution
+        # calculate predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(prior_mniw_Predictive)
             )(
