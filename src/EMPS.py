@@ -305,7 +305,7 @@ def EMPS_APF(Y=Y):
         # evaluate basis functions
         basis = jax.vmap(basis_fcn)(Sigma_X[i,:,1])
         
-        # calculate conditional predictive distribution for C1 and R1
+        # calculate predictive distribution for C1 and R1
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(prior_mniw_Predictive)
             )(

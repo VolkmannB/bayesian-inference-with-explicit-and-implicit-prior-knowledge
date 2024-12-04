@@ -261,7 +261,7 @@ def SingleMassOscillator_APF(Y):
         # evaluate basis functions for all particles
         basis = jax.vmap(basis_fcn)(Sigma_X[i])
         
-        # calculate conditional predictive distribution
+        # calculate predictive distribution
         c_mean, c_col_scale, c_row_scale, df = jax.vmap(
             functools.partial(prior_mniw_Predictive)
             )(
