@@ -879,7 +879,7 @@ new_handles = [
     (handles[0], EMPS_ax_x1.collections[0]),
     handles[1],
 ]
-labels[0] = r"Alg.\,2 $\pm 3\sigma$"
+labels[0] = r"Alg.\,1 $\pm 3\sigma$"
 EMPS_ax_x1.legend(
     handles=new_handles,
     labels=labels,
