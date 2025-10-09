@@ -1,0 +1,19 @@
+[project]
+name = "py-spatio-temporal-process-example"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "equinox>=0.12.2",
+    "jax==0.4.38",
+    "matplotlib>=3.10.3",
+    "tqdm>=4.67.1",
+]
+
+[tool.pyright]
+typeCheckingMode = "off"
+venvPath = "."
+venv = ".venv"
+reportMissingImports = true
+reportMissingModuleSource = false
